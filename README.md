@@ -24,12 +24,9 @@ sudo apt-get install -y --no-install-recommends \
 Configure, build and test:
 
 ```bash
-cmake -S . -B tmp/build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
-
-cmake --build tmp/build --parallel
-ctest --test-dir tmp/build --output-on-failure
+make configure
+make build
+make test
 ```
 
 By default CMake builds the SMB backend. If `libsmb2` is not available through
@@ -39,7 +36,7 @@ builds it as part of the project.
 Run the app:
 
 ```bash
-tmp/build/src/app/smb-browser
+make run
 ```
 
 ## Build without SMB backend
@@ -47,11 +44,7 @@ tmp/build/src/app/smb-browser
 Use this only for fast UI/core development when real SMB access is not needed:
 
 ```bash
-cmake -S . -B tmp/build-no-smb -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DSMB_BROWSER_WITH_LIBSMB2=OFF
-cmake --build tmp/build-no-smb --parallel
-ctest --test-dir tmp/build-no-smb --output-on-failure
+make no-smb
 ```
 
 ## Manual libsmb2 prefix
@@ -62,6 +55,8 @@ setup:
 
 ```bash
 scripts/build-libsmb2.sh
+# or
+make libsmb2
 ```
 
 Then configure with `SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON` and `PKG_CONFIG_PATH`
@@ -72,11 +67,7 @@ pointing to `tmp/libsmb2-prefix/lib/pkgconfig`.
 Build a Debian package and smoke-test it without installing into the system:
 
 ```bash
-cmake -S . -B tmp/package-linux -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
-cmake --build tmp/package-linux --target package --parallel
-scripts/package-smoke-linux.sh
+make smoke-linux
 ```
 
 The package is written to `tmp/package-linux/packages`.
@@ -98,12 +89,9 @@ scripts/package-smoke-macos.sh
 The Docker Samba test profile is disabled by default.
 
 ```bash
-docker compose -f tests/integration/samba/docker-compose.yml up -d --build
-cmake -S . -B tmp/build-samba -G Ninja \
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=ON
-cmake --build tmp/build-samba --parallel
-ctest --test-dir tmp/build-samba -L docker-samba --output-on-failure
-docker compose -f tests/integration/samba/docker-compose.yml down -v
+make samba-up
+make samba-test
+make samba-down
 ```
 
 ## Project docs
