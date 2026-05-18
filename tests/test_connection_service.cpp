@@ -189,6 +189,38 @@ private slots:
     QVERIFY(!credentialStore.values.contains(credentialRef));
     QVERIFY(credentialStore.removedRefs.contains(credentialRef));
   }
+
+  void listReturnsConnectionsThroughServiceLayer() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::infrastructure::SqliteStorage storage;
+    QVERIFY(
+        !storage.open(tempDir.filePath(QStringLiteral("app.db"))).hasError());
+    QVERIFY(!storage.migrate().hasError());
+
+    smb::infrastructure::ConnectionRepository repository(storage.database());
+    FakeCredentialStore credentialStore;
+    smb::application::ConnectionService service(repository, credentialStore);
+
+    auto first = sampleConnection();
+    first.name = QStringLiteral("First");
+    auto second = sampleConnection();
+    second.name = QStringLiteral("Second");
+
+    QVERIFY(service
+                .create(first, smb::core::CredentialSecret{QByteArrayLiteral(
+                                   "first-secret")})
+                .ok());
+    QVERIFY(service
+                .create(second, smb::core::CredentialSecret{QByteArrayLiteral(
+                                    "second-secret")})
+                .ok());
+
+    const auto listed = service.list();
+    QVERIFY(listed.ok());
+    QCOMPARE(listed.value().size(), 2);
+  }
 };
 
 QTEST_MAIN(ConnectionServiceTest)

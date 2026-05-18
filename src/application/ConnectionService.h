@@ -20,6 +20,9 @@ public:
   update(smb::core::Connection connection,
          std::optional<smb::core::CredentialSecret> secret);
   smb::core::Result<bool> remove(const QString &connectionId);
+  smb::core::Result<smb::core::Connection>
+  getById(const QString &connectionId) const;
+  smb::core::Result<QVector<smb::core::Connection>> list() const;
 
 private:
   bool credentialIsShared(const QString &credentialRef,

@@ -131,6 +131,16 @@ smb::core::Result<bool> ConnectionService::remove(const QString &connectionId) {
   return smb::core::Result<bool>::success(true);
 }
 
+smb::core::Result<QVector<smb::core::Connection>>
+ConnectionService::list() const {
+  return m_repository.list();
+}
+
+smb::core::Result<smb::core::Connection>
+ConnectionService::getById(const QString &connectionId) const {
+  return m_repository.getById(connectionId);
+}
+
 bool ConnectionService::credentialIsShared(
     const QString &credentialRef, const QString &excludingConnectionId) const {
   const auto connections = m_repository.list();

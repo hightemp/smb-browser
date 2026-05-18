@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QMetaType>
 #include <QString>
 
 namespace smb::core {
@@ -29,3 +30,5 @@ struct RemoteFileEntry {
 QString toString(RemoteFileType type);
 
 } // namespace smb::core
+
+Q_DECLARE_METATYPE(smb::core::RemoteFileEntry)

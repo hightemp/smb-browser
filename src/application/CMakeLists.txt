@@ -1,6 +1,8 @@
 add_library(smb_browser_application STATIC
     ConnectivityCheckService.cpp
     ConnectivityCheckService.h
+    ConnectionOpenService.cpp
+    ConnectionOpenService.h
     ConnectionService.cpp
     ConnectionService.h
     DesktopServicesFileOpener.cpp

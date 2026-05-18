@@ -1,17 +1,175 @@
 #include "ui/MainWindow.h"
 
 #include "core/AppInfo.h"
+#include "ui/ConnectionsPanel.h"
 
+#include <QAbstractItemView>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QSplitter>
 #include <QStatusBar>
+#include <QStyle>
+#include <QTableView>
+#include <QVBoxLayout>
+#include <QWidget>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+  setObjectName(QStringLiteral("mainWindow"));
   setWindowTitle(smb::core::applicationName());
-  resize(1100, 720);
+  resize(1200, 760);
 
-  auto *placeholder = new QLabel(tr("Select a connection to begin."), this);
-  placeholder->setAlignment(Qt::AlignCenter);
-  setCentralWidget(placeholder);
+  auto *root = new QWidget(this);
+  root->setObjectName(QStringLiteral("mainRoot"));
+
+  auto *rootLayout = new QVBoxLayout(root);
+  rootLayout->setContentsMargins(8, 8, 8, 8);
+  rootLayout->setSpacing(8);
+  rootLayout->addWidget(createTopBar());
+
+  auto *splitter = new QSplitter(Qt::Horizontal, root);
+  splitter->setObjectName(QStringLiteral("mainSplitter"));
+  splitter->addWidget(createConnectionsPanel());
+  splitter->addWidget(createBrowserArea());
+  splitter->setStretchFactor(0, 0);
+  splitter->setStretchFactor(1, 1);
+  splitter->setSizes({320, 880});
+  rootLayout->addWidget(splitter, 1);
+  rootLayout->addWidget(createStatusPanel());
+
+  setCentralWidget(root);
 
   statusBar()->showMessage(tr("Ready"));
+}
+
+QWidget *MainWindow::createTopBar() {
+  auto *bar = new QFrame(this);
+  bar->setObjectName(QStringLiteral("mainToolbar"));
+  bar->setFrameShape(QFrame::StyledPanel);
+
+  auto *layout = new QHBoxLayout(bar);
+  layout->setContentsMargins(8, 6, 8, 6);
+  layout->setSpacing(6);
+
+  auto *search = new QLineEdit(bar);
+  search->setObjectName(QStringLiteral("globalSearchEdit"));
+  search->setPlaceholderText(tr("Search connections or files"));
+  layout->addWidget(search, 1);
+
+  const auto addButton = [this, bar, layout](const QString &objectName,
+                                             const QString &text,
+                                             QStyle::StandardPixmap icon) {
+    auto *button = new QPushButton(style()->standardIcon(icon), text, bar);
+    button->setObjectName(objectName);
+    button->setFocusPolicy(Qt::StrongFocus);
+    layout->addWidget(button);
+    return button;
+  };
+
+  addButton(QStringLiteral("addConnectionButton"), tr("Add"),
+            QStyle::SP_FileDialogNewFolder);
+  addButton(QStringLiteral("editConnectionButton"), tr("Edit"),
+            QStyle::SP_FileIcon);
+  addButton(QStringLiteral("deleteConnectionButton"), tr("Delete"),
+            QStyle::SP_TrashIcon);
+  addButton(QStringLiteral("checkConnectionButton"), tr("Check"),
+            QStyle::SP_BrowserReload);
+  addButton(QStringLiteral("connectButton"), tr("Connect"),
+            QStyle::SP_DialogOpenButton);
+  addButton(QStringLiteral("importButton"), tr("Import"), QStyle::SP_ArrowDown);
+  addButton(QStringLiteral("exportButton"), tr("Export"), QStyle::SP_ArrowUp);
+
+  return bar;
+}
+
+QWidget *MainWindow::createConnectionsPanel() {
+  return new smb::ui::ConnectionsPanel(this);
+}
+
+QWidget *MainWindow::createBrowserArea() {
+  auto *area = new QFrame(this);
+  area->setObjectName(QStringLiteral("browserArea"));
+  area->setFrameShape(QFrame::StyledPanel);
+
+  auto *layout = new QVBoxLayout(area);
+  layout->setContentsMargins(8, 8, 8, 8);
+  layout->setSpacing(6);
+
+  auto *toolbar = new QWidget(area);
+  toolbar->setObjectName(QStringLiteral("browserToolbar"));
+  auto *toolbarLayout = new QHBoxLayout(toolbar);
+  toolbarLayout->setContentsMargins(0, 0, 0, 0);
+  toolbarLayout->setSpacing(6);
+
+  const auto addNavButton = [this, toolbar, toolbarLayout](
+                                const QString &objectName, const QString &text,
+                                QStyle::StandardPixmap icon) {
+    auto *button = new QPushButton(style()->standardIcon(icon), text, toolbar);
+    button->setObjectName(objectName);
+    toolbarLayout->addWidget(button);
+    return button;
+  };
+
+  addNavButton(QStringLiteral("backButton"), tr("Back"), QStyle::SP_ArrowBack);
+  addNavButton(QStringLiteral("forwardButton"), tr("Forward"),
+               QStyle::SP_ArrowForward);
+  addNavButton(QStringLiteral("upButton"), tr("Up"), QStyle::SP_ArrowUp);
+  addNavButton(QStringLiteral("refreshButton"), tr("Refresh"),
+               QStyle::SP_BrowserReload);
+
+  auto *fileSearch = new QLineEdit(toolbar);
+  fileSearch->setObjectName(QStringLiteral("fileSearchEdit"));
+  fileSearch->setPlaceholderText(tr("Search current folder"));
+  toolbarLayout->addWidget(fileSearch, 1);
+  layout->addWidget(toolbar);
+
+  auto *table = new QTableView(area);
+  table->setObjectName(QStringLiteral("remoteFilesView"));
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  table->setAlternatingRowColors(true);
+  layout->addWidget(table, 1);
+
+  auto *placeholder =
+      new QLabel(tr("Select a connection to browse remote files."), area);
+  placeholder->setObjectName(QStringLiteral("browserPlaceholder"));
+  placeholder->setAlignment(Qt::AlignCenter);
+  layout->addWidget(placeholder);
+
+  return area;
+}
+
+QWidget *MainWindow::createStatusPanel() {
+  auto *panel = new QFrame(this);
+  panel->setObjectName(QStringLiteral("statusPanel"));
+  panel->setFrameShape(QFrame::StyledPanel);
+
+  auto *layout = new QHBoxLayout(panel);
+  layout->setContentsMargins(8, 6, 8, 6);
+  layout->setSpacing(8);
+
+  auto *connectionStatus = new QLabel(tr("Connection: Not connected"), panel);
+  connectionStatus->setObjectName(QStringLiteral("connectionStatusLabel"));
+  layout->addWidget(connectionStatus);
+
+  auto *lastError = new QLabel(tr("Last error: None"), panel);
+  lastError->setObjectName(QStringLiteral("lastErrorLabel"));
+  layout->addWidget(lastError, 1);
+
+  auto *progress = new QProgressBar(panel);
+  progress->setObjectName(QStringLiteral("operationProgressBar"));
+  progress->setRange(0, 100);
+  progress->setValue(0);
+  progress->setFixedWidth(180);
+  layout->addWidget(progress);
+
+  auto *cancelButton = new QPushButton(tr("Cancel"), panel);
+  cancelButton->setObjectName(QStringLiteral("cancelOperationButton"));
+  cancelButton->setEnabled(false);
+  layout->addWidget(cancelButton);
+
+  return panel;
 }

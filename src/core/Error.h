@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMetaType>
 #include <QString>
 #include <utility>
 
@@ -82,3 +83,5 @@ QString toString(ErrorCode code);
 QString defaultUserMessage(ErrorCode code);
 
 } // namespace smb::core
+
+Q_DECLARE_METATYPE(smb::core::AppError)

@@ -268,6 +268,19 @@ target_link_libraries(test_connectivity_check_service
 
 add_test(NAME connectivity_check_service COMMAND test_connectivity_check_service)
 
+add_executable(test_connection_open_service
+    test_connection_open_service.cpp
+)
+
+target_link_libraries(test_connection_open_service
+    PRIVATE
+        smb_browser_application
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME connection_open_service COMMAND test_connection_open_service)
+
 add_executable(test_operation_queue
     test_operation_queue.cpp
 )
@@ -317,3 +330,115 @@ target_link_libraries(test_open_file_service
 )
 
 add_test(NAME open_file_service COMMAND test_open_file_service)
+
+add_executable(test_remote_file_model
+    test_remote_file_model.cpp
+)
+
+target_link_libraries(test_remote_file_model
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME remote_file_model COMMAND test_remote_file_model)
+set_tests_properties(remote_file_model PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_remote_browser_widget
+    test_remote_browser_widget.cpp
+)
+
+target_link_libraries(test_remote_browser_widget
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME remote_browser_widget COMMAND test_remote_browser_widget)
+set_tests_properties(remote_browser_widget PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_main_window
+    test_main_window.cpp
+)
+
+target_link_libraries(test_main_window
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME main_window COMMAND test_main_window)
+set_tests_properties(main_window PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_connections_panel
+    test_connections_panel.cpp
+)
+
+target_link_libraries(test_connections_panel
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connections_panel COMMAND test_connections_panel)
+set_tests_properties(connections_panel PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_connection_dialog
+    test_connection_dialog.cpp
+)
+
+target_link_libraries(test_connection_dialog
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connection_dialog COMMAND test_connection_dialog)
+set_tests_properties(connection_dialog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_connection_management_controller
+    test_connection_management_controller.cpp
+)
+
+target_link_libraries(test_connection_management_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connection_management_controller COMMAND test_connection_management_controller)
+set_tests_properties(connection_management_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_connection_open_controller
+    test_connection_open_controller.cpp
+)
+
+target_link_libraries(test_connection_open_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connection_open_controller COMMAND test_connection_open_controller)
+set_tests_properties(connection_open_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)

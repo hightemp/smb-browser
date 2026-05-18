@@ -497,7 +497,7 @@
 
 ## Этап 7. UI shell и управление подключениями
 
-### [ ] T-036: Реализовать MainWindow layout
+### [x] T-036: Реализовать MainWindow layout
 
 - Приоритет: Must.
 - Зависимости: T-004.
@@ -511,7 +511,7 @@
 - Заметки по тестам:
   - UI smoke test на создание окна.
 
-### [ ] T-037: Реализовать ConnectionsPanel
+### [x] T-037: Реализовать ConnectionsPanel
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-036.
@@ -525,7 +525,7 @@
   - Unit tests для presenter/view-model logic, если выделено.
   - UI smoke test на отображение fake connections.
 
-### [ ] T-038: Реализовать ConnectionDialog
+### [x] T-038: Реализовать ConnectionDialog
 
 - Приоритет: Must.
 - Зависимости: T-009, T-010, T-023.
@@ -541,7 +541,7 @@
   - Unit tests на dialog validation logic.
   - UI smoke test add/edit flow.
 
-### [ ] T-039: Реализовать delete connection flow
+### [x] T-039: Реализовать delete connection flow
 
 - Приоритет: Must.
 - Зависимости: T-037, T-038, T-023.
@@ -555,7 +555,7 @@
   - Unit tests с fake repository и fake credential store.
   - UI smoke test delete flow.
 
-### [ ] T-040: Реализовать connect/open flow
+### [x] T-040: Реализовать connect/open flow
 
 - Приоритет: Must.
 - Зависимости: T-031, T-037.
@@ -571,7 +571,7 @@
 
 ## Этап 8. Встроенный SMB browser
 
-### [ ] T-041: Реализовать RemoteFileModel
+### [x] T-041: Реализовать RemoteFileModel
 
 - Приоритет: Must.
 - Зависимости: T-011.
@@ -586,7 +586,7 @@
   - Unit tests на row/column counts и data roles.
   - UI smoke test displays remote entries.
 
-### [ ] T-042: Реализовать RemoteBrowserWidget navigation
+### [x] T-042: Реализовать RemoteBrowserWidget navigation
 
 - Приоритет: Must.
 - Зависимости: T-024, T-032, T-041.
@@ -600,7 +600,7 @@
   - FakeSmbClient tests на open folder, back, up, refresh.
   - UI smoke test на basic navigation.
 
-### [ ] T-043: Реализовать поиск файлов в текущей папке
+### [x] T-043: Реализовать поиск файлов в текущей папке
 
 - Приоритет: Must.
 - Зависимости: T-041, T-042.
@@ -613,7 +613,7 @@
   - Unit tests на filter logic.
   - UI smoke test на отображение filtered entries.
 
-### [ ] T-044: Реализовать создание папки, удаление и переименование из browser
+### [x] T-044: Реализовать создание папки, удаление и переименование из browser
 
 - Приоритет: Must.
 - Зависимости: T-028, T-032, T-042.
@@ -628,7 +628,7 @@
   - FakeSmbClient tests: create, delete, rename, permission denied.
   - UI smoke test на model refresh после операции.
 
-### [ ] T-045: Реализовать download/upload из browser
+### [x] T-045: Реализовать download/upload из browser
 
 - Приоритет: Must.
 - Зависимости: T-033, T-042.
