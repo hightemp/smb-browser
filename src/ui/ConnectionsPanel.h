@@ -6,9 +6,11 @@
 #include <QWidget>
 
 class QCheckBox;
+class QLabel;
 class QLineEdit;
 class QListView;
 class QPushButton;
+class QEvent;
 
 namespace smb::ui {
 
@@ -21,6 +23,7 @@ public:
   void setConnections(QVector<smb::core::Connection> connections);
   QString selectedConnectionId() const;
   QString selectedNormalizedUri() const;
+  void retranslateUi();
 
 signals:
   void addRequested();
@@ -31,14 +34,17 @@ signals:
   void copyPathRequested(const QString &normalizedUri);
 
 private:
+  void changeEvent(QEvent *event) override;
   QModelIndex selectedSourceIndex() const;
   void updateActionState();
 
   ConnectionListModel *m_model = nullptr;
   ConnectionFilterProxyModel *m_filterModel = nullptr;
+  QLabel *m_titleLabel = nullptr;
   QLineEdit *m_filterEdit = nullptr;
   QCheckBox *m_favoritesOnly = nullptr;
   QListView *m_listView = nullptr;
+  QPushButton *m_addButton = nullptr;
   QPushButton *m_editButton = nullptr;
   QPushButton *m_deleteButton = nullptr;
   QPushButton *m_checkButton = nullptr;

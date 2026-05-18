@@ -19,10 +19,14 @@ public:
 
 public slots:
   void refreshConnections();
+  void addConnection();
+  void editConnection(const QString &connectionId);
   void deleteConnection(const QString &connectionId);
 
 signals:
   void connectionsRefreshed();
+  void connectionAdded(const QString &connectionId);
+  void connectionUpdated(const QString &connectionId);
   void connectionDeleted(const QString &connectionId);
 
 private:

@@ -9,6 +9,7 @@
 #include "ui/StatusPanel.h"
 
 #include <QAbstractItemView>
+#include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -46,6 +47,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   rootLayout->addWidget(createStatusPanel());
 
   setCentralWidget(root);
+  wireConnectionActions();
+  retranslateUi();
 
   statusBar()->showMessage(tr("Ready"));
 }
@@ -63,7 +66,6 @@ QWidget *MainWindow::createTopBar() {
 
   auto *search = new QLineEdit(bar);
   search->setObjectName(QStringLiteral("globalSearchEdit"));
-  search->setPlaceholderText(tr("Search connections or files"));
   layout->addWidget(search, 1);
 
   const auto addButton = [this, bar, layout](const QString &objectName,
@@ -76,21 +78,26 @@ QWidget *MainWindow::createTopBar() {
     return button;
   };
 
-  addButton(QStringLiteral("addConnectionButton"), tr("Add"),
-            QStyle::SP_FileDialogNewFolder);
-  addButton(QStringLiteral("editConnectionButton"), tr("Edit"),
-            QStyle::SP_FileIcon);
-  addButton(QStringLiteral("deleteConnectionButton"), tr("Delete"),
-            QStyle::SP_TrashIcon);
-  addButton(QStringLiteral("checkConnectionButton"), tr("Check"),
-            QStyle::SP_BrowserReload);
-  addButton(QStringLiteral("connectButton"), tr("Connect"),
-            QStyle::SP_DialogOpenButton);
+  m_addConnectionButton =
+      addButton(QStringLiteral("addConnectionButton"), QString(),
+                QStyle::SP_FileDialogNewFolder);
+  m_editConnectionButton =
+      addButton(QStringLiteral("editConnectionButton"), QString(),
+                QStyle::SP_FileIcon);
+  m_deleteConnectionButton =
+      addButton(QStringLiteral("deleteConnectionButton"), QString(),
+                QStyle::SP_TrashIcon);
+  m_checkConnectionButton =
+      addButton(QStringLiteral("checkConnectionButton"), QString(),
+                QStyle::SP_BrowserReload);
+  m_connectButton =
+      addButton(QStringLiteral("connectButton"), QString(),
+                QStyle::SP_DialogOpenButton);
   m_importButton =
-      addButton(QStringLiteral("importButton"), tr("Import"), QStyle::SP_ArrowDown);
+      addButton(QStringLiteral("importButton"), QString(), QStyle::SP_ArrowDown);
   m_exportButton =
-      addButton(QStringLiteral("exportButton"), tr("Export"), QStyle::SP_ArrowUp);
-  auto *logsButton = addButton(QStringLiteral("logsButton"), tr("Logs"),
+      addButton(QStringLiteral("exportButton"), QString(), QStyle::SP_ArrowUp);
+  auto *logsButton = addButton(QStringLiteral("logsButton"), QString(),
                                QStyle::SP_FileDialogDetailedView);
   connect(logsButton, &QPushButton::clicked, this, [this]() {
     auto *viewer = new smb::ui::LogViewer(
@@ -99,10 +106,12 @@ QWidget *MainWindow::createTopBar() {
     viewer->show();
   });
   auto *settingsButton = addButton(QStringLiteral("settingsButton"),
-                                   tr("Settings"),
+                                   QString(),
                                    QStyle::SP_FileDialogContentsView);
   connect(settingsButton, &QPushButton::clicked, this, [this]() {
-    auto *dialog = new smb::ui::SettingsDialog(nullptr, nullptr, nullptr, this);
+    auto *dialog = new smb::ui::SettingsDialog(
+        m_settingsUseCase, m_themeManager, m_localizationManager, this,
+        m_tempFileCache);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->loadSettings();
     dialog->show();
@@ -111,8 +120,17 @@ QWidget *MainWindow::createTopBar() {
   return bar;
 }
 
+void MainWindow::changeEvent(QEvent *event) {
+  if (event->type() == QEvent::LanguageChange) {
+    retranslateUi();
+  }
+
+  QMainWindow::changeEvent(event);
+}
+
 QWidget *MainWindow::createConnectionsPanel() {
-  return new smb::ui::ConnectionsPanel(this);
+  m_connectionsPanel = new smb::ui::ConnectionsPanel(this);
+  return m_connectionsPanel;
 }
 
 void MainWindow::attachImportExport(
@@ -124,6 +142,106 @@ void MainWindow::attachImportExport(
 
   m_importExportController = std::make_unique<smb::ui::ImportExportController>(
       *m_importButton, *m_exportButton, useCase, prompter, this);
+}
+
+void MainWindow::attachSettings(
+    smb::application::SettingsUseCase &settingsUseCase,
+    smb::ui::ThemeManager &themeManager,
+    smb::ui::LocalizationManager &localizationManager,
+    smb::application::TempFileCache &tempFileCache) {
+  m_settingsUseCase = &settingsUseCase;
+  m_themeManager = &themeManager;
+  m_localizationManager = &localizationManager;
+  m_tempFileCache = &tempFileCache;
+}
+
+smb::ui::ConnectionsPanel *MainWindow::connectionsPanel() const {
+  return m_connectionsPanel;
+}
+
+void MainWindow::wireConnectionActions() {
+  if (m_connectionsPanel == nullptr) {
+    return;
+  }
+
+  if (m_addConnectionButton != nullptr) {
+    connect(m_addConnectionButton, &QPushButton::clicked, m_connectionsPanel,
+            &smb::ui::ConnectionsPanel::addRequested);
+  }
+  if (m_editConnectionButton != nullptr) {
+    connect(m_editConnectionButton, &QPushButton::clicked, this, [this]() {
+      const auto id = m_connectionsPanel->selectedConnectionId();
+      if (!id.isEmpty()) {
+        emit m_connectionsPanel->editRequested(id);
+      }
+    });
+  }
+  if (m_deleteConnectionButton != nullptr) {
+    connect(m_deleteConnectionButton, &QPushButton::clicked, this, [this]() {
+      const auto id = m_connectionsPanel->selectedConnectionId();
+      if (!id.isEmpty()) {
+        emit m_connectionsPanel->deleteRequested(id);
+      }
+    });
+  }
+  if (m_checkConnectionButton != nullptr) {
+    connect(m_checkConnectionButton, &QPushButton::clicked, this, [this]() {
+      const auto id = m_connectionsPanel->selectedConnectionId();
+      if (!id.isEmpty()) {
+        emit m_connectionsPanel->checkRequested(id);
+      }
+    });
+  }
+  if (m_connectButton != nullptr) {
+    connect(m_connectButton, &QPushButton::clicked, this, [this]() {
+      const auto id = m_connectionsPanel->selectedConnectionId();
+      if (!id.isEmpty()) {
+        emit m_connectionsPanel->connectRequested(id);
+      }
+    });
+  }
+}
+
+void MainWindow::retranslateUi() {
+  setWindowTitle(smb::core::applicationName());
+
+  auto setButtonText = [this](const QString &objectName, const QString &text) {
+    auto *button = findChild<QPushButton *>(objectName);
+    if (button != nullptr) {
+      button->setText(text);
+    }
+  };
+
+  if (auto *search =
+          findChild<QLineEdit *>(QStringLiteral("globalSearchEdit"))) {
+    search->setPlaceholderText(tr("Search connections or files"));
+  }
+  setButtonText(QStringLiteral("addConnectionButton"), tr("Add"));
+  setButtonText(QStringLiteral("editConnectionButton"), tr("Edit"));
+  setButtonText(QStringLiteral("deleteConnectionButton"), tr("Delete"));
+  setButtonText(QStringLiteral("checkConnectionButton"), tr("Check"));
+  setButtonText(QStringLiteral("connectButton"), tr("Connect"));
+  setButtonText(QStringLiteral("importButton"), tr("Import"));
+  setButtonText(QStringLiteral("exportButton"), tr("Export"));
+  setButtonText(QStringLiteral("logsButton"), tr("Logs"));
+  setButtonText(QStringLiteral("settingsButton"), tr("Settings"));
+
+  setButtonText(QStringLiteral("backButton"), tr("Back"));
+  setButtonText(QStringLiteral("forwardButton"), tr("Forward"));
+  setButtonText(QStringLiteral("upButton"), tr("Up"));
+  setButtonText(QStringLiteral("refreshButton"), tr("Refresh"));
+  if (auto *fileSearch =
+          findChild<QLineEdit *>(QStringLiteral("fileSearchEdit"))) {
+    fileSearch->setPlaceholderText(tr("Search current folder"));
+  }
+  if (auto *placeholder =
+          findChild<QLabel *>(QStringLiteral("browserPlaceholder"))) {
+    placeholder->setText(tr("Select a connection to browse remote files."));
+  }
+  if (m_connectionsPanel != nullptr) {
+    m_connectionsPanel->retranslateUi();
+  }
+  statusBar()->showMessage(tr("Ready"));
 }
 
 QWidget *MainWindow::createBrowserArea() {
@@ -150,16 +268,15 @@ QWidget *MainWindow::createBrowserArea() {
     return button;
   };
 
-  addNavButton(QStringLiteral("backButton"), tr("Back"), QStyle::SP_ArrowBack);
-  addNavButton(QStringLiteral("forwardButton"), tr("Forward"),
+  addNavButton(QStringLiteral("backButton"), QString(), QStyle::SP_ArrowBack);
+  addNavButton(QStringLiteral("forwardButton"), QString(),
                QStyle::SP_ArrowForward);
-  addNavButton(QStringLiteral("upButton"), tr("Up"), QStyle::SP_ArrowUp);
-  addNavButton(QStringLiteral("refreshButton"), tr("Refresh"),
+  addNavButton(QStringLiteral("upButton"), QString(), QStyle::SP_ArrowUp);
+  addNavButton(QStringLiteral("refreshButton"), QString(),
                QStyle::SP_BrowserReload);
 
   auto *fileSearch = new QLineEdit(toolbar);
   fileSearch->setObjectName(QStringLiteral("fileSearchEdit"));
-  fileSearch->setPlaceholderText(tr("Search current folder"));
   toolbarLayout->addWidget(fileSearch, 1);
   layout->addWidget(toolbar);
 
@@ -170,8 +287,7 @@ QWidget *MainWindow::createBrowserArea() {
   table->setAlternatingRowColors(true);
   layout->addWidget(table, 1);
 
-  auto *placeholder =
-      new QLabel(tr("Select a connection to browse remote files."), area);
+  auto *placeholder = new QLabel(area);
   placeholder->setObjectName(QStringLiteral("browserPlaceholder"));
   placeholder->setAlignment(Qt::AlignCenter);
   layout->addWidget(placeholder);

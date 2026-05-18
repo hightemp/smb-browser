@@ -44,6 +44,10 @@
         <translation>Журнал</translation>
     </message>
     <message>
+        <source>Settings</source>
+        <translation>Настройки</translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation>Назад</translation>
     </message>
@@ -78,6 +82,68 @@
     <message>
         <source>Cancel</source>
         <translation>Отмена</translation>
+    </message>
+</context>
+<context>
+    <name>smb::ui::ConnectionsPanel</name>
+    <message>
+        <source>Connections</source>
+        <translation>Подключения</translation>
+    </message>
+    <message>
+        <source>Filter connections</source>
+        <translation>Фильтр подключений</translation>
+    </message>
+    <message>
+        <source>Favorites only</source>
+        <translation>Только избранные</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Изменить</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Удалить</translation>
+    </message>
+    <message>
+        <source>Check</source>
+        <translation>Проверить</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>Подключиться</translation>
+    </message>
+    <message>
+        <source>Copy Path</source>
+        <translation>Копировать путь</translation>
+    </message>
+</context>
+<context>
+    <name>smb::ui::ConnectionManagementController</name>
+    <message>
+        <source>Unable to Add Connection</source>
+        <translation>Не удалось добавить подключение</translation>
+    </message>
+    <message>
+        <source>Unable to Edit Connection</source>
+        <translation>Не удалось изменить подключение</translation>
+    </message>
+    <message>
+        <source>Unable to Load Connections</source>
+        <translation>Не удалось загрузить подключения</translation>
+    </message>
+    <message>
+        <source>Unable to Delete Connection</source>
+        <translation>Не удалось удалить подключение</translation>
+    </message>
+    <message>
+        <source>Connection was not found.</source>
+        <translation>Подключение не найдено.</translation>
     </message>
 </context>
 <context>

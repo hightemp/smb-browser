@@ -2,6 +2,7 @@
 
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
 #include <QLabel>
@@ -25,16 +26,15 @@ ConnectionsPanel::ConnectionsPanel(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(8, 8, 8, 8);
   layout->setSpacing(6);
 
-  auto *title = new QLabel(tr("Connections"), this);
-  title->setObjectName(QStringLiteral("connectionsTitle"));
-  layout->addWidget(title);
+  m_titleLabel = new QLabel(this);
+  m_titleLabel->setObjectName(QStringLiteral("connectionsTitle"));
+  layout->addWidget(m_titleLabel);
 
   m_filterEdit = new QLineEdit(this);
   m_filterEdit->setObjectName(QStringLiteral("connectionFilterEdit"));
-  m_filterEdit->setPlaceholderText(tr("Filter connections"));
   layout->addWidget(m_filterEdit);
 
-  m_favoritesOnly = new QCheckBox(tr("Favorites only"), this);
+  m_favoritesOnly = new QCheckBox(this);
   m_favoritesOnly->setObjectName(QStringLiteral("favoriteConnectionsOnly"));
   layout->addWidget(m_favoritesOnly);
 
@@ -47,31 +47,31 @@ ConnectionsPanel::ConnectionsPanel(QWidget *parent) : QWidget(parent) {
 
   auto *primaryActions = new QHBoxLayout();
   primaryActions->setSpacing(6);
-  auto *addButton = new QPushButton(tr("Add"), this);
-  addButton->setObjectName(QStringLiteral("panelAddConnectionButton"));
-  m_editButton = new QPushButton(tr("Edit"), this);
+  m_addButton = new QPushButton(this);
+  m_addButton->setObjectName(QStringLiteral("panelAddConnectionButton"));
+  m_editButton = new QPushButton(this);
   m_editButton->setObjectName(QStringLiteral("panelEditConnectionButton"));
-  m_deleteButton = new QPushButton(tr("Delete"), this);
+  m_deleteButton = new QPushButton(this);
   m_deleteButton->setObjectName(QStringLiteral("panelDeleteConnectionButton"));
-  primaryActions->addWidget(addButton);
+  primaryActions->addWidget(m_addButton);
   primaryActions->addWidget(m_editButton);
   primaryActions->addWidget(m_deleteButton);
   layout->addLayout(primaryActions);
 
   auto *secondaryActions = new QHBoxLayout();
   secondaryActions->setSpacing(6);
-  m_checkButton = new QPushButton(tr("Check"), this);
+  m_checkButton = new QPushButton(this);
   m_checkButton->setObjectName(QStringLiteral("panelCheckConnectionButton"));
-  m_connectButton = new QPushButton(tr("Connect"), this);
+  m_connectButton = new QPushButton(this);
   m_connectButton->setObjectName(QStringLiteral("panelConnectButton"));
-  m_copyPathButton = new QPushButton(tr("Copy Path"), this);
+  m_copyPathButton = new QPushButton(this);
   m_copyPathButton->setObjectName(QStringLiteral("panelCopyPathButton"));
   secondaryActions->addWidget(m_checkButton);
   secondaryActions->addWidget(m_connectButton);
   secondaryActions->addWidget(m_copyPathButton);
   layout->addLayout(secondaryActions);
 
-  connect(addButton, &QPushButton::clicked, this,
+  connect(m_addButton, &QPushButton::clicked, this,
           &ConnectionsPanel::addRequested);
   connect(m_filterEdit, &QLineEdit::textChanged, m_filterModel,
           &ConnectionFilterProxyModel::setFilterText);
@@ -117,6 +117,7 @@ ConnectionsPanel::ConnectionsPanel(QWidget *parent) : QWidget(parent) {
     }
   });
 
+  retranslateUi();
   updateActionState();
 }
 
@@ -141,6 +142,26 @@ QString ConnectionsPanel::selectedNormalizedUri() const {
   }
   return m_model->data(index, ConnectionListModel::NormalizedUriRole)
       .toString();
+}
+
+void ConnectionsPanel::retranslateUi() {
+  m_titleLabel->setText(tr("Connections"));
+  m_filterEdit->setPlaceholderText(tr("Filter connections"));
+  m_favoritesOnly->setText(tr("Favorites only"));
+  m_addButton->setText(tr("Add"));
+  m_editButton->setText(tr("Edit"));
+  m_deleteButton->setText(tr("Delete"));
+  m_checkButton->setText(tr("Check"));
+  m_connectButton->setText(tr("Connect"));
+  m_copyPathButton->setText(tr("Copy Path"));
+}
+
+void ConnectionsPanel::changeEvent(QEvent *event) {
+  if (event->type() == QEvent::LanguageChange) {
+    retranslateUi();
+  }
+
+  QWidget::changeEvent(event);
 }
 
 QModelIndex ConnectionsPanel::selectedSourceIndex() const {
