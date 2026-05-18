@@ -3,14 +3,20 @@ add_library(smb_browser_core STATIC
     AppInfo.h
     Connection.cpp
     Connection.h
+    ConnectionGroup.cpp
+    ConnectionGroup.h
+    CredentialStore.h
     Error.cpp
     Error.h
+    LogSanitizer.cpp
+    LogSanitizer.h
     PathNormalizer.cpp
     PathNormalizer.h
     RemoteFileEntry.cpp
     RemoteFileEntry.h
     Settings.cpp
     Settings.h
+    SmbClient.h
     SmbError.cpp
     SmbError.h
 )

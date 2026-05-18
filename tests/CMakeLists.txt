@@ -1,3 +1,18 @@
+add_library(smb_browser_test_support STATIC
+    fakes/FakeSmbClient.cpp
+    fakes/FakeSmbClient.h
+)
+
+target_include_directories(smb_browser_test_support
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(smb_browser_test_support
+    PUBLIC
+        smb_browser_core
+)
+
 add_executable(test_core_smoke
     test_core_smoke.cpp
 )
@@ -81,3 +96,224 @@ target_link_libraries(test_smb_error_mapping
 )
 
 add_test(NAME smb_error_mapping COMMAND test_smb_error_mapping)
+
+add_executable(test_log_sanitizer
+    test_log_sanitizer.cpp
+)
+
+target_link_libraries(test_log_sanitizer
+    PRIVATE
+        smb_browser_core
+        Qt5::Test
+)
+
+add_test(NAME log_sanitizer COMMAND test_log_sanitizer)
+
+add_executable(test_sqlite_storage
+    test_sqlite_storage.cpp
+)
+
+target_link_libraries(test_sqlite_storage
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME sqlite_storage COMMAND test_sqlite_storage)
+
+add_executable(test_connection_repository
+    test_connection_repository.cpp
+)
+
+target_link_libraries(test_connection_repository
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME connection_repository COMMAND test_connection_repository)
+
+add_executable(test_connection_group_repository
+    test_connection_group_repository.cpp
+)
+
+target_link_libraries(test_connection_group_repository
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME connection_group_repository COMMAND test_connection_group_repository)
+
+add_executable(test_settings_repository
+    test_settings_repository.cpp
+)
+
+target_link_libraries(test_settings_repository
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME settings_repository COMMAND test_settings_repository)
+
+add_executable(test_file_logger
+    test_file_logger.cpp
+)
+
+target_link_libraries(test_file_logger
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME file_logger COMMAND test_file_logger)
+
+if(SMB_BROWSER_WITH_LIBSMB2)
+    add_executable(test_libsmb2_error_mapper
+        test_libsmb2_error_mapper.cpp
+    )
+
+    target_link_libraries(test_libsmb2_error_mapper
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME libsmb2_error_mapper COMMAND test_libsmb2_error_mapper)
+
+    add_executable(test_libsmb2_smb_client
+        test_libsmb2_smb_client.cpp
+    )
+
+    target_link_libraries(test_libsmb2_smb_client
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME libsmb2_smb_client COMMAND test_libsmb2_smb_client)
+endif()
+
+add_executable(test_credential_store_contract
+    test_credential_store_contract.cpp
+)
+
+target_link_libraries(test_credential_store_contract
+    PRIVATE
+        smb_browser_core
+        Qt5::Test
+)
+
+add_test(NAME credential_store_contract COMMAND test_credential_store_contract)
+
+add_executable(test_qtkeychain_credential_store
+    test_qtkeychain_credential_store.cpp
+)
+
+target_link_libraries(test_qtkeychain_credential_store
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME qtkeychain_credential_store COMMAND test_qtkeychain_credential_store)
+
+add_executable(test_encrypted_vault_credential_store
+    test_encrypted_vault_credential_store.cpp
+)
+
+target_link_libraries(test_encrypted_vault_credential_store
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME encrypted_vault_credential_store COMMAND test_encrypted_vault_credential_store)
+
+add_executable(test_fake_smb_client
+    test_fake_smb_client.cpp
+)
+
+target_link_libraries(test_fake_smb_client
+    PRIVATE
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME fake_smb_client COMMAND test_fake_smb_client)
+
+add_executable(test_connection_service
+    test_connection_service.cpp
+)
+
+target_link_libraries(test_connection_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME connection_service COMMAND test_connection_service)
+
+add_executable(test_connectivity_check_service
+    test_connectivity_check_service.cpp
+)
+
+target_link_libraries(test_connectivity_check_service
+    PRIVATE
+        smb_browser_application
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME connectivity_check_service COMMAND test_connectivity_check_service)
+
+add_executable(test_operation_queue
+    test_operation_queue.cpp
+)
+
+target_link_libraries(test_operation_queue
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME operation_queue COMMAND test_operation_queue)
+
+add_executable(test_transfer_manager
+    test_transfer_manager.cpp
+)
+
+target_link_libraries(test_transfer_manager
+    PRIVATE
+        smb_browser_application
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME transfer_manager COMMAND test_transfer_manager)
+
+add_executable(test_temp_file_cache
+    test_temp_file_cache.cpp
+)
+
+target_link_libraries(test_temp_file_cache
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME temp_file_cache COMMAND test_temp_file_cache)
+
+add_executable(test_open_file_service
+    test_open_file_service.cpp
+)
+
+target_link_libraries(test_open_file_service
+    PRIVATE
+        smb_browser_application
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME open_file_service COMMAND test_open_file_service)

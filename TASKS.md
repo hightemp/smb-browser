@@ -187,7 +187,7 @@
 
 ## Этап 3. SQLite storage и repositories
 
-### [ ] T-014: Спроектировать SQLite schema и migrations
+### [x] T-014: Спроектировать SQLite schema и migrations
 
 - Приоритет: Must.
 - Зависимости: T-008, T-012.
@@ -201,7 +201,7 @@
   - Unit tests на создание новой базы.
   - Unit tests на проверку отсутствия password fields в connection table.
 
-### [ ] T-015: Реализовать ConnectionRepository
+### [x] T-015: Реализовать ConnectionRepository
 
 - Приоритет: Must.
 - Зависимости: T-014.
@@ -215,7 +215,7 @@
   - Unit tests CRUD на temporary SQLite DB.
   - Unit tests на отсутствие plain-text password persistence.
 
-### [ ] T-016: Реализовать ConnectionGroupRepository
+### [x] T-016: Реализовать ConnectionGroupRepository
 
 - Приоритет: Should.
 - Зависимости: T-014.
@@ -227,7 +227,7 @@
 - Заметки по тестам:
   - Unit tests на CRUD и orphan handling.
 
-### [ ] T-017: Реализовать SettingsRepository
+### [x] T-017: Реализовать SettingsRepository
 
 - Приоритет: Must.
 - Зависимости: T-014, T-012.
@@ -240,7 +240,7 @@
   - Unit tests на default settings.
   - Unit tests на сохранение и восстановление.
 
-### [ ] T-018: Добавить storage error mapping
+### [x] T-018: Добавить storage error mapping
 
 - Приоритет: Must.
 - Зависимости: T-015, T-017.
@@ -254,7 +254,7 @@
 
 ## Этап 4. Credentials и безопасность секретов
 
-### [ ] T-019: Определить CredentialStore interface contract
+### [x] T-019: Определить CredentialStore interface contract
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -268,7 +268,7 @@
   - Contract tests с in-memory test implementation.
   - Tests на отсутствие secret value в metadata.
 
-### [ ] T-020: Реализовать QtKeychainCredentialStore
+### [x] T-020: Реализовать QtKeychainCredentialStore
 
 - Приоритет: Must.
 - Зависимости: T-019.
@@ -282,7 +282,7 @@
   - Unit/contract tests с mock/fake там, где real keychain недоступен.
   - Manual smoke test на каждой целевой платформе.
 
-### [ ] T-021: Реализовать EncryptedVaultCredentialStore fallback
+### [x] T-021: Реализовать EncryptedVaultCredentialStore fallback
 
 - Приоритет: Must.
 - Зависимости: T-019.
@@ -297,7 +297,7 @@
   - Unit tests на wrong master password.
   - Test fixture не содержит настоящие пароли.
 
-### [ ] T-022: Реализовать secret handling policy
+### [x] T-022: Реализовать secret handling policy
 
 - Приоритет: Should.
 - Зависимости: T-019, T-020, T-021.
@@ -311,7 +311,7 @@
   - Unit tests на sanitizer и error messages.
   - Manual review для memory lifecycle.
 
-### [ ] T-023: Интегрировать credentials с жизненным циклом Connection
+### [x] T-023: Интегрировать credentials с жизненным циклом Connection
 
 - Приоритет: Must.
 - Зависимости: T-015, T-019.
@@ -327,7 +327,7 @@
 
 ## Этап 5. SMB abstraction и backend
 
-### [ ] T-024: Определить SmbClient interface
+### [x] T-024: Определить SmbClient interface
 
 - Приоритет: Must.
 - Зависимости: T-011, T-013.
@@ -340,7 +340,7 @@
 - Заметки по тестам:
   - Compile-level tests или unit tests через fake implementation.
 
-### [ ] T-025: Реализовать FakeSmbClient
+### [x] T-025: Реализовать FakeSmbClient
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -353,7 +353,7 @@
   - Unit tests самого fake backend.
   - Использовать только synthetic secrets.
 
-### [ ] T-026: Провести libsmb2 integration spike
+### [x] T-026: Провести libsmb2 integration spike
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -367,7 +367,7 @@
   - Manual prototype/spike может быть удален после фиксации выводов.
   - Не добавлять реальные credentials в репозиторий.
 
-### [ ] T-027: Реализовать Libsmb2SmbClient - connection и list directory
+### [x] T-027: Реализовать Libsmb2SmbClient - connection и list directory
 
 - Приоритет: Must.
 - Зависимости: T-026.
@@ -381,7 +381,7 @@
   - Unit tests mapping через injectable error adapter.
   - Optional Docker Samba integration для happy path list.
 
-### [ ] T-028: Реализовать Libsmb2SmbClient - write operations
+### [x] T-028: Реализовать Libsmb2SmbClient - write operations
 
 - Приоритет: Must.
 - Зависимости: T-027.
@@ -409,7 +409,7 @@
   - FakeSmbClient tests для same share и cross share.
   - Tests на partial failure и отсутствие удаления source при failed copy.
 
-### [ ] T-030: Реализовать SMB error mapping для backend
+### [x] T-030: Реализовать SMB error mapping для backend
 
 - Приоритет: Must.
 - Зависимости: T-027, T-028.
@@ -423,7 +423,7 @@
   - Unit tests на mapping.
   - FakeSmbClient scenario tests.
 
-### [ ] T-031: Реализовать ConnectivityCheckService
+### [x] T-031: Реализовать ConnectivityCheckService
 
 - Приоритет: Must.
 - Зависимости: T-015, T-023, T-024, T-030.
@@ -438,7 +438,7 @@
 
 ## Этап 6. Async operations, progress и cancellation
 
-### [ ] T-032: Реализовать OperationQueue
+### [x] T-032: Реализовать OperationQueue
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -453,7 +453,7 @@
   - Unit tests на cancellation.
   - Unit tests на progress emission.
 
-### [ ] T-033: Реализовать TransferManager
+### [x] T-033: Реализовать TransferManager
 
 - Приоритет: Must.
 - Зависимости: T-024, T-032.
@@ -467,7 +467,7 @@
   - FakeSmbClient tests: upload/download/copy/move.
   - Tests на cancellation и failed operation cleanup.
 
-### [ ] T-034: Реализовать временный кэш файлов
+### [x] T-034: Реализовать временный кэш файлов
 
 - Приоритет: Must.
 - Зависимости: T-033, T-017.
@@ -481,7 +481,7 @@
   - Unit tests на cache path generation.
   - Unit tests на cleanup policy.
 
-### [ ] T-035: Реализовать открытие файла через системное приложение
+### [x] T-035: Реализовать открытие файла через системное приложение
 
 - Приоритет: Must.
 - Зависимости: T-033, T-034.
@@ -713,7 +713,7 @@
 
 ## Этап 9. Logging, theme, settings и tray
 
-### [ ] T-051: Реализовать Logger и LogSanitizer
+### [x] T-051: Реализовать Logger и LogSanitizer
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -893,7 +893,7 @@
 - Заметки по тестам:
   - Использовать synthetic values.
 
-### [ ] T-063: Покрыть repositories unit tests
+### [x] T-063: Покрыть repositories unit tests
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-017.
@@ -906,7 +906,7 @@
 - Заметки по тестам:
   - Temporary DB per test.
 
-### [ ] T-064: Покрыть CredentialStore contract tests
+### [x] T-064: Покрыть CredentialStore contract tests
 
 - Приоритет: Must.
 - Зависимости: T-019, T-020, T-021.
@@ -933,7 +933,7 @@
 - Заметки по тестам:
   - Known secret values должны отсутствовать в default export и logs.
 
-### [ ] T-066: Покрыть LogSanitizer tests
+### [x] T-066: Покрыть LogSanitizer tests
 
 - Приоритет: Must.
 - Зависимости: T-051.
@@ -946,7 +946,7 @@
 - Заметки по тестам:
   - Добавить regression cases из найденных bugs.
 
-### [ ] T-067: Покрыть FakeSmbClient scenario tests
+### [x] T-067: Покрыть FakeSmbClient scenario tests
 
 - Приоритет: Must.
 - Зависимости: T-025, T-033, T-042, T-044, T-045.
