@@ -12,7 +12,7 @@
 
 ## Этап 0. Документация, решения и границы продукта
 
-### T-001: Зафиксировать продуктовые требования
+### [x] T-001: Зафиксировать продуктовые требования
 
 - Приоритет: Must.
 - Зависимости: нет.
@@ -25,7 +25,7 @@
   - Тестов к документу нет.
   - На code review проверять соответствие реализации PRD.
 
-### T-002: Утвердить технические ограничения первой версии
+### [x] T-002: Утвердить технические ограничения первой версии
 
 - Приоритет: Must.
 - Зависимости: T-001.
@@ -37,7 +37,7 @@
 - Заметки по тестам:
   - Проверяется review checklist.
 
-### T-003: Подготовить архитектурную карту модулей
+### [x] T-003: Подготовить архитектурную карту модулей
 
 - Приоритет: Must.
 - Зависимости: T-001.
@@ -52,7 +52,7 @@
 
 ## Этап 1. Каркас проекта и тестовая база
 
-### T-004: Создать CMake/Qt5 каркас проекта
+### [x] T-004: Создать CMake/Qt5 каркас проекта
 
 - Приоритет: Must.
 - Зависимости: T-002, T-003.
@@ -65,7 +65,7 @@
 - Заметки по тестам:
   - Smoke build test в CI или локальном script.
 
-### T-005: Подключить тестовый фреймворк
+### [x] T-005: Подключить тестовый фреймворк
 
 - Приоритет: Must.
 - Зависимости: T-004.
@@ -77,7 +77,7 @@
 - Заметки по тестам:
   - Добавить smoke test, который проверяет работу тестовой инфраструктуры.
 
-### T-006: Настроить базовую CI-проверку
+### [ ] T-006: Настроить базовую CI-проверку
 
 - Приоритет: Should.
 - Зависимости: T-004, T-005.
@@ -89,7 +89,7 @@
 - Заметки по тестам:
   - CI должен падать при failing unit tests.
 
-### T-007: Ввести общие правила ошибок и результатов операций
+### [x] T-007: Ввести общие правила ошибок и результатов операций
 
 - Приоритет: Must.
 - Зависимости: T-004.
@@ -103,7 +103,7 @@
 
 ## Этап 2. Domain/core модели и нормализация
 
-### T-008: Реализовать доменную модель подключения
+### [x] T-008: Реализовать доменную модель подключения
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -115,7 +115,7 @@
 - Заметки по тестам:
   - Unit tests на default values и password absence.
 
-### T-009: Реализовать PathNormalizer
+### [x] T-009: Реализовать PathNormalizer
 
 - Приоритет: Must.
 - Зависимости: T-008.
@@ -132,7 +132,7 @@
   - Unit tests: пустой путь, путь без share, invalid URI.
   - Не использовать реальные секреты в тестовых данных.
 
-### T-010: Реализовать разбор username/domain
+### [x] T-010: Реализовать разбор username/domain
 
 - Приоритет: Must.
 - Зависимости: T-009.
@@ -147,7 +147,7 @@
   - Unit tests на каждый формат.
   - Unit tests на conflict между explicit domain field и domain в username input.
 
-### T-011: Реализовать модель RemoteFileEntry
+### [x] T-011: Реализовать модель RemoteFileEntry
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -159,7 +159,7 @@
 - Заметки по тестам:
   - Unit tests на сортируемые/отображаемые поля.
 
-### T-012: Реализовать модель настроек
+### [x] T-012: Реализовать модель настроек
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -172,7 +172,7 @@
 - Заметки по тестам:
   - Unit tests на default settings, theme mode validation и language mode validation.
 
-### T-013: Описать и реализовать SmbErrorCode mapping
+### [x] T-013: Описать и реализовать SmbErrorCode mapping
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -187,7 +187,7 @@
 
 ## Этап 3. SQLite storage и repositories
 
-### T-014: Спроектировать SQLite schema и migrations
+### [ ] T-014: Спроектировать SQLite schema и migrations
 
 - Приоритет: Must.
 - Зависимости: T-008, T-012.
@@ -201,7 +201,7 @@
   - Unit tests на создание новой базы.
   - Unit tests на проверку отсутствия password fields в connection table.
 
-### T-015: Реализовать ConnectionRepository
+### [ ] T-015: Реализовать ConnectionRepository
 
 - Приоритет: Must.
 - Зависимости: T-014.
@@ -215,7 +215,7 @@
   - Unit tests CRUD на temporary SQLite DB.
   - Unit tests на отсутствие plain-text password persistence.
 
-### T-016: Реализовать ConnectionGroupRepository
+### [ ] T-016: Реализовать ConnectionGroupRepository
 
 - Приоритет: Should.
 - Зависимости: T-014.
@@ -227,7 +227,7 @@
 - Заметки по тестам:
   - Unit tests на CRUD и orphan handling.
 
-### T-017: Реализовать SettingsRepository
+### [ ] T-017: Реализовать SettingsRepository
 
 - Приоритет: Must.
 - Зависимости: T-014, T-012.
@@ -240,7 +240,7 @@
   - Unit tests на default settings.
   - Unit tests на сохранение и восстановление.
 
-### T-018: Добавить storage error mapping
+### [ ] T-018: Добавить storage error mapping
 
 - Приоритет: Must.
 - Зависимости: T-015, T-017.
@@ -254,7 +254,7 @@
 
 ## Этап 4. Credentials и безопасность секретов
 
-### T-019: Определить CredentialStore interface contract
+### [ ] T-019: Определить CredentialStore interface contract
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -268,7 +268,7 @@
   - Contract tests с in-memory test implementation.
   - Tests на отсутствие secret value в metadata.
 
-### T-020: Реализовать QtKeychainCredentialStore
+### [ ] T-020: Реализовать QtKeychainCredentialStore
 
 - Приоритет: Must.
 - Зависимости: T-019.
@@ -282,7 +282,7 @@
   - Unit/contract tests с mock/fake там, где real keychain недоступен.
   - Manual smoke test на каждой целевой платформе.
 
-### T-021: Реализовать EncryptedVaultCredentialStore fallback
+### [ ] T-021: Реализовать EncryptedVaultCredentialStore fallback
 
 - Приоритет: Must.
 - Зависимости: T-019.
@@ -297,7 +297,7 @@
   - Unit tests на wrong master password.
   - Test fixture не содержит настоящие пароли.
 
-### T-022: Реализовать secret handling policy
+### [ ] T-022: Реализовать secret handling policy
 
 - Приоритет: Should.
 - Зависимости: T-019, T-020, T-021.
@@ -311,7 +311,7 @@
   - Unit tests на sanitizer и error messages.
   - Manual review для memory lifecycle.
 
-### T-023: Интегрировать credentials с жизненным циклом Connection
+### [ ] T-023: Интегрировать credentials с жизненным циклом Connection
 
 - Приоритет: Must.
 - Зависимости: T-015, T-019.
@@ -327,7 +327,7 @@
 
 ## Этап 5. SMB abstraction и backend
 
-### T-024: Определить SmbClient interface
+### [ ] T-024: Определить SmbClient interface
 
 - Приоритет: Must.
 - Зависимости: T-011, T-013.
@@ -340,7 +340,7 @@
 - Заметки по тестам:
   - Compile-level tests или unit tests через fake implementation.
 
-### T-025: Реализовать FakeSmbClient
+### [ ] T-025: Реализовать FakeSmbClient
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -353,7 +353,7 @@
   - Unit tests самого fake backend.
   - Использовать только synthetic secrets.
 
-### T-026: Провести libsmb2 integration spike
+### [ ] T-026: Провести libsmb2 integration spike
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -367,7 +367,7 @@
   - Manual prototype/spike может быть удален после фиксации выводов.
   - Не добавлять реальные credentials в репозиторий.
 
-### T-027: Реализовать Libsmb2SmbClient - connection и list directory
+### [ ] T-027: Реализовать Libsmb2SmbClient - connection и list directory
 
 - Приоритет: Must.
 - Зависимости: T-026.
@@ -381,7 +381,7 @@
   - Unit tests mapping через injectable error adapter.
   - Optional Docker Samba integration для happy path list.
 
-### T-028: Реализовать Libsmb2SmbClient - write operations
+### [ ] T-028: Реализовать Libsmb2SmbClient - write operations
 
 - Приоритет: Must.
 - Зависимости: T-027.
@@ -395,7 +395,7 @@
   - FakeSmbClient tests обязательны.
   - Docker Samba integration tests optional profile.
 
-### T-029: Реализовать copy/move внутри SMB и между SMB-шарами
+### [ ] T-029: Реализовать copy/move внутри SMB и между SMB-шарами
 
 - Приоритет: Should.
 - Зависимости: T-028.
@@ -409,7 +409,7 @@
   - FakeSmbClient tests для same share и cross share.
   - Tests на partial failure и отсутствие удаления source при failed copy.
 
-### T-030: Реализовать SMB error mapping для backend
+### [ ] T-030: Реализовать SMB error mapping для backend
 
 - Приоритет: Must.
 - Зависимости: T-027, T-028.
@@ -423,7 +423,7 @@
   - Unit tests на mapping.
   - FakeSmbClient scenario tests.
 
-### T-031: Реализовать ConnectivityCheckService
+### [ ] T-031: Реализовать ConnectivityCheckService
 
 - Приоритет: Must.
 - Зависимости: T-015, T-023, T-024, T-030.
@@ -438,7 +438,7 @@
 
 ## Этап 6. Async operations, progress и cancellation
 
-### T-032: Реализовать OperationQueue
+### [ ] T-032: Реализовать OperationQueue
 
 - Приоритет: Must.
 - Зависимости: T-024.
@@ -453,7 +453,7 @@
   - Unit tests на cancellation.
   - Unit tests на progress emission.
 
-### T-033: Реализовать TransferManager
+### [ ] T-033: Реализовать TransferManager
 
 - Приоритет: Must.
 - Зависимости: T-024, T-032.
@@ -467,7 +467,7 @@
   - FakeSmbClient tests: upload/download/copy/move.
   - Tests на cancellation и failed operation cleanup.
 
-### T-034: Реализовать временный кэш файлов
+### [ ] T-034: Реализовать временный кэш файлов
 
 - Приоритет: Must.
 - Зависимости: T-033, T-017.
@@ -481,7 +481,7 @@
   - Unit tests на cache path generation.
   - Unit tests на cleanup policy.
 
-### T-035: Реализовать открытие файла через системное приложение
+### [ ] T-035: Реализовать открытие файла через системное приложение
 
 - Приоритет: Must.
 - Зависимости: T-033, T-034.
@@ -497,7 +497,7 @@
 
 ## Этап 7. UI shell и управление подключениями
 
-### T-036: Реализовать MainWindow layout
+### [ ] T-036: Реализовать MainWindow layout
 
 - Приоритет: Must.
 - Зависимости: T-004.
@@ -511,7 +511,7 @@
 - Заметки по тестам:
   - UI smoke test на создание окна.
 
-### T-037: Реализовать ConnectionsPanel
+### [ ] T-037: Реализовать ConnectionsPanel
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-036.
@@ -525,7 +525,7 @@
   - Unit tests для presenter/view-model logic, если выделено.
   - UI smoke test на отображение fake connections.
 
-### T-038: Реализовать ConnectionDialog
+### [ ] T-038: Реализовать ConnectionDialog
 
 - Приоритет: Must.
 - Зависимости: T-009, T-010, T-023.
@@ -541,7 +541,7 @@
   - Unit tests на dialog validation logic.
   - UI smoke test add/edit flow.
 
-### T-039: Реализовать delete connection flow
+### [ ] T-039: Реализовать delete connection flow
 
 - Приоритет: Must.
 - Зависимости: T-037, T-038, T-023.
@@ -555,7 +555,7 @@
   - Unit tests с fake repository и fake credential store.
   - UI smoke test delete flow.
 
-### T-040: Реализовать connect/open flow
+### [ ] T-040: Реализовать connect/open flow
 
 - Приоритет: Must.
 - Зависимости: T-031, T-037.
@@ -571,7 +571,7 @@
 
 ## Этап 8. Встроенный SMB browser
 
-### T-041: Реализовать RemoteFileModel
+### [ ] T-041: Реализовать RemoteFileModel
 
 - Приоритет: Must.
 - Зависимости: T-011.
@@ -586,7 +586,7 @@
   - Unit tests на row/column counts и data roles.
   - UI smoke test displays remote entries.
 
-### T-042: Реализовать RemoteBrowserWidget navigation
+### [ ] T-042: Реализовать RemoteBrowserWidget navigation
 
 - Приоритет: Must.
 - Зависимости: T-024, T-032, T-041.
@@ -600,7 +600,7 @@
   - FakeSmbClient tests на open folder, back, up, refresh.
   - UI smoke test на basic navigation.
 
-### T-043: Реализовать поиск файлов в текущей папке
+### [ ] T-043: Реализовать поиск файлов в текущей папке
 
 - Приоритет: Must.
 - Зависимости: T-041, T-042.
@@ -613,7 +613,7 @@
   - Unit tests на filter logic.
   - UI smoke test на отображение filtered entries.
 
-### T-044: Реализовать создание папки, удаление и переименование из browser
+### [ ] T-044: Реализовать создание папки, удаление и переименование из browser
 
 - Приоритет: Must.
 - Зависимости: T-028, T-032, T-042.
@@ -628,7 +628,7 @@
   - FakeSmbClient tests: create, delete, rename, permission denied.
   - UI smoke test на model refresh после операции.
 
-### T-045: Реализовать download/upload из browser
+### [ ] T-045: Реализовать download/upload из browser
 
 - Приоритет: Must.
 - Зависимости: T-033, T-042.
@@ -642,7 +642,7 @@
   - FakeSmbClient tests: upload/download/timeout/cancellation.
   - Unit tests на progress state.
 
-### T-046: Реализовать copy/move внутри SMB и между SMB-шарами в UI
+### [ ] T-046: Реализовать copy/move внутри SMB и между SMB-шарами в UI
 
 - Приоритет: Should.
 - Зависимости: T-029, T-033, T-042.
@@ -656,7 +656,7 @@
   - FakeSmbClient tests на cross-share copy/move.
   - Tests на cancellation и partial failure.
 
-### T-047: Реализовать drag-and-drop local to SMB
+### [ ] T-047: Реализовать drag-and-drop local to SMB
 
 - Приоритет: Should.
 - Зависимости: T-033, T-042, T-045.
@@ -670,7 +670,7 @@
   - UI smoke/integration test на drop event с temporary files, если инфраструктура позволяет.
   - FakeSmbClient tests для batch upload.
 
-### T-048: Реализовать drag-and-drop SMB to desktop
+### [ ] T-048: Реализовать drag-and-drop SMB to desktop
 
 - Приоритет: Should.
 - Зависимости: T-033, T-034, T-042.
@@ -684,7 +684,7 @@
   - Manual tests на Windows/Linux/macOS.
   - Unit tests cache lifetime policy.
 
-### T-049: Реализовать PreviewService для текста и изображений
+### [ ] T-049: Реализовать PreviewService для текста и изображений
 
 - Приоритет: Should.
 - Зависимости: T-033, T-034.
@@ -698,7 +698,7 @@
   - Unit tests на type detection.
   - UI smoke test preview text/image через fake downloaded file.
 
-### T-050: Реализовать рекурсивный поиск по SMB-шаре
+### [ ] T-050: Реализовать рекурсивный поиск по SMB-шаре
 
 - Приоритет: Could.
 - Зависимости: T-032, T-042.
@@ -713,7 +713,7 @@
 
 ## Этап 9. Logging, theme, settings и tray
 
-### T-051: Реализовать Logger и LogSanitizer
+### [ ] T-051: Реализовать Logger и LogSanitizer
 
 - Приоритет: Must.
 - Зависимости: T-007.
@@ -728,7 +728,7 @@
   - Unit tests `LogSanitizer` на known secret values.
   - Tests на отсутствие пароля в логах import/export/check/connect.
 
-### T-052: Реализовать LogViewer
+### [ ] T-052: Реализовать LogViewer
 
 - Приоритет: Must.
 - Зависимости: T-051, T-036.
@@ -742,7 +742,7 @@
   - UI smoke test open log viewer.
   - Unit tests на feeding sanitized entries.
 
-### T-053: Реализовать ThemeManager
+### [ ] T-053: Реализовать ThemeManager
 
 - Приоритет: Must.
 - Зависимости: T-012, T-017.
@@ -756,7 +756,7 @@
   - Unit tests на theme/settings logic.
   - UI smoke test на переключение режима.
 
-### T-054: Реализовать LocalizationManager
+### [ ] T-054: Реализовать LocalizationManager
 
 - Приоритет: Must.
 - Зависимости: T-012, T-017.
@@ -773,7 +773,7 @@
   - UI smoke test на переключение English/Russian для главного окна и SettingsDialog.
   - Static/review check: новые user-facing строки не добавляются как непереводимые literals.
 
-### T-055: Реализовать SettingsDialog
+### [ ] T-055: Реализовать SettingsDialog
 
 - Приоритет: Must.
 - Зависимости: T-017, T-053, T-051, T-054.
@@ -787,7 +787,7 @@
   - UI smoke test open/save settings.
   - Unit tests на validation logic, включая language mode.
 
-### T-056: Реализовать TrayController
+### [ ] T-056: Реализовать TrayController
 
 - Приоритет: Should.
 - Зависимости: T-036, T-037, T-053.
@@ -802,7 +802,7 @@
   - Manual tests на Windows/Linux/macOS.
   - Unit tests для tray menu model через fake favorites.
 
-### T-057: Реализовать status/progress area
+### [ ] T-057: Реализовать status/progress area
 
 - Приоритет: Must.
 - Зависимости: T-032, T-036, T-051.
@@ -818,7 +818,7 @@
 
 ## Этап 10. Import/export
 
-### T-058: Реализовать формат безопасного экспорта без паролей
+### [ ] T-058: Реализовать формат безопасного экспорта без паролей
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-051.
@@ -833,7 +833,7 @@
   - Unit tests: exported text does not contain known secret values.
   - Log tests: export logs do not contain secrets.
 
-### T-059: Реализовать импорт подключений
+### [ ] T-059: Реализовать импорт подключений
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-023, T-058.
@@ -848,7 +848,7 @@
   - Unit tests на duplicate handling.
   - Tests на отсутствие записи секретов в логи.
 
-### T-060: Реализовать опасный экспорт с plain-text паролями
+### [ ] T-060: Реализовать опасный экспорт с plain-text паролями
 
 - Приоритет: Must.
 - Зависимости: T-019, T-023, T-058.
@@ -865,7 +865,7 @@
   - UI smoke test на confirmation flow.
   - LogSanitizer tests на secret values from export.
 
-### T-061: Реализовать UI для Import/Export
+### [ ] T-061: Реализовать UI для Import/Export
 
 - Приоритет: Must.
 - Зависимости: T-058, T-059, T-060, T-036.
@@ -881,7 +881,7 @@
 
 ## Этап 11. Расширенные тесты и качество
 
-### T-062: Покрыть PathNormalizer unit tests
+### [x] T-062: Покрыть PathNormalizer unit tests
 
 - Приоритет: Must.
 - Зависимости: T-009, T-010.
@@ -893,7 +893,7 @@
 - Заметки по тестам:
   - Использовать synthetic values.
 
-### T-063: Покрыть repositories unit tests
+### [ ] T-063: Покрыть repositories unit tests
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-017.
@@ -906,7 +906,7 @@
 - Заметки по тестам:
   - Temporary DB per test.
 
-### T-064: Покрыть CredentialStore contract tests
+### [ ] T-064: Покрыть CredentialStore contract tests
 
 - Приоритет: Must.
 - Зависимости: T-019, T-020, T-021.
@@ -920,7 +920,7 @@
   - Не использовать настоящие пароли.
   - Synthetic secrets не логируются.
 
-### T-065: Покрыть ImportExportService tests
+### [ ] T-065: Покрыть ImportExportService tests
 
 - Приоритет: Must.
 - Зависимости: T-058, T-059, T-060.
@@ -933,7 +933,7 @@
 - Заметки по тестам:
   - Known secret values должны отсутствовать в default export и logs.
 
-### T-066: Покрыть LogSanitizer tests
+### [ ] T-066: Покрыть LogSanitizer tests
 
 - Приоритет: Must.
 - Зависимости: T-051.
@@ -946,7 +946,7 @@
 - Заметки по тестам:
   - Добавить regression cases из найденных bugs.
 
-### T-067: Покрыть FakeSmbClient scenario tests
+### [ ] T-067: Покрыть FakeSmbClient scenario tests
 
 - Приоритет: Must.
 - Зависимости: T-025, T-033, T-042, T-044, T-045.
@@ -964,7 +964,7 @@
 - Заметки по тестам:
   - Все tests используют fake data и synthetic credentials.
 
-### T-068: Добавить UI smoke tests
+### [ ] T-068: Добавить UI smoke tests
 
 - Приоритет: Must.
 - Зависимости: T-036, T-037, T-038, T-041, T-042, T-054.
@@ -980,7 +980,7 @@
   - Не требовать реального SMB-сервера.
   - Использовать fake services.
 
-### T-069: Добавить optional Docker Samba integration tests
+### [ ] T-069: Добавить optional Docker Samba integration tests
 
 - Приоритет: Should.
 - Зависимости: T-027, T-028, T-030.
@@ -993,7 +993,7 @@
 - Заметки по тестам:
   - Покрыть connect, list, upload, download, rename, delete.
 
-### T-070: Добавить thread-safety и cancellation tests
+### [ ] T-070: Добавить thread-safety и cancellation tests
 
 - Приоритет: Should.
 - Зависимости: T-032, T-033.
@@ -1008,7 +1008,7 @@
 
 ## Этап 12. Packaging и distribution
 
-### T-071: Подготовить Windows packaging
+### [ ] T-071: Подготовить Windows packaging
 
 - Приоритет: Should.
 - Зависимости: T-004, T-020, T-027.
@@ -1022,7 +1022,7 @@
 - Заметки по тестам:
   - Manual smoke: add connection, save credential, reopen app, list SMB via test server.
 
-### T-072: Подготовить Linux packaging
+### [ ] T-072: Подготовить Linux packaging
 
 - Приоритет: Should.
 - Зависимости: T-004, T-020, T-027, T-069.
@@ -1036,7 +1036,7 @@
 - Заметки по тестам:
   - Manual smoke на окружении с доступным keychain backend.
 
-### T-073: Подготовить macOS packaging
+### [ ] T-073: Подготовить macOS packaging
 
 - Приоритет: Should.
 - Зависимости: T-004, T-020, T-027.
@@ -1051,7 +1051,7 @@
   - Manual smoke на macOS.
   - Проверить tray/menu behavior отдельно.
 
-### T-074: Подготовить release checklist
+### [ ] T-074: Подготовить release checklist
 
 - Приоритет: Must.
 - Зависимости: T-058, T-060, T-062, T-068, T-054.
@@ -1068,7 +1068,7 @@
 
 ## Этап 13. Post-v1 улучшения
 
-### T-075: Добавить encrypted export format
+### [ ] T-075: Добавить encrypted export format
 
 - Приоритет: Could.
 - Зависимости: T-058, T-060, T-021.
@@ -1080,7 +1080,7 @@
 - Заметки по тестам:
   - Unit tests на wrong passphrase и corrupted file.
 
-### T-076: Добавить расширенную диагностику SMB backend
+### [ ] T-076: Добавить расширенную диагностику SMB backend
 
 - Приоритет: Could.
 - Зависимости: T-030, T-051.
@@ -1093,7 +1093,7 @@
   - Unit tests sanitizer.
   - Integration tests с разными Samba settings, если практично.
 
-### T-077: Добавить расширенное управление кэшем
+### [ ] T-077: Добавить расширенное управление кэшем
 
 - Приоритет: Could.
 - Зависимости: T-034, T-055.
