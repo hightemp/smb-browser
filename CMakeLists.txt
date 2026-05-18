@@ -14,6 +14,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+include(FetchContent)
 include(GNUInstallDirs)
 include(CTest)
 
@@ -23,22 +24,70 @@ find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
 
-set(SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG
-    "${CMAKE_SOURCE_DIR}/tmp/libsmb2-prefix/lib/pkgconfig"
+option(SMB_BROWSER_WITH_LIBSMB2 "Build the libsmb2 SMB backend" ON)
+option(SMB_BROWSER_USE_SYSTEM_LIBSMB2
+    "Use a system/pkg-config libsmb2 instead of fetching the pinned source"
+    OFF
 )
-if(EXISTS "${SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG}/libsmb2.pc")
-    set(ENV{PKG_CONFIG_PATH}
-        "${SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG}:$ENV{PKG_CONFIG_PATH}"
-    )
-endif()
+set(SMB_BROWSER_LIBSMB2_REPOSITORY
+    "https://github.com/sahlberg/libsmb2.git"
+    CACHE STRING "libsmb2 git repository"
+)
+set(SMB_BROWSER_LIBSMB2_TAG
+    "libsmb2-6.2"
+    CACHE STRING "libsmb2 git tag or commit"
+)
+set(SMB_BROWSER_LIBSMB2_SOURCE_DIR
+    "${CMAKE_SOURCE_DIR}/tmp/libsmb2-src"
+    CACHE PATH "Local libsmb2 source checkout used by FetchContent"
+)
+set(SMB_BROWSER_LIBSMB2_TARGET "")
 
-pkg_check_modules(LIBSMB2 QUIET IMPORTED_TARGET libsmb2)
-option(SMB_BROWSER_WITH_LIBSMB2 "Build the libsmb2 SMB backend" ${LIBSMB2_FOUND})
-if(SMB_BROWSER_WITH_LIBSMB2 AND NOT LIBSMB2_FOUND)
-    message(FATAL_ERROR
-        "SMB_BROWSER_WITH_LIBSMB2 is ON, but pkg-config could not find libsmb2. "
-        "Set PKG_CONFIG_PATH to the libsmb2 pkgconfig directory."
-    )
+if(SMB_BROWSER_WITH_LIBSMB2)
+    if(SMB_BROWSER_USE_SYSTEM_LIBSMB2)
+        set(SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG
+            "${CMAKE_SOURCE_DIR}/tmp/libsmb2-prefix/lib/pkgconfig"
+        )
+        if(EXISTS "${SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG}/libsmb2.pc")
+            set(ENV{PKG_CONFIG_PATH}
+                "${SMB_BROWSER_LOCAL_LIBSMB2_PKGCONFIG}:$ENV{PKG_CONFIG_PATH}"
+            )
+        endif()
+
+        pkg_check_modules(LIBSMB2 REQUIRED IMPORTED_TARGET libsmb2)
+        set(SMB_BROWSER_LIBSMB2_TARGET PkgConfig::LIBSMB2)
+    else()
+        find_package(Git REQUIRED)
+        set(ENABLE_EXAMPLES OFF CACHE BOOL "Build libsmb2 examples" FORCE)
+        set(ENABLE_LIBKRB5 OFF CACHE BOOL "Enable libsmb2 libkrb5 support" FORCE)
+        set(ENABLE_GSSAPI OFF CACHE BOOL "Enable libsmb2 GSSAPI support" FORCE)
+        set(INSTALL_LIB_DIR "${CMAKE_INSTALL_LIBDIR}"
+            CACHE PATH "libsmb2 library install directory" FORCE
+        )
+        set(INSTALL_INC_DIR "${CMAKE_INSTALL_INCLUDEDIR}"
+            CACHE PATH "libsmb2 include install directory" FORCE
+        )
+        set(INSTALL_PKGCONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+            CACHE PATH "libsmb2 pkg-config install directory" FORCE
+        )
+        set(INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/libsmb2"
+            CACHE PATH "libsmb2 CMake helper install directory" FORCE
+        )
+
+        FetchContent_Declare(libsmb2
+            GIT_REPOSITORY "${SMB_BROWSER_LIBSMB2_REPOSITORY}"
+            GIT_TAG "${SMB_BROWSER_LIBSMB2_TAG}"
+            GIT_SHALLOW TRUE
+            SOURCE_DIR "${SMB_BROWSER_LIBSMB2_SOURCE_DIR}"
+        )
+        FetchContent_MakeAvailable(libsmb2)
+        if(NOT TARGET smb2)
+            message(FATAL_ERROR
+                "Fetched libsmb2 did not define expected target 'smb2'."
+            )
+        endif()
+        set(SMB_BROWSER_LIBSMB2_TARGET smb2)
+    endif()
 endif()
 
 option(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS

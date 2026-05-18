@@ -10,22 +10,22 @@ packaging task complete.
 - Application format: `smb-browser.app`.
 - Runtime deployment: `macdeployqt` for Qt5 frameworks and plugins.
 - Secret storage runtime: QtKeychain backed by macOS Keychain.
-- SMB backend: libsmb2 built from source or provided by the chosen dependency
-  manager.
+- SMB backend: by default CMake fetches the pinned libsmb2 source into
+  `tmp/libsmb2-src` and builds it with the project.
 
 ## Build outline
 
 Use a macOS build environment with Qt5, CMake, Ninja, QtKeychain, libsodium,
-and libsmb2 available.
+Git, and Xcode command line tools available.
 
 ```bash
 cmake -S . -B tmp/package-macos -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DSMB_BROWSER_WITH_LIBSMB2=ON \
   -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 cmake --build tmp/package-macos
 ctest --test-dir tmp/package-macos --output-on-failure
 cmake --build tmp/package-macos --target package
+scripts/package-smoke-macos.sh
 ```
 
 Run `macdeployqt` against `smb-browser.app` before publishing the DMG. The app

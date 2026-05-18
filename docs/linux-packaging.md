@@ -12,18 +12,19 @@ This document describes the first Linux packaging profile for SMB Browser.
 
 ## Build package
 
-Default CI/package smoke profile intentionally disables `libsmb2` and Docker
-Samba integration tests, because Ubuntu 22.04 does not provide `libsmb2-dev` in
-the standard repositories.
+Default CI/package smoke profile builds the SMB backend. Because Ubuntu 22.04
+does not provide `libsmb2-dev` in the standard repositories, CMake fetches the
+pinned upstream `libsmb2` source into `tmp/libsmb2-src` and builds it as part of
+the project.
 
 ```bash
 cmake -S . -B tmp/package-linux -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DSMB_BROWSER_WITH_LIBSMB2=OFF \
   -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 cmake --build tmp/package-linux
 ctest --test-dir tmp/package-linux --output-on-failure
 cmake --build tmp/package-linux --target package
+scripts/package-smoke-linux.sh
 ```
 
 The generated `.deb` is written to `tmp/package-linux/packages`.
@@ -40,11 +41,10 @@ The DEB profile declares the baseline runtime packages:
 - `libqt5keychain1`
 - `libsodium23`
 
-When the release build enables `SMB_BROWSER_WITH_LIBSMB2=ON`, `libsmb2` must be
-available either as a packaged shared library or as a bundled dependency built
-from source. For Ubuntu 22.04, the current project decision is to keep source
-build artifacts under `tmp/` during development and not rely on temporary
-system repositories.
+`libsmb2` is bundled by default through the CMake FetchContent path. For
+experiments with an external pkg-config installation, run
+`scripts/build-libsmb2.sh` and configure with
+`SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON`.
 
 ## Installed files
 

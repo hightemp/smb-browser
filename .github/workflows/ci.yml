@@ -23,6 +23,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
+            git \
             ninja-build \
             pkg-config \
             qtbase5-dev \
@@ -34,7 +35,6 @@ jobs:
         run: >
           cmake -S . -B tmp/build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
-          -DSMB_BROWSER_WITH_LIBSMB2=OFF
           -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 
       - name: Build

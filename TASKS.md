@@ -1021,8 +1021,9 @@
   - Keychain integration работает или показывает понятную ошибку.
 - Заметки по тестам:
   - Manual smoke: add connection, save credential, reopen app, list SMB via test server.
+  - Подготовлен smoke script `scripts/package-smoke-windows.ps1`; выполнить на Windows перед закрытием задачи.
 
-### [ ] T-072: Подготовить Linux packaging
+### [x] T-072: Подготовить Linux packaging
 
 - Приоритет: Should.
 - Зависимости: T-004, T-020, T-027, T-069.
@@ -1050,6 +1051,7 @@
 - Заметки по тестам:
   - Manual smoke на macOS.
   - Проверить tray/menu behavior отдельно.
+  - Подготовлен smoke script `scripts/package-smoke-macos.sh`; выполнить на macOS перед закрытием задачи.
 
 ### [x] T-074: Подготовить release checklist
 

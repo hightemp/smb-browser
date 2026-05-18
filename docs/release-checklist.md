@@ -26,6 +26,12 @@ cmake -S . -B tmp/build
 cmake --build tmp/build
 ```
 
+- [ ] Default configure cloned/found libsmb2 and built the SMB backend:
+
+```bash
+test -d tmp/libsmb2-src
+```
+
 - [ ] No generated files outside `tmp/` or intended build output directories are committed.
 
 ## Default test gate
@@ -122,6 +128,8 @@ docker compose -f tests/integration/samba/docker-compose.yml down -v
 Run on each target platform before publishing binaries.
 
 - [ ] Windows:
+  - package smoke script passes:
+    `powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1`;
   - app starts;
   - Qt runtime, QtKeychain, SQLite, translations, and libsmb2 are packaged;
   - add/edit/delete connection works;
@@ -130,12 +138,16 @@ Run on each target platform before publishing binaries.
   - tray show/exit behavior works.
 
 - [ ] Linux:
+  - package smoke script passes:
+    `scripts/package-smoke-linux.sh`;
   - app starts on the target distribution;
   - Secret Service/KWallet behavior is understood and documented;
   - translations are packaged and load correctly;
   - Docker Samba integration profile can run in CI or on a prepared host.
 
 - [ ] macOS:
+  - package smoke script passes:
+    `scripts/package-smoke-macos.sh`;
   - app bundle starts;
   - Keychain prompts are expected and understandable;
   - translations are packaged and load correctly;

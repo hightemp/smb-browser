@@ -45,7 +45,7 @@ target_link_libraries(smb_browser_infrastructure
 if(SMB_BROWSER_WITH_LIBSMB2)
     target_link_libraries(smb_browser_infrastructure
         PUBLIC
-            PkgConfig::LIBSMB2
+            ${SMB_BROWSER_LIBSMB2_TARGET}
     )
     target_compile_definitions(smb_browser_infrastructure
         PUBLIC

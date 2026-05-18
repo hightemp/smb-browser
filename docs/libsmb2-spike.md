@@ -150,6 +150,31 @@ Implications:
 
 Use `libsmb2` behind `SmbClient`, not directly from UI or Qt models.
 
+## Current Project Integration
+
+The project now builds `libsmb2` by default when `SMB_BROWSER_WITH_LIBSMB2=ON`.
+If a system/pkg-config installation is not explicitly requested, CMake uses
+FetchContent to clone the pinned upstream source into:
+
+- `tmp/libsmb2-src`
+
+Current defaults:
+
+- Repository: `https://github.com/sahlberg/libsmb2.git`
+- Tag: `libsmb2-6.2`
+- Examples: disabled.
+- libkrb5/GSSAPI: disabled for reproducible username/password builds.
+
+System/pkg-config mode remains available:
+
+```bash
+scripts/build-libsmb2.sh
+PKG_CONFIG_PATH="$PWD/tmp/libsmb2-prefix/lib/pkgconfig:$PKG_CONFIG_PATH" \
+cmake -S . -B tmp/build-system-libsmb2 -G Ninja \
+  -DSMB_BROWSER_WITH_LIBSMB2=ON \
+  -DSMB_BROWSER_USE_SYSTEM_LIBSMB2=ON
+```
+
 Initial `Libsmb2SmbClient` implementation should:
 
 - Run in worker threads or through an operation queue, never on the UI thread.
@@ -162,7 +187,5 @@ Initial `Libsmb2SmbClient` implementation should:
 ## Open Follow-Ups
 
 - Validate Windows and macOS build packaging for `libsmb2`.
-- Decide whether to vendor the source as a pinned third-party dependency, use vcpkg, or require an external prefix.
 - Add Docker Samba integration tests before implementing production write operations.
-- Map common libsmb2 errors to `SmbErrorCode`: DNS, timeout, auth failure, permission denied, unsupported protocol/version.
 - Investigate Kerberos/current-user support separately.

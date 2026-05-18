@@ -10,22 +10,22 @@ packaging task complete.
   installation.
 - Runtime deployment: `windeployqt` for Qt5 runtime files.
 - Secret storage runtime: QtKeychain backed by Windows Credential Manager.
-- SMB backend: libsmb2 built from source or provided by the chosen dependency
-  manager.
+- SMB backend: by default CMake fetches the pinned libsmb2 source into
+  `tmp/libsmb2-src` and builds it with the project.
 
 ## Build outline
 
 Use a Windows build environment with Qt5, CMake, Ninja, QtKeychain, libsodium,
-and libsmb2 available.
+Git, and a C/C++ compiler available.
 
 ```powershell
 cmake -S . -B tmp\package-windows -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
-  -DSMB_BROWSER_WITH_LIBSMB2=ON `
   -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 cmake --build tmp\package-windows
 ctest --test-dir tmp\package-windows --output-on-failure
 cmake --build tmp\package-windows --target package
+powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1
 ```
 
 Run `windeployqt` against the installed or staged `smb-browser.exe` before
