@@ -4,7 +4,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMutexLocker>
 #include <QStandardPaths>
+#include <algorithm>
 #include <utility>
 
 namespace smb::application {
@@ -40,24 +42,64 @@ QString cacheKey(const QString &connectionId, const QString &remotePath) {
   return QString::fromLatin1(hash.result().toHex());
 }
 
-int removeOldFiles(const QDir &dir, const QDateTime &cutoffUtc) {
-  int removed = 0;
+struct CacheFile {
+  QString path;
+  QDateTime modifiedAtUtc;
+  qint64 size = 0;
+};
+
+QString normalizedLocalPath(const QString &path) {
+  return QFileInfo(path).absoluteFilePath();
+}
+
+bool isProtected(const QSet<QString> &protectedPaths, const QString &path) {
+  return protectedPaths.contains(normalizedLocalPath(path));
+}
+
+void collectFiles(const QDir &dir, QVector<CacheFile> &files) {
   const auto entries =
       dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
   for (const auto &entry : entries) {
     if (entry.isDir()) {
-      removed += removeOldFiles(QDir(entry.absoluteFilePath()), cutoffUtc);
-      dir.rmdir(entry.fileName());
+      collectFiles(QDir(entry.absoluteFilePath()), files);
       continue;
     }
 
-    if (entry.lastModified().toUTC() < cutoffUtc) {
-      if (QFile::remove(entry.absoluteFilePath())) {
-        ++removed;
-      }
-    }
+    files.push_back(CacheFile{entry.absoluteFilePath(),
+                              entry.lastModified().toUTC(), entry.size()});
   }
-  return removed;
+}
+
+void removeEmptyDirectories(const QDir &dir) {
+  const auto entries = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+  for (const auto &entry : entries) {
+    QDir child(entry.absoluteFilePath());
+    removeEmptyDirectories(child);
+    dir.rmdir(entry.fileName());
+  }
+}
+
+qint64 totalSize(const QVector<CacheFile> &files) {
+  qint64 total = 0;
+  for (const auto &file : files) {
+    total += file.size;
+  }
+  return total;
+}
+
+bool removeCacheFile(const CacheFile &file,
+                     const QSet<QString> &protectedPaths,
+                     TempFileCacheCleanupResult &result) {
+  if (isProtected(protectedPaths, file.path)) {
+    return false;
+  }
+  if (!QFile::remove(file.path)) {
+    return false;
+  }
+
+  ++result.filesRemoved;
+  result.bytesRemoved += file.size;
+  return true;
 }
 
 } // namespace
@@ -100,13 +142,60 @@ TempFileCache::localPathFor(const QString &connectionId,
 
 smb::core::Result<int>
 TempFileCache::removeOlderThan(const QDateTime &cutoffUtc) const {
+  TempFileCacheCleanupOptions options;
+  options.removeFilesOlderThanUtc = cutoffUtc;
+  auto cleaned = cleanup(options);
+  if (!cleaned.ok()) {
+    return smb::core::Result<int>::failure(cleaned.error());
+  }
+  return smb::core::Result<int>::success(cleaned.value().filesRemoved);
+}
+
+smb::core::Result<TempFileCacheCleanupResult>
+TempFileCache::cleanup(const TempFileCacheCleanupOptions &options) const {
   QDir root(m_rootPath);
   if (!root.exists()) {
-    return smb::core::Result<int>::success(0);
+    return smb::core::Result<TempFileCacheCleanupResult>::success({});
   }
 
-  return smb::core::Result<int>::success(
-      removeOldFiles(root, cutoffUtc.toUTC()));
+  auto protectedPaths = protectedPathsSnapshot();
+  TempFileCacheCleanupResult result;
+
+  QVector<CacheFile> files;
+  collectFiles(root, files);
+
+  if (options.removeFilesOlderThanUtc.isValid()) {
+    const auto cutoff = options.removeFilesOlderThanUtc.toUTC();
+    for (const auto &file : files) {
+      if (file.modifiedAtUtc < cutoff) {
+        removeCacheFile(file, protectedPaths, result);
+      }
+    }
+  }
+
+  files.clear();
+  collectFiles(root, files);
+  auto remaining = totalSize(files);
+  if (options.maxSizeBytes > 0 && remaining > options.maxSizeBytes) {
+    std::sort(files.begin(), files.end(),
+              [](const CacheFile &left, const CacheFile &right) {
+                return left.modifiedAtUtc < right.modifiedAtUtc;
+              });
+    for (const auto &file : files) {
+      if (remaining <= options.maxSizeBytes) {
+        break;
+      }
+      if (removeCacheFile(file, protectedPaths, result)) {
+        remaining -= file.size;
+      }
+    }
+  }
+
+  removeEmptyDirectories(root);
+  files.clear();
+  collectFiles(root, files);
+  result.bytesRemaining = totalSize(files);
+  return smb::core::Result<TempFileCacheCleanupResult>::success(result);
 }
 
 smb::core::Result<bool> TempFileCache::clearAll() const {
@@ -114,11 +203,53 @@ smb::core::Result<bool> TempFileCache::clearAll() const {
   if (!root.exists()) {
     return smb::core::Result<bool>::success(true);
   }
-  if (!root.removeRecursively()) {
-    return smb::core::Result<bool>::failure(
-        cacheError(QStringLiteral("Unable to clear cache directory.")));
+
+  const auto protectedPaths = protectedPathsSnapshot();
+  if (protectedPaths.isEmpty()) {
+    if (!root.removeRecursively()) {
+      return smb::core::Result<bool>::failure(
+          cacheError(QStringLiteral("Unable to clear cache directory.")));
+    }
+    return smb::core::Result<bool>::success(true);
   }
+
+  QVector<CacheFile> files;
+  collectFiles(root, files);
+  TempFileCacheCleanupResult result;
+  for (const auto &file : files) {
+    removeCacheFile(file, protectedPaths, result);
+  }
+  removeEmptyDirectories(root);
   return smb::core::Result<bool>::success(true);
+}
+
+void TempFileCache::protectPath(const QString &localPath) const {
+  if (localPath.isEmpty()) {
+    return;
+  }
+  QMutexLocker locker(&m_mutex);
+  m_protectedPaths.insert(normalizedLocalPath(localPath));
+}
+
+void TempFileCache::unprotectPath(const QString &localPath) const {
+  if (localPath.isEmpty()) {
+    return;
+  }
+  QMutexLocker locker(&m_mutex);
+  m_protectedPaths.remove(normalizedLocalPath(localPath));
+}
+
+bool TempFileCache::isProtectedPath(const QString &localPath) const {
+  if (localPath.isEmpty()) {
+    return false;
+  }
+  QMutexLocker locker(&m_mutex);
+  return m_protectedPaths.contains(normalizedLocalPath(localPath));
+}
+
+QSet<QString> TempFileCache::protectedPathsSnapshot() const {
+  QMutexLocker locker(&m_mutex);
+  return m_protectedPaths;
 }
 
 } // namespace smb::application

@@ -16,3 +16,22 @@ endif()
 set_target_properties(smb-browser PROPERTIES
     OUTPUT_NAME "smb-browser"
 )
+
+if(APPLE)
+    set_target_properties(smb-browser PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "SMB Browser"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.smb_browser.SmbBrowser"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    )
+
+    install(TARGETS smb-browser
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+else()
+    install(TARGETS smb-browser
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()

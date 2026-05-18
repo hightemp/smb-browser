@@ -60,6 +60,41 @@ private slots:
         mapLibsmb2Error(-EIO, QString(), Libsmb2ErrorContext::FileOperation) ==
         smb::core::ErrorCode::NetworkError);
   }
+
+  void mapsProtocolAndShareDiagnosticsFromDetails() {
+    using smb::infrastructure::Libsmb2ErrorContext;
+    using smb::infrastructure::mapLibsmb2Error;
+
+    QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("SMB dialect negotiation failed"),
+                            Libsmb2ErrorContext::Connection) ==
+            smb::core::ErrorCode::ProtocolUnsupported);
+    QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("NT_STATUS_BAD_NETWORK_NAME"),
+                            Libsmb2ErrorContext::Directory) ==
+            smb::core::ErrorCode::ShareUnavailable);
+    QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("NT_STATUS_LOGON_FAILURE"),
+                            Libsmb2ErrorContext::Connection) ==
+            smb::core::ErrorCode::AuthenticationFailed);
+  }
+
+  void buildsSanitizedActionableAppError() {
+    using smb::infrastructure::Libsmb2ErrorContext;
+    using smb::infrastructure::makeLibsmb2Error;
+
+    smb::core::LogSanitizer sanitizer;
+    sanitizer.addSecretValue(QStringLiteral("plain-secret"));
+
+    const auto error = makeLibsmb2Error(
+        -EACCES,
+        QStringLiteral("libsmb2 connect failed password=plain-secret"),
+        Libsmb2ErrorContext::Connection, sanitizer);
+
+    QVERIFY(error.code == smb::core::ErrorCode::AuthenticationFailed);
+    QVERIFY(error.category == smb::core::ErrorCategory::Smb);
+    QVERIFY(error.userMessage.contains(QStringLiteral("Check username")));
+    QVERIFY(error.sanitizedTechnicalDetails.contains(QStringLiteral("hint=")));
+    QVERIFY(!error.sanitizedTechnicalDetails.contains(
+        QStringLiteral("plain-secret")));
+  }
 };
 
 QTEST_MAIN(Libsmb2ErrorMapperTest)

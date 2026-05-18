@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SMB Browser
+Comment=Manage SMB connections and browse remote shared folders
+Exec=smb-browser
+Icon=smb-browser
+Terminal=false
+Categories=Qt;Network;FileTransfer;Utility;
+Keywords=SMB;Samba;Windows Share;Network Share;

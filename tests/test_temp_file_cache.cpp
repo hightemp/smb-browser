@@ -86,6 +86,78 @@ private slots:
     QVERIFY(QFileInfo::exists(freshPath.value()));
   }
 
+  void cleanupEnforcesSizeLimitByRemovingOldestFiles() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::application::TempFileCache cache(tempDir.path());
+    const auto firstPath = cache.localPathFor(QStringLiteral("connection-1"),
+                                              QStringLiteral("/docs/first.bin"));
+    const auto secondPath = cache.localPathFor(QStringLiteral("connection-1"),
+                                               QStringLiteral("/docs/second.bin"));
+    QVERIFY(firstPath.ok());
+    QVERIFY(secondPath.ok());
+
+    QFile firstFile(firstPath.value());
+    QVERIFY(firstFile.open(QIODevice::WriteOnly));
+    firstFile.write(QByteArray(10, 'a'));
+    firstFile.close();
+    QVERIFY(firstFile.open(QIODevice::ReadWrite));
+    QVERIFY(firstFile.setFileTime(QDateTime::currentDateTimeUtc().addDays(-2),
+                                  QFileDevice::FileModificationTime));
+    firstFile.close();
+
+    QFile secondFile(secondPath.value());
+    QVERIFY(secondFile.open(QIODevice::WriteOnly));
+    secondFile.write(QByteArray(10, 'b'));
+    secondFile.close();
+
+    smb::application::TempFileCacheCleanupOptions options;
+    options.maxSizeBytes = 10;
+    const auto cleaned = cache.cleanup(options);
+    QVERIFY(cleaned.ok());
+    QCOMPARE(cleaned.value().filesRemoved, 1);
+    QCOMPARE(cleaned.value().bytesRemaining, qint64{10});
+    QVERIFY(!QFileInfo::exists(firstPath.value()));
+    QVERIFY(QFileInfo::exists(secondPath.value()));
+  }
+
+  void cleanupAndClearKeepProtectedOpenFiles() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::application::TempFileCache cache(tempDir.path());
+    const auto protectedPath = cache.localPathFor(
+        QStringLiteral("connection-1"), QStringLiteral("/docs/open.txt"));
+    const auto removablePath = cache.localPathFor(
+        QStringLiteral("connection-1"), QStringLiteral("/docs/remove.txt"));
+    QVERIFY(protectedPath.ok());
+    QVERIFY(removablePath.ok());
+
+    QFile protectedFile(protectedPath.value());
+    QVERIFY(protectedFile.open(QIODevice::WriteOnly));
+    protectedFile.write("open");
+    protectedFile.close();
+
+    QFile removableFile(removablePath.value());
+    QVERIFY(removableFile.open(QIODevice::WriteOnly));
+    removableFile.write("remove");
+    removableFile.close();
+
+    cache.protectPath(protectedPath.value());
+    QVERIFY(cache.isProtectedPath(protectedPath.value()));
+
+    const auto cleared = cache.clearAll();
+    QVERIFY(cleared.ok());
+    QVERIFY(QFileInfo::exists(protectedPath.value()));
+    QVERIFY(!QFileInfo::exists(removablePath.value()));
+
+    cache.unprotectPath(protectedPath.value());
+    QVERIFY(!cache.isProtectedPath(protectedPath.value()));
+    QVERIFY(cache.clearAll().ok());
+    QVERIFY(!QFileInfo::exists(protectedPath.value()));
+  }
+
   void clearAllRemovesCacheRoot() {
     QTemporaryDir tempDir;
     QVERIFY(tempDir.isValid());

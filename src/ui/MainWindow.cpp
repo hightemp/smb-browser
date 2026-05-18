@@ -3,6 +3,7 @@
 #include "core/AppInfo.h"
 #include "logging/FileLogger.h"
 #include "ui/ConnectionsPanel.h"
+#include "ui/ImportExportController.h"
 #include "ui/LogViewer.h"
 #include "ui/SettingsDialog.h"
 #include "ui/StatusPanel.h"
@@ -49,6 +50,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   statusBar()->showMessage(tr("Ready"));
 }
 
+MainWindow::~MainWindow() = default;
+
 QWidget *MainWindow::createTopBar() {
   auto *bar = new QFrame(this);
   bar->setObjectName(QStringLiteral("mainToolbar"));
@@ -83,8 +86,10 @@ QWidget *MainWindow::createTopBar() {
             QStyle::SP_BrowserReload);
   addButton(QStringLiteral("connectButton"), tr("Connect"),
             QStyle::SP_DialogOpenButton);
-  addButton(QStringLiteral("importButton"), tr("Import"), QStyle::SP_ArrowDown);
-  addButton(QStringLiteral("exportButton"), tr("Export"), QStyle::SP_ArrowUp);
+  m_importButton =
+      addButton(QStringLiteral("importButton"), tr("Import"), QStyle::SP_ArrowDown);
+  m_exportButton =
+      addButton(QStringLiteral("exportButton"), tr("Export"), QStyle::SP_ArrowUp);
   auto *logsButton = addButton(QStringLiteral("logsButton"), tr("Logs"),
                                QStyle::SP_FileDialogDetailedView);
   connect(logsButton, &QPushButton::clicked, this, [this]() {
@@ -108,6 +113,17 @@ QWidget *MainWindow::createTopBar() {
 
 QWidget *MainWindow::createConnectionsPanel() {
   return new smb::ui::ConnectionsPanel(this);
+}
+
+void MainWindow::attachImportExport(
+    smb::application::ImportExportUseCase &useCase,
+    smb::ui::ImportExportActionPrompter &prompter) {
+  if (m_importButton == nullptr || m_exportButton == nullptr) {
+    return;
+  }
+
+  m_importExportController = std::make_unique<smb::ui::ImportExportController>(
+      *m_importButton, *m_exportButton, useCase, prompter, this);
 }
 
 QWidget *MainWindow::createBrowserArea() {

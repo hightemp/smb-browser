@@ -22,6 +22,8 @@ struct ExportOptions {
   bool includePlainTextPasswords = false;
   bool confirmPlainTextPasswordExport = false;
   const smb::core::CredentialStore *credentialStore = nullptr;
+  bool encryptExport = false;
+  QByteArray encryptionPassphrase;
 };
 
 enum class DuplicatePolicy {
@@ -33,6 +35,7 @@ enum class DuplicatePolicy {
 struct ImportOptions {
   DuplicatePolicy duplicatePolicy = DuplicatePolicy::Skip;
   QSet<QString> existingConnectionIds;
+  QByteArray encryptionPassphrase;
 };
 
 struct ImportRecordError {

@@ -4,11 +4,17 @@
 #include "core/Settings.h"
 
 #include <QDialog>
+#include <memory>
 
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QPushButton;
 class QSpinBox;
+
+namespace smb::application {
+class TempFileCache;
+}
 
 namespace smb::ui {
 
@@ -23,7 +29,8 @@ public:
       smb::application::SettingsUseCase *settingsUseCase = nullptr,
       ThemeManager *themeManager = nullptr,
       LocalizationManager *localizationManager = nullptr,
-      QWidget *parent = nullptr);
+      QWidget *parent = nullptr,
+      smb::application::TempFileCache *tempFileCache = nullptr);
 
   bool loadSettings();
   void setSettings(const smb::core::ApplicationSettings &settings);
@@ -34,6 +41,7 @@ public slots:
 
 private:
   void updateTrayControls();
+  void clearCache();
   void setValidationMessage(const QString &message);
   smb::core::ThemeMode selectedThemeMode() const;
   smb::core::LanguageMode selectedLanguageMode() const;
@@ -43,6 +51,8 @@ private:
   smb::application::SettingsUseCase *m_settingsUseCase = nullptr;
   ThemeManager *m_themeManager = nullptr;
   LocalizationManager *m_localizationManager = nullptr;
+  smb::application::TempFileCache *m_tempFileCache = nullptr;
+  std::unique_ptr<smb::application::TempFileCache> m_ownedTempFileCache;
   smb::core::ApplicationSettings m_settings =
       smb::core::ApplicationSettings::defaults();
 
@@ -54,6 +64,8 @@ private:
   QComboBox *m_logLevelCombo = nullptr;
   QSpinBox *m_operationTimeoutSpinBox = nullptr;
   QSpinBox *m_cacheRetentionSpinBox = nullptr;
+  QSpinBox *m_cacheMaxSizeSpinBox = nullptr;
+  QPushButton *m_clearCacheButton = nullptr;
   QLabel *m_validationMessage = nullptr;
 };
 

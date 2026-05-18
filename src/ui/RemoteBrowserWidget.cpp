@@ -1,9 +1,12 @@
 #include "ui/RemoteBrowserWidget.h"
 
 #include <QAbstractItemView>
+#include <QApplication>
+#include <QDrag>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -12,6 +15,7 @@
 #include <QLineEdit>
 #include <QMetaObject>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPointer>
 #include <QPushButton>
 #include <QStyle>
@@ -118,8 +122,11 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   m_tableView->setModel(m_filterModel);
   m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_tableView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_tableView->setDragEnabled(true);
+  m_tableView->setDragDropMode(QAbstractItemView::DragOnly);
   m_tableView->setAcceptDrops(false);
   m_tableView->viewport()->setAcceptDrops(false);
+  m_tableView->viewport()->installEventFilter(this);
   m_tableView->setAlternatingRowColors(true);
   m_tableView->horizontalHeader()->setStretchLastSection(true);
   m_tableView->verticalHeader()->setVisible(false);
@@ -403,6 +410,105 @@ void RemoteBrowserWidget::moveSelected() {
                    });
 }
 
+void RemoteBrowserWidget::prepareExternalDragForSelected() {
+  if (m_connectionId.isEmpty()) {
+    return;
+  }
+
+  QVector<smb::core::RemoteFileEntry> fileEntries;
+  for (const auto &entry : selectedEntries()) {
+    if (entry.isFile()) {
+      fileEntries.push_back(entry);
+    }
+  }
+
+  if (fileEntries.isEmpty()) {
+    const auto error = smb::core::AppError::fromCode(
+        smb::core::ErrorCode::InvalidPath,
+        smb::core::ErrorCategory::Validation,
+        tr("Only files can be dragged to the local desktop."));
+    m_prompter.showError(this, tr("Unable to Drag Remote Items"), error);
+    emit remoteOperationFailed(QStringLiteral("external_drag"), error);
+    return;
+  }
+
+  const auto connectionId = m_connectionId;
+  runFileOperation(
+      QStringLiteral("external_drag"),
+      [this, connectionId,
+       fileEntries](const smb::core::OperationContext &context) {
+        qint64 totalBytes = 0;
+        for (const auto &entry : fileEntries) {
+          totalBytes += qMax<qint64>(entry.size, 0);
+        }
+        if (totalBytes == 0) {
+          totalBytes = fileEntries.size();
+        }
+
+        QVector<QUrl> urls;
+        urls.reserve(fileEntries.size());
+        qint64 completedBytes = 0;
+        for (const auto &entry : fileEntries) {
+          if (context.cancellationToken != nullptr &&
+              context.cancellationToken->isCancellationRequested()) {
+            return smb::core::Result<bool>::failure(
+                smb::core::AppError::fromCode(
+                    smb::core::ErrorCode::OperationCancelled,
+                    smb::core::ErrorCategory::General,
+                    tr("Operation cancelled.")));
+          }
+
+          const auto localPath =
+              m_tempFileCache.localPathFor(connectionId, entry.remotePath);
+          if (!localPath.ok()) {
+            return smb::core::Result<bool>::failure(localPath.error());
+          }
+
+          auto itemContext = context;
+          if (context.progressCallback) {
+            itemContext.progressCallback =
+                [&context, completedBytes,
+                 totalBytes](const smb::core::TransferProgress &progress) {
+                  context.progressCallback(smb::core::TransferProgress{
+                      qMin(totalBytes,
+                           completedBytes + progress.bytesTransferred),
+                      totalBytes});
+                };
+          }
+
+          auto downloaded = m_fileTransferUseCase.downloadFile(
+              connectionId, entry.remotePath, localPath.value(), itemContext);
+          if (!downloaded.ok()) {
+            return downloaded;
+          }
+
+          completedBytes += entry.size > 0 ? entry.size : 1;
+          if (context.progressCallback) {
+            context.progressCallback(smb::core::TransferProgress{
+                qMin(completedBytes, totalBytes), totalBytes});
+          }
+          urls.push_back(QUrl::fromLocalFile(localPath.value()));
+        }
+
+        QPointer<RemoteBrowserWidget> self(this);
+        QMetaObject::invokeMethod(
+            this,
+            [self, urls]() {
+              if (!self) {
+                return;
+              }
+              emit self->externalDragReady(urls);
+              if (self->m_startDragWhenReady) {
+                self->m_startDragWhenReady = false;
+                self->startExternalDragWithUrls(urls);
+              }
+            },
+            Qt::QueuedConnection);
+        return smb::core::Result<bool>::success(true);
+      },
+      false);
+}
+
 void RemoteBrowserWidget::requestDirectory(const QString &remotePath,
                                            HistoryMode historyMode) {
   if (m_connectionId.isEmpty()) {
@@ -499,6 +605,36 @@ void RemoteBrowserWidget::dropEvent(QDropEvent *event) {
 
   uploadLocalFiles(std::move(localPaths));
   event->acceptProposedAction();
+}
+
+bool RemoteBrowserWidget::eventFilter(QObject *watched, QEvent *event) {
+  if (watched != m_tableView->viewport()) {
+    return QWidget::eventFilter(watched, event);
+  }
+
+  if (event->type() == QEvent::MouseButtonPress) {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (mouseEvent->button() == Qt::LeftButton) {
+      m_dragStartPosition = mouseEvent->pos();
+    }
+    return QWidget::eventFilter(watched, event);
+  }
+
+  if (event->type() == QEvent::MouseMove) {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (!(mouseEvent->buttons() & Qt::LeftButton)) {
+      return QWidget::eventFilter(watched, event);
+    }
+    if ((mouseEvent->pos() - m_dragStartPosition).manhattanLength() <
+        QApplication::startDragDistance()) {
+      return QWidget::eventFilter(watched, event);
+    }
+
+    startExternalDragFromMouse();
+    return true;
+  }
+
+  return QWidget::eventFilter(watched, event);
 }
 
 void RemoteBrowserWidget::applyDirectory(
@@ -815,6 +951,24 @@ void RemoteBrowserWidget::uploadLocalFiles(QVector<QString> localPaths) {
 
         return smb::core::Result<bool>::success(true);
       });
+}
+
+void RemoteBrowserWidget::startExternalDragFromMouse() {
+  m_startDragWhenReady = true;
+  prepareExternalDragForSelected();
+}
+
+void RemoteBrowserWidget::startExternalDragWithUrls(const QVector<QUrl> &urls) {
+  if (urls.isEmpty()) {
+    return;
+  }
+
+  auto *mimeData = new QMimeData();
+  mimeData->setUrls(QList<QUrl>(urls.cbegin(), urls.cend()));
+
+  QDrag drag(this);
+  drag.setMimeData(mimeData);
+  drag.exec(Qt::CopyAction);
 }
 
 QString RemoteBrowserWidget::normalizeRemotePath(QString remotePath) {

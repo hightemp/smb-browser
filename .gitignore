@@ -1,2 +1,30 @@
 /tmp/
 /.semantic-search
+
+# CMake / CPack generated output
+/_CPack_Packages/
+/build/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/install_manifest.txt
+/*.deb
+/*.rpm
+/*.dmg
+/*.pkg
+/*.msi
+/*.exe
+/*.zip
+/*.tar.gz
+/*.tar.xz
+
+# Qt generated/local project files
+*.qm
+*.user
+*.autosave
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*~

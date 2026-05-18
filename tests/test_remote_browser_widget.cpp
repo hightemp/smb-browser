@@ -810,6 +810,44 @@ private slots:
     QVERIFY(
         useCase.operationPaths.contains(QStringLiteral("upload:/second.txt")));
   }
+
+  void preparesSelectedRemoteFilesForExternalDrag() {
+    FakeRemoteBrowserUseCase useCase;
+    useCase.directories.insert(
+        QStringLiteral("/"),
+        {file(QStringLiteral("remote.txt"), QStringLiteral("/remote.txt"))});
+
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {file(QStringLiteral("remote.txt"), QStringLiteral("/remote.txt"))}));
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    QVERIFY(view != nullptr);
+    view->selectionModel()->select(view->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+
+    QVector<QUrl> readyUrls;
+    connect(&widget, &smb::ui::RemoteBrowserWidget::externalDragReady, this,
+            [&readyUrls](const QVector<QUrl> &urls) { readyUrls = urls; });
+
+    widget.prepareExternalDragForSelected();
+
+    QTRY_COMPARE(readyUrls.size(), 1);
+    QVERIFY(readyUrls.first().isLocalFile());
+    QFile downloaded(readyUrls.first().toLocalFile());
+    QVERIFY(downloaded.open(QIODevice::ReadOnly));
+    QCOMPARE(downloaded.readAll(), QByteArrayLiteral("downloaded"));
+
+    QMutexLocker locker(&useCase.mutex);
+    QVERIFY(
+        useCase.operationPaths.contains(QStringLiteral("download:/remote.txt")));
+  }
 };
 
 QTEST_MAIN(RemoteBrowserWidgetTest)

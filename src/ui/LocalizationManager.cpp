@@ -123,6 +123,8 @@ QStringList LocalizationManager::defaultTranslationDirectories() {
   if (!appDir.isEmpty()) {
     directories.push_back(QDir(appDir).filePath(QStringLiteral("i18n")));
     directories.push_back(QDir(appDir).filePath(QStringLiteral("translations")));
+    directories.push_back(
+        QDir(appDir).filePath(QStringLiteral("../Resources/i18n")));
     directories.push_back(QDir(appDir).filePath(
         QStringLiteral("../share/smb-browser/i18n")));
   }

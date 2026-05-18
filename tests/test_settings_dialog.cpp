@@ -1,9 +1,14 @@
+#include "application/TempFileCache.h"
 #include "ui/SettingsDialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 class FakeSettingsUseCase final : public smb::application::SettingsUseCase {
@@ -57,6 +62,10 @@ private slots:
                 QStringLiteral("operationTimeoutSpinBox")) != nullptr);
     QVERIFY(dialog.findChild<QSpinBox *>(
                 QStringLiteral("cacheRetentionSpinBox")) != nullptr);
+    QVERIFY(dialog.findChild<QSpinBox *>(
+                QStringLiteral("cacheMaxSizeSpinBox")) != nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(
+                QStringLiteral("clearCacheButton")) != nullptr);
   }
 
   void loadSettingsPopulatesControls() {
@@ -68,6 +77,7 @@ private slots:
     useCase.loaded.logLevel = QStringLiteral("warning");
     useCase.loaded.operationTimeoutMs = 45000;
     useCase.loaded.cacheRetentionDays = 14;
+    useCase.loaded.cacheMaxSizeMb = 128;
 
     smb::ui::SettingsDialog dialog(&useCase);
     QVERIFY(dialog.loadSettings());
@@ -79,6 +89,7 @@ private slots:
     QCOMPARE(settings.logLevel, QStringLiteral("warning"));
     QCOMPARE(settings.operationTimeoutMs, 45000);
     QCOMPARE(settings.cacheRetentionDays, 14);
+    QCOMPARE(settings.cacheMaxSizeMb, 128);
 
     auto *trayNotifications = dialog.findChild<QCheckBox *>(
         QStringLiteral("trayNotificationsCheckBox"));
@@ -111,6 +122,31 @@ private slots:
     QVERIFY(useCase.saved.themeMode == smb::core::ThemeMode::Dark);
     QVERIFY(useCase.saved.languageMode == smb::core::LanguageMode::Russian);
     QCOMPARE(useCase.saved.operationTimeoutMs, 120000);
+  }
+
+  void clearCacheButtonClearsConfiguredCache() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::application::TempFileCache cache(tempDir.filePath(QStringLiteral("cache")));
+    const auto path = cache.localPathFor(QStringLiteral("connection-1"),
+                                         QStringLiteral("/docs/file.txt"));
+    QVERIFY(path.ok());
+    QFile file(path.value());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("content");
+    file.close();
+
+    smb::ui::SettingsDialog dialog(nullptr, nullptr, nullptr, nullptr, &cache);
+    auto *button =
+        dialog.findChild<QPushButton *>(QStringLiteral("clearCacheButton"));
+    QVERIFY(button != nullptr);
+
+    QTest::mouseClick(button, Qt::LeftButton);
+    QVERIFY(!QFileInfo::exists(path.value()));
+    QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("settingsValidationLabel"))
+                ->text()
+                .contains(QStringLiteral("Cache cleared")));
   }
 
   void saveFailureKeepsDialogOpenAndShowsError() {

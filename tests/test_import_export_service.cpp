@@ -224,6 +224,101 @@ private slots:
     QVERIFY(exported.error().code == smb::core::ErrorCode::CredentialNotFound);
   }
 
+  void encryptedExportRequiresPassphrase() {
+    smb::application::ImportExportService service;
+    smb::application::ExportPayload payload;
+    payload.connections = {sampleConnection()};
+    smb::application::ExportOptions options;
+    options.encryptExport = true;
+
+    const auto exported = service.exportConnections(payload, options);
+    QVERIFY(!exported.ok());
+    QVERIFY(exported.error().category == smb::core::ErrorCategory::Validation);
+  }
+
+  void encryptedExportDoesNotExposePlainMetadataOrPasswords() {
+    FakeCredentialStore credentialStore;
+    credentialStore.secrets.insert(
+        QStringLiteral("known-secret-ref"),
+        smb::core::CredentialSecret{QByteArrayLiteral("plain-secret")});
+
+    smb::application::ImportExportService service;
+    smb::application::ExportPayload payload;
+    payload.connections = {sampleConnection()};
+    smb::application::ExportOptions options;
+    options.includePlainTextPasswords = true;
+    options.confirmPlainTextPasswordExport = true;
+    options.credentialStore = &credentialStore;
+    options.encryptExport = true;
+    options.encryptionPassphrase = QByteArrayLiteral("correct passphrase");
+
+    const auto exported = service.exportConnections(payload, options);
+    QVERIFY(exported.ok());
+    QVERIFY(exported.value().contains("smb-browser.connections.encrypted-export"));
+    QVERIFY(!exported.value().contains("Engineering"));
+    QVERIFY(!exported.value().contains("smb://server/share"));
+    QVERIFY(!exported.value().contains("plain-secret"));
+    QVERIFY(!exported.value().contains("known-secret-ref"));
+  }
+
+  void encryptedImportRequiresPassphraseAndAcceptsCorrectPassphrase() {
+    smb::application::ImportExportService service;
+    smb::application::ExportPayload payload;
+    payload.connections = {sampleConnection()};
+    smb::application::ExportOptions exportOptions;
+    exportOptions.encryptExport = true;
+    exportOptions.encryptionPassphrase = QByteArrayLiteral("correct passphrase");
+
+    const auto exported = service.exportConnections(payload, exportOptions);
+    QVERIFY(exported.ok());
+
+    const auto missingPassphrase = service.importConnections(exported.value());
+    QVERIFY(!missingPassphrase.ok());
+    QVERIFY(missingPassphrase.error().category ==
+            smb::core::ErrorCategory::Validation);
+
+    smb::application::ImportOptions importOptions;
+    importOptions.encryptionPassphrase = QByteArrayLiteral("correct passphrase");
+    const auto imported =
+        service.importConnections(exported.value(), importOptions);
+    QVERIFY(imported.ok());
+    QCOMPARE(imported.value().connections.size(), 1);
+    QCOMPARE(imported.value().connections.at(0).normalizedUri,
+             QStringLiteral("smb://server/share"));
+  }
+
+  void encryptedImportRejectsWrongPassphraseAndCorruptedPayload() {
+    smb::application::ImportExportService service;
+    smb::application::ExportPayload payload;
+    payload.connections = {sampleConnection()};
+    smb::application::ExportOptions exportOptions;
+    exportOptions.encryptExport = true;
+    exportOptions.encryptionPassphrase = QByteArrayLiteral("correct passphrase");
+
+    const auto exported = service.exportConnections(payload, exportOptions);
+    QVERIFY(exported.ok());
+
+    smb::application::ImportOptions wrongPassphraseOptions;
+    wrongPassphraseOptions.encryptionPassphrase =
+        QByteArrayLiteral("wrong passphrase");
+    const auto wrongPassphrase =
+        service.importConnections(exported.value(), wrongPassphraseOptions);
+    QVERIFY(!wrongPassphrase.ok());
+    QVERIFY(wrongPassphrase.error().code ==
+            smb::core::ErrorCode::PermissionDenied);
+
+    auto root = parseRoot(exported.value());
+    root.insert(QStringLiteral("ciphertext"), QStringLiteral("not-base64"));
+    smb::application::ImportOptions correctPassphraseOptions;
+    correctPassphraseOptions.encryptionPassphrase =
+        QByteArrayLiteral("correct passphrase");
+    const auto corrupted = service.importConnections(
+        QJsonDocument(root).toJson(), correctPassphraseOptions);
+    QVERIFY(!corrupted.ok());
+    QVERIFY(corrupted.error().category ==
+            smb::core::ErrorCategory::Validation);
+  }
+
   void importsVersionedExportAndClearsCredentialRefs() {
     smb::application::ImportExportService service;
     smb::application::ExportPayload payload;

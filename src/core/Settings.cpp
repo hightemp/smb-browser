@@ -52,6 +52,7 @@ ApplicationSettings ApplicationSettings::defaults() {
   settings.logLevel = QStringLiteral("info");
   settings.operationTimeoutMs = 30000;
   settings.cacheRetentionDays = 7;
+  settings.cacheMaxSizeMb = 512;
   return settings;
 }
 

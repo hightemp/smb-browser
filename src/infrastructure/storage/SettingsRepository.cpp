@@ -133,6 +133,10 @@ SettingsRepository::load() const {
       intFromString(values.value(QStringLiteral("cache_retention_days"),
                                  QString::number(settings.cacheRetentionDays)),
                     settings.cacheRetentionDays);
+  settings.cacheMaxSizeMb =
+      intFromString(values.value(QStringLiteral("cache_max_size_mb"),
+                                 QString::number(settings.cacheMaxSizeMb)),
+                    settings.cacheMaxSizeMb);
 
   return smb::core::Result<smb::core::ApplicationSettings>::success(
       std::move(settings));
@@ -161,6 +165,8 @@ SettingsRepository::save(const smb::core::ApplicationSettings &settings) {
        QString::number(settings.operationTimeoutMs)},
       {QStringLiteral("cache_retention_days"),
        QString::number(settings.cacheRetentionDays)},
+      {QStringLiteral("cache_max_size_mb"),
+       QString::number(settings.cacheMaxSizeMb)},
   };
 
   for (auto it = values.cbegin(); it != values.cend(); ++it) {

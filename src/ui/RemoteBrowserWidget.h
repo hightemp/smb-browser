@@ -2,10 +2,13 @@
 
 #include "application/ConnectionOpenService.h"
 #include "application/OperationQueue.h"
+#include "application/TempFileCache.h"
 #include "ui/RemoteFileActionPrompter.h"
 #include "ui/RemoteFileModel.h"
 
 #include <QWidget>
+#include <QPoint>
+#include <QUrl>
 #include <functional>
 
 class QLabel;
@@ -49,6 +52,7 @@ public slots:
   void uploadFile();
   void copySelected();
   void moveSelected();
+  void prepareExternalDragForSelected();
 
 signals:
   void directoryLoadStarted(const QString &connectionId,
@@ -64,6 +68,7 @@ signals:
   void remoteOperationCompleted(const QString &operationName);
   void remoteOperationFailed(const QString &operationName,
                              const smb::core::AppError &error);
+  void externalDragReady(const QVector<QUrl> &urls);
 
 private:
   enum class HistoryMode {
@@ -77,6 +82,7 @@ private:
   void dragEnterEvent(QDragEnterEvent *event) override;
   void dragMoveEvent(QDragMoveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
+  bool eventFilter(QObject *watched, QEvent *event) override;
   void applyDirectory(smb::application::OpenConnectionResult result,
                       HistoryMode historyMode, const QString &previousPath);
   void deliverFailure(const QString &connectionId, const QString &remotePath,
@@ -98,6 +104,8 @@ private:
                     const RemoteDestination &destination,
                     const smb::core::OperationContext &context);
   void uploadLocalFiles(QVector<QString> localPaths);
+  void startExternalDragFromMouse();
+  void startExternalDragWithUrls(const QVector<QUrl> &urls);
 
   static QString normalizeRemotePath(QString remotePath);
   static QString parentRemotePath(const QString &remotePath);
@@ -110,6 +118,7 @@ private:
   smb::application::RemoteFileOperationUseCase &m_fileOperationUseCase;
   smb::application::RemoteFileTransferUseCase &m_fileTransferUseCase;
   smb::application::OperationQueue &m_operationQueue;
+  smb::application::TempFileCache m_tempFileCache;
   RemoteFileActionPrompter &m_prompter;
   RemoteFileModel *m_model = nullptr;
   RemoteFileFilterProxyModel *m_filterModel = nullptr;
@@ -131,6 +140,8 @@ private:
   QString m_currentRemotePath;
   QVector<QString> m_backStack;
   QVector<QString> m_forwardStack;
+  QPoint m_dragStartPosition;
+  bool m_startDragWhenReady = false;
 };
 
 } // namespace smb::ui

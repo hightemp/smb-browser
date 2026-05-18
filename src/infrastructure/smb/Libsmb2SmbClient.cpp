@@ -237,7 +237,19 @@ smb::core::AppError smbError(smb::core::ErrorCode code, const QString &details,
       code, smb::core::ErrorCategory::Smb, sanitizer.sanitize(details),
       code == smb::core::ErrorCode::Timeout ||
           code == smb::core::ErrorCode::ServerUnavailable ||
-          code == smb::core::ErrorCode::NetworkError);
+      code == smb::core::ErrorCode::NetworkError);
+}
+
+smb::core::AppError
+libsmb2Error(int status, const QString &details,
+             Libsmb2ErrorContext context,
+             const smb::core::LogSanitizer &baseSanitizer,
+             const smb::core::CredentialSecret *secret) {
+  auto sanitizer = baseSanitizer;
+  if (secret != nullptr && !secret->bytes.isEmpty()) {
+    sanitizer.addSecretValue(QString::fromUtf8(secret->bytes));
+  }
+  return makeLibsmb2Error(status, details, context, sanitizer);
 }
 
 smb::core::Result<bool>
@@ -280,8 +292,7 @@ connectSession(Smb2Session &session, const smb::core::Connection &connection,
     const auto details =
         smb2Details(session.context(), rc, QStringLiteral("connect_share"));
     return smb::core::Result<bool>::failure(
-        smbError(mapLibsmb2Error(rc, details, Libsmb2ErrorContext::Connection),
-                 details, sanitizer, secret));
+        libsmb2Error(rc, details, Libsmb2ErrorContext::Connection, sanitizer, secret));
   }
 
   return smb::core::Result<bool>::success(true);
@@ -350,9 +361,7 @@ Libsmb2SmbClient::listDirectory(const smb::core::Connection &connection,
     const auto details =
         smb2Details(session.context(), status, QStringLiteral("opendir"));
     return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::failure(
-        smbError(
-            mapLibsmb2Error(status, details, Libsmb2ErrorContext::Directory),
-            details, m_sanitizer, secret));
+        libsmb2Error(status, details, Libsmb2ErrorContext::Directory, m_sanitizer, secret));
   }
 
   QVector<smb::core::RemoteFileEntry> entries;
@@ -407,9 +416,7 @@ Libsmb2SmbClient::createDirectory(const smb::core::Connection &connection,
   if (rc < 0) {
     const auto details =
         smb2Details(session.context(), rc, QStringLiteral("mkdir"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(rc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(rc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
 
   return smb::core::Result<bool>::success(true);
@@ -439,9 +446,7 @@ Libsmb2SmbClient::remove(const smb::core::Connection &connection,
   if (statRc < 0) {
     const auto details =
         smb2Details(session.context(), statRc, QStringLiteral("stat"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(statRc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(statRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
 
   const auto removeRc =
@@ -451,9 +456,7 @@ Libsmb2SmbClient::remove(const smb::core::Connection &connection,
   if (removeRc < 0) {
     const auto details =
         smb2Details(session.context(), removeRc, QStringLiteral("remove"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(removeRc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(removeRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
 
   return smb::core::Result<bool>::success(true);
@@ -484,9 +487,7 @@ Libsmb2SmbClient::rename(const smb::core::Connection &connection,
   if (rc < 0) {
     const auto details =
         smb2Details(session.context(), rc, QStringLiteral("rename"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(rc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(rc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
 
   return smb::core::Result<bool>::success(true);
@@ -521,9 +522,7 @@ smb::core::Result<bool> Libsmb2SmbClient::downloadFile(
     const auto status = statusFromErrno();
     const auto details =
         smb2Details(session.context(), status, QStringLiteral("open_read"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(status, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
   Smb2FileHandle remoteFile(session.context(), rawHandle);
 
@@ -551,9 +550,7 @@ smb::core::Result<bool> Libsmb2SmbClient::downloadFile(
     if (readRc < 0) {
       const auto details =
           smb2Details(session.context(), readRc, QStringLiteral("read"));
-      return smb::core::Result<bool>::failure(smbError(
-          mapLibsmb2Error(readRc, details, Libsmb2ErrorContext::FileOperation),
-          details, m_sanitizer, secret));
+      return smb::core::Result<bool>::failure(libsmb2Error(readRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
     }
     if (readRc == 0) {
       break;
@@ -603,9 +600,7 @@ smb::core::Result<bool> Libsmb2SmbClient::uploadFile(
     const auto status = statusFromErrno();
     const auto details =
         smb2Details(session.context(), status, QStringLiteral("open_write"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(status, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
   Smb2FileHandle remoteFile(session.context(), rawHandle);
 
@@ -615,9 +610,8 @@ smb::core::Result<bool> Libsmb2SmbClient::uploadFile(
     const auto details =
         smb2Details(session.context(), truncateRc, QStringLiteral("truncate"));
     return smb::core::Result<bool>::failure(
-        smbError(mapLibsmb2Error(truncateRc, details,
-                                 Libsmb2ErrorContext::FileOperation),
-                 details, m_sanitizer, secret));
+        libsmb2Error(truncateRc, details, Libsmb2ErrorContext::FileOperation,
+                     m_sanitizer, secret));
   }
 
   QByteArray buffer(256 * 1024, '\0');
@@ -654,9 +648,8 @@ smb::core::Result<bool> Libsmb2SmbClient::uploadFile(
         const auto details =
             smb2Details(session.context(), writeRc, QStringLiteral("write"));
         return smb::core::Result<bool>::failure(
-            smbError(mapLibsmb2Error(writeRc, details,
-                                     Libsmb2ErrorContext::FileOperation),
-                     details, m_sanitizer, secret));
+            libsmb2Error(writeRc, details, Libsmb2ErrorContext::FileOperation,
+                         m_sanitizer, secret));
       }
 
       chunkOffset += writeRc;
@@ -672,9 +665,7 @@ smb::core::Result<bool> Libsmb2SmbClient::uploadFile(
   if (fsyncRc < 0) {
     const auto details =
         smb2Details(session.context(), fsyncRc, QStringLiteral("fsync"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(fsyncRc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, secret));
+    return smb::core::Result<bool>::failure(libsmb2Error(fsyncRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, secret));
   }
 
   return smb::core::Result<bool>::success(true);
@@ -727,9 +718,7 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
   if (statRc < 0) {
     const auto details =
         smb2Details(sourceSession.context(), statRc, QStringLiteral("stat"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(statRc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, sourceSecret));
+    return smb::core::Result<bool>::failure(libsmb2Error(statRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, sourceSecret));
   }
 
   if (stat.smb2_type == SMB2_TYPE_DIRECTORY) {
@@ -744,9 +733,7 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
     const auto status = statusFromErrno();
     const auto details = smb2Details(sourceSession.context(), status,
                                      QStringLiteral("open_read"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, sourceSecret));
+    return smb::core::Result<bool>::failure(libsmb2Error(status, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, sourceSecret));
   }
   Smb2FileHandle sourceFile(sourceSession.context(), rawSource);
 
@@ -756,9 +743,7 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
     const auto status = statusFromErrno();
     const auto details = smb2Details(targetSession.context(), status,
                                      QStringLiteral("open_write"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, targetSecret));
+    return smb::core::Result<bool>::failure(libsmb2Error(status, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, targetSecret));
   }
   Smb2FileHandle targetFile(targetSession.context(), rawTarget);
 
@@ -768,9 +753,8 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
     const auto details = smb2Details(targetSession.context(), truncateRc,
                                      QStringLiteral("truncate"));
     return smb::core::Result<bool>::failure(
-        smbError(mapLibsmb2Error(truncateRc, details,
-                                 Libsmb2ErrorContext::FileOperation),
-                 details, m_sanitizer, targetSecret));
+        libsmb2Error(truncateRc, details, Libsmb2ErrorContext::FileOperation,
+                     m_sanitizer, targetSecret));
   }
 
   const auto totalSize = static_cast<qint64>(stat.smb2_size);
@@ -791,9 +775,7 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
     if (readRc < 0) {
       const auto details =
           smb2Details(sourceSession.context(), readRc, QStringLiteral("read"));
-      return smb::core::Result<bool>::failure(smbError(
-          mapLibsmb2Error(readRc, details, Libsmb2ErrorContext::FileOperation),
-          details, m_sanitizer, sourceSecret));
+      return smb::core::Result<bool>::failure(libsmb2Error(readRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, sourceSecret));
     }
     if (readRc == 0) {
       break;
@@ -818,9 +800,8 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
         const auto details = smb2Details(targetSession.context(), writeRc,
                                          QStringLiteral("write"));
         return smb::core::Result<bool>::failure(
-            smbError(mapLibsmb2Error(writeRc, details,
-                                     Libsmb2ErrorContext::FileOperation),
-                     details, m_sanitizer, targetSecret));
+            libsmb2Error(writeRc, details, Libsmb2ErrorContext::FileOperation,
+                         m_sanitizer, targetSecret));
       }
       chunkOffset += writeRc;
     }
@@ -835,9 +816,7 @@ Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
   if (fsyncRc < 0) {
     const auto details =
         smb2Details(targetSession.context(), fsyncRc, QStringLiteral("fsync"));
-    return smb::core::Result<bool>::failure(smbError(
-        mapLibsmb2Error(fsyncRc, details, Libsmb2ErrorContext::FileOperation),
-        details, m_sanitizer, targetSecret));
+    return smb::core::Result<bool>::failure(libsmb2Error(fsyncRc, details, Libsmb2ErrorContext::FileOperation, m_sanitizer, targetSecret));
   }
 
   return smb::core::Result<bool>::success(true);

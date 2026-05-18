@@ -7,12 +7,22 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
+#include <sodium.h>
 
 namespace smb::application {
 
 namespace {
 
 constexpr int kExportSchemaVersion = 1;
+constexpr int kEncryptedExportSchemaVersion = 1;
+
+QString plainExportSchema() {
+  return QStringLiteral("smb-browser.connections.export");
+}
+
+QString encryptedExportSchema() {
+  return QStringLiteral("smb-browser.connections.encrypted-export");
+}
 
 void addDateTime(QJsonObject &object, const QString &key,
                  const QDateTime &dateTime) {
@@ -72,6 +82,152 @@ smb::core::ErrorCode errorCodeFromString(const QString &value) {
   return smb::core::ErrorCode::None;
 }
 
+smb::core::AppError validationError(const QString &details) {
+  return smb::core::AppError::fromCode(smb::core::ErrorCode::InvalidPath,
+                                       smb::core::ErrorCategory::Validation,
+                                       details, false);
+}
+
+smb::core::AppError credentialError(smb::core::ErrorCode code,
+                                    const QString &details) {
+  return smb::core::AppError::fromCode(code,
+                                       smb::core::ErrorCategory::Credentials,
+                                       details, false);
+}
+
+bool ensureSodiumInitialized() {
+  static const bool initialized = sodium_init() >= 0;
+  return initialized;
+}
+
+QByteArray randomBytes(int size) {
+  QByteArray bytes(size, Qt::Uninitialized);
+  randombytes_buf(bytes.data(), static_cast<size_t>(bytes.size()));
+  return bytes;
+}
+
+QByteArray deriveExportKey(const QByteArray &passphrase,
+                           const QByteArray &salt,
+                           smb::core::AppError *error) {
+  QByteArray key(crypto_secretbox_KEYBYTES, Qt::Uninitialized);
+  const auto result = crypto_pwhash(
+      reinterpret_cast<unsigned char *>(key.data()),
+      static_cast<unsigned long long>(key.size()), passphrase.constData(),
+      static_cast<unsigned long long>(passphrase.size()),
+      reinterpret_cast<const unsigned char *>(salt.constData()),
+      crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE,
+      crypto_pwhash_ALG_DEFAULT);
+  if (result != 0) {
+    *error = credentialError(smb::core::ErrorCode::CredentialStoreUnavailable,
+                             QStringLiteral("Unable to derive export key."));
+    sodium_memzero(key.data(), static_cast<size_t>(key.size()));
+    return {};
+  }
+
+  return key;
+}
+
+smb::core::Result<QByteArray>
+encryptExportPayload(QByteArray plaintext, const QByteArray &passphrase) {
+  if (passphrase.isEmpty()) {
+    return smb::core::Result<QByteArray>::failure(
+        validationError(QStringLiteral("Encrypted export requires passphrase.")));
+  }
+  if (!ensureSodiumInitialized()) {
+    return smb::core::Result<QByteArray>::failure(credentialError(
+        smb::core::ErrorCode::CredentialStoreUnavailable,
+        QStringLiteral("libsodium initialization failed.")));
+  }
+
+  const auto salt = randomBytes(crypto_pwhash_SALTBYTES);
+  const auto nonce = randomBytes(crypto_secretbox_NONCEBYTES);
+
+  smb::core::AppError keyError;
+  auto key = deriveExportKey(passphrase, salt, &keyError);
+  if (keyError.hasError()) {
+    sodium_memzero(plaintext.data(), static_cast<size_t>(plaintext.size()));
+    return smb::core::Result<QByteArray>::failure(keyError);
+  }
+
+  QByteArray ciphertext(plaintext.size() + crypto_secretbox_MACBYTES,
+                        Qt::Uninitialized);
+  crypto_secretbox_easy(
+      reinterpret_cast<unsigned char *>(ciphertext.data()),
+      reinterpret_cast<const unsigned char *>(plaintext.constData()),
+      static_cast<unsigned long long>(plaintext.size()),
+      reinterpret_cast<const unsigned char *>(nonce.constData()),
+      reinterpret_cast<const unsigned char *>(key.constData()));
+  sodium_memzero(key.data(), static_cast<size_t>(key.size()));
+  sodium_memzero(plaintext.data(), static_cast<size_t>(plaintext.size()));
+
+  QJsonObject root;
+  root.insert(QStringLiteral("schema"), encryptedExportSchema());
+  root.insert(QStringLiteral("version"), kEncryptedExportSchemaVersion);
+  root.insert(QStringLiteral("kdf"), QStringLiteral("libsodium-crypto_pwhash"));
+  root.insert(QStringLiteral("cipher"), QStringLiteral("crypto_secretbox"));
+  root.insert(QStringLiteral("salt"), QString::fromLatin1(salt.toBase64()));
+  root.insert(QStringLiteral("nonce"), QString::fromLatin1(nonce.toBase64()));
+  root.insert(QStringLiteral("ciphertext"),
+              QString::fromLatin1(ciphertext.toBase64()));
+
+  return smb::core::Result<QByteArray>::success(
+      QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+smb::core::Result<QByteArray>
+decryptExportPayload(const QJsonObject &root, const QByteArray &passphrase) {
+  if (passphrase.isEmpty()) {
+    return smb::core::Result<QByteArray>::failure(
+        validationError(QStringLiteral("Encrypted import requires passphrase.")));
+  }
+  if (!ensureSodiumInitialized()) {
+    return smb::core::Result<QByteArray>::failure(credentialError(
+        smb::core::ErrorCode::CredentialStoreUnavailable,
+        QStringLiteral("libsodium initialization failed.")));
+  }
+  if (root.value(QStringLiteral("version")).toInt() !=
+      kEncryptedExportSchemaVersion) {
+    return smb::core::Result<QByteArray>::failure(
+        validationError(QStringLiteral("Unsupported encrypted export version.")));
+  }
+
+  const auto salt = QByteArray::fromBase64(
+      root.value(QStringLiteral("salt")).toString().toLatin1());
+  const auto nonce = QByteArray::fromBase64(
+      root.value(QStringLiteral("nonce")).toString().toLatin1());
+  const auto ciphertext = QByteArray::fromBase64(
+      root.value(QStringLiteral("ciphertext")).toString().toLatin1());
+  if (salt.size() != crypto_pwhash_SALTBYTES ||
+      nonce.size() != crypto_secretbox_NONCEBYTES ||
+      ciphertext.size() < crypto_secretbox_MACBYTES) {
+    return smb::core::Result<QByteArray>::failure(validationError(
+        QStringLiteral("Encrypted export structure is invalid.")));
+  }
+
+  smb::core::AppError keyError;
+  auto key = deriveExportKey(passphrase, salt, &keyError);
+  if (keyError.hasError()) {
+    return smb::core::Result<QByteArray>::failure(keyError);
+  }
+
+  QByteArray plaintext(ciphertext.size() - crypto_secretbox_MACBYTES,
+                       Qt::Uninitialized);
+  const auto result = crypto_secretbox_open_easy(
+      reinterpret_cast<unsigned char *>(plaintext.data()),
+      reinterpret_cast<const unsigned char *>(ciphertext.constData()),
+      static_cast<unsigned long long>(ciphertext.size()),
+      reinterpret_cast<const unsigned char *>(nonce.constData()),
+      reinterpret_cast<const unsigned char *>(key.constData()));
+  sodium_memzero(key.data(), static_cast<size_t>(key.size()));
+  if (result != 0) {
+    return smb::core::Result<QByteArray>::failure(
+        credentialError(smb::core::ErrorCode::PermissionDenied,
+                        QStringLiteral("Encrypted export decryption failed.")));
+  }
+
+  return smb::core::Result<QByteArray>::success(std::move(plaintext));
+}
+
 } // namespace
 
 smb::core::Result<QByteArray> ImportExportService::exportConnections(
@@ -108,13 +264,18 @@ smb::core::Result<QByteArray> ImportExportService::exportConnections(
   }
 
   QJsonObject root;
-  root.insert(QStringLiteral("schema"),
-              QStringLiteral("smb-browser.connections.export"));
+  root.insert(QStringLiteral("schema"), plainExportSchema());
   root.insert(QStringLiteral("version"), kExportSchemaVersion);
   root.insert(QStringLiteral("exportedAt"),
               QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
   root.insert(QStringLiteral("connections"), connections);
   root.insert(QStringLiteral("groups"), groups);
+
+  if (options.encryptExport) {
+    return encryptExportPayload(
+        QJsonDocument(root).toJson(QJsonDocument::Compact),
+        options.encryptionPassphrase);
+  }
 
   return smb::core::Result<QByteArray>::success(
       QJsonDocument(root).toJson(QJsonDocument::Indented));
@@ -132,8 +293,22 @@ smb::core::Result<ImportResult> ImportExportService::importConnections(
   }
 
   const auto root = document.object();
-  if (root.value(QStringLiteral("schema")).toString() !=
-          QStringLiteral("smb-browser.connections.export") ||
+  const auto schema = root.value(QStringLiteral("schema")).toString();
+  if (schema == encryptedExportSchema()) {
+    auto decrypted = decryptExportPayload(root, options.encryptionPassphrase);
+    if (!decrypted.ok()) {
+      return smb::core::Result<ImportResult>::failure(decrypted.error());
+    }
+
+    auto nestedOptions = options;
+    nestedOptions.encryptionPassphrase.clear();
+    auto imported = importConnections(decrypted.value(), nestedOptions);
+    sodium_memzero(decrypted.value().data(),
+                   static_cast<size_t>(decrypted.value().size()));
+    return imported;
+  }
+
+  if (schema != plainExportSchema() ||
       root.value(QStringLiteral("version")).toInt() != kExportSchemaVersion) {
     return smb::core::Result<ImportResult>::failure(
         smb::core::AppError::fromCode(

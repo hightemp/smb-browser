@@ -15,6 +15,8 @@ private slots:
             smb::core::CredentialStoreMode::SystemKeychainWithVaultFallback);
     QVERIFY(settings.closeToTray);
     QCOMPARE(settings.operationTimeoutMs, 30000);
+    QCOMPARE(settings.cacheRetentionDays, 7);
+    QCOMPARE(settings.cacheMaxSizeMb, 512);
   }
 
   void enumValuesHaveStableStorageNames() {

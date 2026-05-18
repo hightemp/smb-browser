@@ -14,6 +14,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+include(GNUInstallDirs)
 include(CTest)
 
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Sql Widgets Test)
@@ -40,8 +41,52 @@ if(SMB_BROWSER_WITH_LIBSMB2 AND NOT LIBSMB2_FOUND)
     )
 endif()
 
+option(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS
+    "Enable opt-in Docker Samba integration tests"
+    OFF
+)
+
 add_subdirectory(src)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+set(CPACK_PACKAGE_NAME "smb-browser")
+set(CPACK_PACKAGE_VENDOR "SMB Browser")
+set(CPACK_PACKAGE_CONTACT "SMB Browser Maintainers")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Cross-platform Qt Widgets SMB browser"
+)
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}/packages")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/PRD.md")
+
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/linux/smb-browser.desktop
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    install(FILES packaging/linux/io.github.smb_browser.SmbBrowser.metainfo.xml
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
+    install(FILES packaging/icons/smb-browser.svg
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps)
+
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "SMB Browser Maintainers")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5keychain1, libsodium23"
+    )
+elseif(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "SMB Browser")
+    set(CPACK_NSIS_PACKAGE_NAME "SMB Browser")
+    set(CPACK_NSIS_MODIFY_PATH ON)
+elseif(APPLE)
+    set(CPACK_GENERATOR "DragNDrop")
+    set(CPACK_DMG_VOLUME_NAME "SMB Browser")
+    set(CPACK_BUNDLE_NAME "SMB Browser")
+endif()
+
+include(CPack)

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.smb_browser.SmbBrowser</id>
+  <name>SMB Browser</name>
+  <summary>Manage SMB connections and browse remote shared folders</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <description>
+    <p>
+      SMB Browser is a Qt Widgets desktop application for storing SMB connection
+      metadata and browsing Microsoft Windows or Samba shared folders inside
+      the application UI.
+    </p>
+  </description>
+  <launchable type="desktop-id">smb-browser.desktop</launchable>
+  <categories>
+    <category>Network</category>
+    <category>FileTransfer</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-05-18"/>
+  </releases>
+</component>

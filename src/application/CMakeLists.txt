@@ -1,6 +1,8 @@
 add_library(smb_browser_application STATIC
     ConnectivityCheckService.cpp
     ConnectivityCheckService.h
+    ConnectionImportExportService.cpp
+    ConnectionImportExportService.h
     ConnectionOpenService.cpp
     ConnectionOpenService.h
     ConnectionService.cpp
@@ -16,6 +18,8 @@ add_library(smb_browser_application STATIC
     OperationQueue.h
     PreviewService.cpp
     PreviewService.h
+    RecursiveSearchService.cpp
+    RecursiveSearchService.h
     SettingsService.cpp
     SettingsService.h
     TempFileCache.cpp
@@ -33,5 +37,6 @@ target_link_libraries(smb_browser_application
     PUBLIC
         smb_browser_core
         smb_browser_infrastructure
+        PkgConfig::SODIUM
         Qt5::Gui
 )

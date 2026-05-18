@@ -1,7 +1,9 @@
 #include "application/OperationQueue.h"
 
+#include <QSignalSpy>
 #include <QThread>
 #include <QtTest/QtTest>
+#include <atomic>
 
 class OperationQueueTest final : public QObject {
   Q_OBJECT
@@ -86,6 +88,84 @@ private slots:
                 smb::application::OperationState::Failed);
     QVERIFY(queue.snapshot(id).error.code ==
             smb::core::ErrorCode::PermissionDenied);
+  }
+
+  void destructorCancelsRunningOperationsAndWaitsForThem() {
+    std::atomic_bool observedCancellation = false;
+
+    {
+      smb::application::OperationQueue queue(1);
+      const auto id = queue.enqueue(
+          QStringLiteral("long-running"),
+          [&observedCancellation](
+              const smb::core::OperationContext &context) {
+            while (context.cancellationToken != nullptr &&
+                   !context.cancellationToken->isCancellationRequested()) {
+              QThread::msleep(5);
+            }
+            observedCancellation.store(true);
+            return smb::core::Result<bool>::failure(
+                smb::core::AppError::fromCode(
+                    smb::core::ErrorCode::OperationCancelled,
+                    smb::core::ErrorCategory::General,
+                    QStringLiteral("cancelled by destructor")));
+          });
+      QTRY_VERIFY(queue.snapshot(id).state ==
+                  smb::application::OperationState::Running);
+    }
+
+    QVERIFY(observedCancellation.load());
+  }
+
+  void progressAfterCancellationDoesNotOverwriteTerminalState() {
+    smb::application::OperationQueue queue(1);
+
+    const auto id = queue.enqueue(
+        QStringLiteral("late-progress"),
+        [](const smb::core::OperationContext &context) {
+          while (context.cancellationToken != nullptr &&
+                 !context.cancellationToken->isCancellationRequested()) {
+            QThread::msleep(5);
+          }
+          if (context.progressCallback) {
+            context.progressCallback(smb::core::TransferProgress{50, 100});
+          }
+          return smb::core::Result<bool>::failure(smb::core::AppError::fromCode(
+              smb::core::ErrorCode::OperationCancelled,
+              smb::core::ErrorCategory::General,
+              QStringLiteral("Operation cancelled.")));
+        });
+
+    QTRY_VERIFY(queue.snapshot(id).state ==
+                smb::application::OperationState::Running);
+    QVERIFY(queue.cancel(id));
+    QTRY_VERIFY(queue.snapshot(id).state ==
+                smb::application::OperationState::Cancelled);
+    QCOMPARE(queue.snapshot(id).progress.totalBytes, qint64(100));
+  }
+
+  void operationChangedIsDeliveredOnReceiverThread() {
+    smb::application::OperationQueue queue(1);
+    QVector<bool> deliveredOnTestThread;
+
+    connect(&queue, &smb::application::OperationQueue::operationChanged, this,
+            [&deliveredOnTestThread, this]() {
+              deliveredOnTestThread.push_back(QThread::currentThread() ==
+                                              this->thread());
+            });
+
+    const auto id = queue.enqueue(
+        QStringLiteral("thread-check"),
+        [](const smb::core::OperationContext &) {
+          return smb::core::Result<bool>::success(true);
+        });
+
+    QTRY_VERIFY(queue.snapshot(id).state ==
+                smb::application::OperationState::Completed);
+    QTRY_VERIFY(!deliveredOnTestThread.isEmpty());
+    for (const auto delivered : deliveredOnTestThread) {
+      QVERIFY(delivered);
+    }
   }
 };
 

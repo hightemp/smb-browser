@@ -1,0 +1,150 @@
+# Release checklist for v1
+
+This checklist is the release gate for the first usable desktop build.
+
+## Scope gate
+
+- [ ] PRD first-version criteria are reviewed against `PRD.md`.
+- [ ] `TASKS.md` has no open `Must` tasks for v1.
+- [ ] Known non-v1 items are explicitly accepted:
+  - SMB-to-desktop drag-and-drop remains a platform-specific follow-up.
+  - Recursive SMB search remains optional/experimental.
+  - Docker Samba integration tests are opt-in and not part of default local test runs.
+  - Platform packaging smoke must be completed on each target OS before publishing packages.
+
+## Build gate
+
+- [ ] Configure from a clean build directory:
+
+```bash
+cmake -S . -B tmp/build
+```
+
+- [ ] Build succeeds:
+
+```bash
+cmake --build tmp/build
+```
+
+- [ ] No generated files outside `tmp/` or intended build output directories are committed.
+
+## Default test gate
+
+- [ ] Full default test suite passes:
+
+```bash
+ctest --test-dir tmp/build --output-on-failure
+```
+
+- [ ] Core/security targets pass as part of the suite:
+  - `path_normalizer`
+  - `credential_store_contract`
+  - `encrypted_vault_credential_store`
+  - `qtkeychain_credential_store`
+  - `log_sanitizer`
+  - `file_logger`
+  - `import_export_service`
+  - `connection_import_export_service`
+
+- [ ] UI smoke targets pass as part of the suite:
+  - `main_window`
+  - `connections_panel`
+  - `connection_dialog`
+  - `remote_file_model`
+  - `remote_browser_widget`
+  - `settings_dialog`
+  - `log_viewer`
+  - `import_export_controller`
+  - `ui_smoke`
+
+## Optional Docker Samba profile
+
+- [ ] Start the local Samba fixture:
+
+```bash
+docker compose -f tests/integration/samba/docker-compose.yml up -d --build
+```
+
+- [ ] Configure a separate integration build:
+
+```bash
+cmake -S . -B tmp/build-samba -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=ON
+cmake --build tmp/build-samba
+```
+
+- [ ] Run only the integration profile:
+
+```bash
+ctest --test-dir tmp/build-samba -L docker-samba --output-on-failure
+```
+
+- [ ] Stop the fixture:
+
+```bash
+docker compose -f tests/integration/samba/docker-compose.yml down -v
+```
+
+## Security gate
+
+- [ ] Default export does not contain:
+  - passwords;
+  - `credentialRef`;
+  - token-like values;
+  - master password values;
+  - credential-store implementation data.
+
+- [ ] Plain-text password export is available only through the explicit dangerous flow:
+  - default option is without passwords;
+  - strong warning is shown;
+  - separate confirmation is required;
+  - operation fails if secrets cannot be read from `CredentialStore`.
+
+- [ ] Logs are sanitized:
+  - no passwords;
+  - no tokens;
+  - no full credential strings;
+  - no master password values.
+
+- [ ] SQLite database contains metadata only and does not contain plain-text passwords.
+
+- [ ] Test data uses synthetic credentials only.
+
+## Localization gate
+
+- [ ] English is the primary source language for user-facing UI strings.
+- [ ] Russian translation is available through Qt translation files.
+- [ ] Language mode supports `System`, `English`, and `Russian`.
+- [ ] Unsupported system locale falls back to English.
+- [ ] `ui_smoke` and `localization_manager` pass.
+
+## Manual platform smoke
+
+Run on each target platform before publishing binaries.
+
+- [ ] Windows:
+  - app starts;
+  - Qt runtime, QtKeychain, SQLite, translations, and libsmb2 are packaged;
+  - add/edit/delete connection works;
+  - credential save/load works;
+  - connect/list/upload/download/rename/delete works against a test SMB server;
+  - tray show/exit behavior works.
+
+- [ ] Linux:
+  - app starts on the target distribution;
+  - Secret Service/KWallet behavior is understood and documented;
+  - translations are packaged and load correctly;
+  - Docker Samba integration profile can run in CI or on a prepared host.
+
+- [ ] macOS:
+  - app bundle starts;
+  - Keychain prompts are expected and understandable;
+  - translations are packaged and load correctly;
+  - opening a downloaded file through the system application works;
+  - tray/menu behavior is checked manually.
+
+## Release notes
+
+- [ ] Known limitations are included.
+- [ ] Plain-text password export warning is mentioned.
+- [ ] Docker Samba integration profile is documented as optional.
+- [ ] First-run storage locations for database, logs, cache, and settings are documented.

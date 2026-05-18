@@ -77,7 +77,7 @@
 - Заметки по тестам:
   - Добавить smoke test, который проверяет работу тестовой инфраструктуры.
 
-### [ ] T-006: Настроить базовую CI-проверку
+### [x] T-006: Настроить базовую CI-проверку
 
 - Приоритет: Should.
 - Зависимости: T-004, T-005.
@@ -670,7 +670,7 @@
   - UI smoke/integration test на drop event с temporary files, если инфраструктура позволяет.
   - FakeSmbClient tests для batch upload.
 
-### [ ] T-048: Реализовать drag-and-drop SMB to desktop
+### [x] T-048: Реализовать drag-and-drop SMB to desktop
 
 - Приоритет: Should.
 - Зависимости: T-033, T-034, T-042.
@@ -698,7 +698,7 @@
   - Unit tests на type detection.
   - UI smoke test preview text/image через fake downloaded file.
 
-### [ ] T-050: Реализовать рекурсивный поиск по SMB-шаре
+### [x] T-050: Реализовать рекурсивный поиск по SMB-шаре
 
 - Приоритет: Could.
 - Зависимости: T-032, T-042.
@@ -865,7 +865,7 @@
   - UI smoke test на confirmation flow.
   - LogSanitizer tests на secret values from export.
 
-### [ ] T-061: Реализовать UI для Import/Export
+### [x] T-061: Реализовать UI для Import/Export
 
 - Приоритет: Must.
 - Зависимости: T-058, T-059, T-060, T-036.
@@ -964,7 +964,7 @@
 - Заметки по тестам:
   - Все tests используют fake data и synthetic credentials.
 
-### [ ] T-068: Добавить UI smoke tests
+### [x] T-068: Добавить UI smoke tests
 
 - Приоритет: Must.
 - Зависимости: T-036, T-037, T-038, T-041, T-042, T-054.
@@ -980,7 +980,7 @@
   - Не требовать реального SMB-сервера.
   - Использовать fake services.
 
-### [ ] T-069: Добавить optional Docker Samba integration tests
+### [x] T-069: Добавить optional Docker Samba integration tests
 
 - Приоритет: Should.
 - Зависимости: T-027, T-028, T-030.
@@ -993,7 +993,7 @@
 - Заметки по тестам:
   - Покрыть connect, list, upload, download, rename, delete.
 
-### [ ] T-070: Добавить thread-safety и cancellation tests
+### [x] T-070: Добавить thread-safety и cancellation tests
 
 - Приоритет: Should.
 - Зависимости: T-032, T-033.
@@ -1051,7 +1051,7 @@
   - Manual smoke на macOS.
   - Проверить tray/menu behavior отдельно.
 
-### [ ] T-074: Подготовить release checklist
+### [x] T-074: Подготовить release checklist
 
 - Приоритет: Must.
 - Зависимости: T-058, T-060, T-062, T-068, T-054.
@@ -1068,7 +1068,7 @@
 
 ## Этап 13. Post-v1 улучшения
 
-### [ ] T-075: Добавить encrypted export format
+### [x] T-075: Добавить encrypted export format
 
 - Приоритет: Could.
 - Зависимости: T-058, T-060, T-021.
@@ -1080,7 +1080,7 @@
 - Заметки по тестам:
   - Unit tests на wrong passphrase и corrupted file.
 
-### [ ] T-076: Добавить расширенную диагностику SMB backend
+### [x] T-076: Добавить расширенную диагностику SMB backend
 
 - Приоритет: Could.
 - Зависимости: T-030, T-051.
@@ -1093,7 +1093,7 @@
   - Unit tests sanitizer.
   - Integration tests с разными Samba settings, если практично.
 
-### [ ] T-077: Добавить расширенное управление кэшем
+### [x] T-077: Добавить расширенное управление кэшем
 
 - Приоритет: Could.
 - Зависимости: T-034, T-055.

@@ -10,8 +10,13 @@ add_library(smb_browser_ui STATIC
     ConnectionOpenController.h
     ConnectionsPanel.cpp
     ConnectionsPanel.h
+    DialogImportExportActionPrompter.cpp
+    DialogImportExportActionPrompter.h
     DialogRemoteFileActionPrompter.cpp
     DialogRemoteFileActionPrompter.h
+    ImportExportActionPrompter.h
+    ImportExportController.cpp
+    ImportExportController.h
     LocalizationManager.cpp
     LocalizationManager.h
     LogViewer.cpp
@@ -73,4 +78,11 @@ if(QT_LRELEASE_EXECUTABLE)
     add_custom_target(smb_browser_translations ALL
         DEPENDS "${SMB_BROWSER_RU_QM}"
     )
+
+    install(FILES "${SMB_BROWSER_RU_QM}"
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/smb-browser/i18n)
+    if(APPLE)
+        install(FILES "${SMB_BROWSER_RU_QM}"
+                DESTINATION "smb-browser.app/Contents/Resources/i18n")
+    endif()
 endif()

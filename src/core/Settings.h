@@ -32,6 +32,7 @@ struct ApplicationSettings {
   QString logLevel = QStringLiteral("info");
   int operationTimeoutMs = 30000;
   int cacheRetentionDays = 7;
+  int cacheMaxSizeMb = 512;
 
   static ApplicationSettings defaults();
 };

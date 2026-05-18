@@ -60,6 +60,7 @@ private slots:
     QCOMPARE(opener.openedPaths.size(), 1);
     QVERIFY(QFileInfo::exists(opener.openedPaths.first()));
     QVERIFY(!opener.openedPaths.first().contains(QStringLiteral("readme")));
+    QVERIFY(cache.isProtectedPath(opener.openedPaths.first()));
   }
 
   void openerFailureFailsOperation() {

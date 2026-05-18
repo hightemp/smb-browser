@@ -48,6 +48,7 @@ QString OpenFileService::openRemoteFile(
           return downloaded;
         }
 
+        m_cache.protectPath(localPath.value());
         return m_fileOpener.openLocalFile(localPath.value());
       });
 }

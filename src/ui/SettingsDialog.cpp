@@ -1,5 +1,6 @@
 #include "ui/SettingsDialog.h"
 
+#include "application/TempFileCache.h"
 #include "ui/LocalizationManager.h"
 #include "ui/ThemeManager.h"
 
@@ -11,6 +12,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -65,9 +67,16 @@ smb::core::CredentialStoreMode credentialStoreModeFromValue(int raw) {
 SettingsDialog::SettingsDialog(
     smb::application::SettingsUseCase *settingsUseCase,
     ThemeManager *themeManager, LocalizationManager *localizationManager,
-    QWidget *parent)
+    QWidget *parent, smb::application::TempFileCache *tempFileCache)
     : QDialog(parent), m_settingsUseCase(settingsUseCase),
       m_themeManager(themeManager), m_localizationManager(localizationManager) {
+  if (tempFileCache != nullptr) {
+    m_tempFileCache = tempFileCache;
+  } else {
+    m_ownedTempFileCache = std::make_unique<smb::application::TempFileCache>();
+    m_tempFileCache = m_ownedTempFileCache.get();
+  }
+
   setObjectName(QStringLiteral("settingsDialog"));
   setWindowTitle(tr("Settings"));
   setModal(true);
@@ -152,6 +161,17 @@ SettingsDialog::SettingsDialog(
   m_cacheRetentionSpinBox->setRange(0, 365);
   m_cacheRetentionSpinBox->setSuffix(tr(" days"));
   operationsForm->addRow(tr("Cache retention"), m_cacheRetentionSpinBox);
+
+  m_cacheMaxSizeSpinBox = new QSpinBox(operationsGroup);
+  m_cacheMaxSizeSpinBox->setObjectName(QStringLiteral("cacheMaxSizeSpinBox"));
+  m_cacheMaxSizeSpinBox->setRange(0, 1024 * 1024);
+  m_cacheMaxSizeSpinBox->setSpecialValueText(tr("No size limit"));
+  m_cacheMaxSizeSpinBox->setSuffix(tr(" MB"));
+  operationsForm->addRow(tr("Cache max size"), m_cacheMaxSizeSpinBox);
+
+  m_clearCacheButton = new QPushButton(tr("Clear cache"), operationsGroup);
+  m_clearCacheButton->setObjectName(QStringLiteral("clearCacheButton"));
+  operationsForm->addRow(QString(), m_clearCacheButton);
   layout->addWidget(operationsGroup);
 
   m_validationMessage = new QLabel(this);
@@ -168,6 +188,8 @@ SettingsDialog::SettingsDialog(
   connect(buttons, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
   connect(m_closeToTrayCheckBox, &QCheckBox::toggled, this,
           &SettingsDialog::updateTrayControls);
+  connect(m_clearCacheButton, &QPushButton::clicked, this,
+          &SettingsDialog::clearCache);
 
   setSettings(m_settings);
 }
@@ -201,6 +223,7 @@ void SettingsDialog::setSettings(
   m_logLevelCombo->setCurrentIndex(logLevelIndex < 0 ? 1 : logLevelIndex);
   m_operationTimeoutSpinBox->setValue(settings.operationTimeoutMs);
   m_cacheRetentionSpinBox->setValue(settings.cacheRetentionDays);
+  m_cacheMaxSizeSpinBox->setValue(settings.cacheMaxSizeMb);
   setValidationMessage({});
   updateTrayControls();
 }
@@ -215,6 +238,7 @@ smb::core::ApplicationSettings SettingsDialog::settings() const {
   next.logLevel = m_logLevelCombo->currentData().toString();
   next.operationTimeoutMs = m_operationTimeoutSpinBox->value();
   next.cacheRetentionDays = m_cacheRetentionSpinBox->value();
+  next.cacheMaxSizeMb = m_cacheMaxSizeSpinBox->value();
   return next;
 }
 
@@ -255,6 +279,22 @@ void SettingsDialog::accept() {
 
 void SettingsDialog::updateTrayControls() {
   m_trayNotificationsCheckBox->setEnabled(m_closeToTrayCheckBox->isChecked());
+}
+
+void SettingsDialog::clearCache() {
+  setValidationMessage({});
+  if (m_tempFileCache == nullptr) {
+    setValidationMessage(tr("Cache is unavailable."));
+    return;
+  }
+
+  const auto cleared = m_tempFileCache->clearAll();
+  if (!cleared.ok()) {
+    setValidationMessage(cleared.error().userMessage);
+    return;
+  }
+
+  setValidationMessage(tr("Cache cleared."));
 }
 
 void SettingsDialog::setValidationMessage(const QString &message) {

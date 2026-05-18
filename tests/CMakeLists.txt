@@ -195,6 +195,31 @@ if(SMB_BROWSER_WITH_LIBSMB2)
     add_test(NAME libsmb2_smb_client COMMAND test_libsmb2_smb_client)
 endif()
 
+if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND SMB_BROWSER_WITH_LIBSMB2)
+    add_executable(test_docker_samba_integration
+        test_docker_samba_integration.cpp
+    )
+
+    target_link_libraries(test_docker_samba_integration
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME docker_samba_integration
+             COMMAND test_docker_samba_integration)
+    set_tests_properties(docker_samba_integration PROPERTIES
+        LABELS "docker-samba;integration"
+        RUN_SERIAL TRUE
+        ENVIRONMENT
+            "SMB_BROWSER_SAMBA_SERVER=127.0.0.1:1445;SMB_BROWSER_SAMBA_SHARE=public;SMB_BROWSER_SAMBA_USER=smbtest;SMB_BROWSER_SAMBA_PASSWORD=synthetic-password"
+    )
+elseif(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS)
+    message(WARNING
+        "SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS is ON, but libsmb2 backend is disabled."
+    )
+endif()
+
 add_executable(test_credential_store_contract
     test_credential_store_contract.cpp
 )
@@ -281,6 +306,19 @@ target_link_libraries(test_connection_open_service
 
 add_test(NAME connection_open_service COMMAND test_connection_open_service)
 
+add_executable(test_connection_import_export_service
+    test_connection_import_export_service.cpp
+)
+
+target_link_libraries(test_connection_import_export_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME connection_import_export_service
+         COMMAND test_connection_import_export_service)
+
 add_executable(test_operation_queue
     test_operation_queue.cpp
 )
@@ -342,6 +380,18 @@ target_link_libraries(test_preview_service
 )
 
 add_test(NAME preview_service COMMAND test_preview_service)
+
+add_executable(test_recursive_search_service
+    test_recursive_search_service.cpp
+)
+
+target_link_libraries(test_recursive_search_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME recursive_search_service COMMAND test_recursive_search_service)
 
 add_executable(test_import_export_service
     test_import_export_service.cpp
@@ -544,6 +594,42 @@ target_link_libraries(test_tray_controller
 
 add_test(NAME tray_controller COMMAND test_tray_controller)
 set_tests_properties(tray_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_import_export_controller
+    test_import_export_controller.cpp
+)
+
+target_link_libraries(test_import_export_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME import_export_controller COMMAND test_import_export_controller)
+set_tests_properties(import_export_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_ui_smoke
+    test_ui_smoke.cpp
+)
+
+target_link_libraries(test_ui_smoke
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+if(TARGET smb_browser_translations)
+    add_dependencies(test_ui_smoke smb_browser_translations)
+endif()
+
+add_test(NAME ui_smoke COMMAND test_ui_smoke)
+set_tests_properties(ui_smoke PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
