@@ -1,6 +1,9 @@
 #include "ui/RemoteBrowserWidget.h"
 
 #include <QAbstractItemView>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -8,10 +11,12 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
+#include <QMimeData>
 #include <QPointer>
 #include <QPushButton>
 #include <QStyle>
 #include <QTableView>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <utility>
 
@@ -31,6 +36,7 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   qRegisterMetaType<smb::core::RemoteFileEntry>("smb::core::RemoteFileEntry");
 
   setObjectName(QStringLiteral("remoteBrowserWidget"));
+  setAcceptDrops(true);
 
   m_model = new RemoteFileModel(this);
   m_filterModel = new RemoteFileFilterProxyModel(this);
@@ -70,6 +76,12 @@ RemoteBrowserWidget::RemoteBrowserWidget(
       style()->standardIcon(QStyle::SP_ArrowDown), tr("Download"), toolbar);
   m_downloadButton->setObjectName(
       QStringLiteral("remoteBrowserDownloadButton"));
+  m_copyButton = new QPushButton(style()->standardIcon(QStyle::SP_FileIcon),
+                                 tr("Copy"), toolbar);
+  m_copyButton->setObjectName(QStringLiteral("remoteBrowserCopyButton"));
+  m_moveButton = new QPushButton(style()->standardIcon(QStyle::SP_DirIcon),
+                                 tr("Move"), toolbar);
+  m_moveButton->setObjectName(QStringLiteral("remoteBrowserMoveButton"));
   m_deleteButton = new QPushButton(style()->standardIcon(QStyle::SP_TrashIcon),
                                    tr("Delete"), toolbar);
   m_deleteButton->setObjectName(QStringLiteral("remoteBrowserDeleteButton"));
@@ -84,6 +96,8 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   toolbarLayout->addWidget(m_createFolderButton);
   toolbarLayout->addWidget(m_uploadButton);
   toolbarLayout->addWidget(m_downloadButton);
+  toolbarLayout->addWidget(m_copyButton);
+  toolbarLayout->addWidget(m_moveButton);
   toolbarLayout->addWidget(m_renameButton);
   toolbarLayout->addWidget(m_deleteButton);
 
@@ -104,6 +118,8 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   m_tableView->setModel(m_filterModel);
   m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_tableView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_tableView->setAcceptDrops(false);
+  m_tableView->viewport()->setAcceptDrops(false);
   m_tableView->setAlternatingRowColors(true);
   m_tableView->horizontalHeader()->setStretchLastSection(true);
   m_tableView->verticalHeader()->setVisible(false);
@@ -122,6 +138,10 @@ RemoteBrowserWidget::RemoteBrowserWidget(
           &RemoteBrowserWidget::uploadFile);
   connect(m_downloadButton, &QPushButton::clicked, this,
           &RemoteBrowserWidget::downloadSelected);
+  connect(m_copyButton, &QPushButton::clicked, this,
+          &RemoteBrowserWidget::copySelected);
+  connect(m_moveButton, &QPushButton::clicked, this,
+          &RemoteBrowserWidget::moveSelected);
   connect(m_deleteButton, &QPushButton::clicked, this,
           &RemoteBrowserWidget::deleteSelected);
   connect(m_renameButton, &QPushButton::clicked, this,
@@ -343,6 +363,46 @@ void RemoteBrowserWidget::uploadFile() {
                    });
 }
 
+void RemoteBrowserWidget::copySelected() {
+  const auto entries = selectedEntries();
+  if (m_connectionId.isEmpty() || entries.isEmpty()) {
+    return;
+  }
+
+  const auto destination = m_prompter.promptCopyDestination(
+      this, m_connectionId, m_currentRemotePath, entries);
+  if (!destination.has_value()) {
+    return;
+  }
+
+  runFileOperation(QStringLiteral("copy"),
+                   [this, entries, destination = destination.value()](
+                       const smb::core::OperationContext &context) {
+                     return copyOrMoveEntries(false, entries, destination,
+                                              context);
+                   });
+}
+
+void RemoteBrowserWidget::moveSelected() {
+  const auto entries = selectedEntries();
+  if (m_connectionId.isEmpty() || entries.isEmpty()) {
+    return;
+  }
+
+  const auto destination = m_prompter.promptMoveDestination(
+      this, m_connectionId, m_currentRemotePath, entries);
+  if (!destination.has_value()) {
+    return;
+  }
+
+  runFileOperation(QStringLiteral("move"),
+                   [this, entries, destination = destination.value()](
+                       const smb::core::OperationContext &context) {
+                     return copyOrMoveEntries(true, entries, destination,
+                                              context);
+                   });
+}
+
 void RemoteBrowserWidget::requestDirectory(const QString &remotePath,
                                            HistoryMode historyMode) {
   if (m_connectionId.isEmpty()) {
@@ -387,6 +447,58 @@ void RemoteBrowserWidget::requestDirectory(const QString &remotePath,
 
   emit directoryLoadStarted(connectionId, targetPath, operationId);
   updateActionState();
+}
+
+void RemoteBrowserWidget::dragEnterEvent(QDragEnterEvent *event) {
+  if (!m_connectionId.isEmpty() && event->mimeData() != nullptr &&
+      event->mimeData()->hasUrls()) {
+    for (const auto &url : event->mimeData()->urls()) {
+      if (url.isLocalFile() && QFileInfo(url.toLocalFile()).isFile()) {
+        event->acceptProposedAction();
+        return;
+      }
+    }
+  }
+
+  event->ignore();
+}
+
+void RemoteBrowserWidget::dragMoveEvent(QDragMoveEvent *event) {
+  if (!m_connectionId.isEmpty() && event->mimeData() != nullptr &&
+      event->mimeData()->hasUrls()) {
+    event->acceptProposedAction();
+    return;
+  }
+
+  event->ignore();
+}
+
+void RemoteBrowserWidget::dropEvent(QDropEvent *event) {
+  if (m_connectionId.isEmpty() || event->mimeData() == nullptr ||
+      !event->mimeData()->hasUrls()) {
+    event->ignore();
+    return;
+  }
+
+  QVector<QString> localPaths;
+  for (const auto &url : event->mimeData()->urls()) {
+    if (!url.isLocalFile()) {
+      continue;
+    }
+
+    const QFileInfo info(url.toLocalFile());
+    if (info.isFile()) {
+      localPaths.push_back(info.absoluteFilePath());
+    }
+  }
+
+  if (localPaths.isEmpty()) {
+    event->ignore();
+    return;
+  }
+
+  uploadLocalFiles(std::move(localPaths));
+  event->acceptProposedAction();
 }
 
 void RemoteBrowserWidget::applyDirectory(
@@ -551,6 +663,8 @@ void RemoteBrowserWidget::updateActionState() {
                                    !m_currentRemotePath.isEmpty());
   m_uploadButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty());
   m_downloadButton->setEnabled(hasConnection && selectedEntry().isFile());
+  m_copyButton->setEnabled(hasConnection && hasSelection);
+  m_moveButton->setEnabled(hasConnection && hasSelection);
   m_deleteButton->setEnabled(hasConnection && hasSelection);
   m_renameButton->setEnabled(hasConnection && hasSelection);
 }
@@ -563,6 +677,144 @@ smb::core::RemoteFileEntry RemoteBrowserWidget::selectedEntry() const {
 
   const auto sourceIndex = m_filterModel->mapToSource(selected.first());
   return m_model->entryAt(sourceIndex.row());
+}
+
+QVector<smb::core::RemoteFileEntry>
+RemoteBrowserWidget::selectedEntries() const {
+  const auto selected = m_tableView->selectionModel()->selectedRows();
+  QVector<smb::core::RemoteFileEntry> entries;
+  entries.reserve(selected.size());
+
+  for (const auto &index : selected) {
+    const auto sourceIndex = m_filterModel->mapToSource(index);
+    const auto entry = m_model->entryAt(sourceIndex.row());
+    if (!entry.name.isEmpty()) {
+      entries.push_back(entry);
+    }
+  }
+
+  return entries;
+}
+
+smb::core::Result<bool> RemoteBrowserWidget::copyOrMoveEntries(
+    bool move, const QVector<smb::core::RemoteFileEntry> &entries,
+    const RemoteDestination &destination,
+    const smb::core::OperationContext &context) {
+  if (destination.connectionId.trimmed().isEmpty() ||
+      destination.remoteDirectory.trimmed().isEmpty()) {
+    return smb::core::Result<bool>::failure(smb::core::AppError::fromCode(
+        smb::core::ErrorCode::InvalidPath, smb::core::ErrorCategory::Validation,
+        tr("Destination connection and folder are required.")));
+  }
+
+  qint64 totalBytes = 0;
+  for (const auto &entry : entries) {
+    totalBytes += qMax<qint64>(entry.size, 0);
+  }
+  if (totalBytes == 0) {
+    totalBytes = entries.size();
+  }
+
+  qint64 completedBytes = 0;
+  for (const auto &entry : entries) {
+    if (context.cancellationToken != nullptr &&
+        context.cancellationToken->isCancellationRequested()) {
+      return smb::core::Result<bool>::failure(smb::core::AppError::fromCode(
+          smb::core::ErrorCode::OperationCancelled,
+          smb::core::ErrorCategory::General, tr("Operation cancelled.")));
+    }
+
+    auto itemContext = context;
+    if (context.progressCallback) {
+      itemContext.progressCallback =
+          [&context, completedBytes,
+           totalBytes](const smb::core::TransferProgress &progress) {
+            context.progressCallback(smb::core::TransferProgress{
+                qMin(totalBytes, completedBytes + progress.bytesTransferred),
+                totalBytes});
+          };
+    }
+
+    const auto targetPath =
+        joinRemotePath(destination.remoteDirectory, entry.name);
+    auto result =
+        move ? m_fileTransferUseCase.move(m_connectionId, entry.remotePath,
+                                          destination.connectionId, targetPath,
+                                          itemContext)
+             : m_fileTransferUseCase.copy(m_connectionId, entry.remotePath,
+                                          destination.connectionId, targetPath,
+                                          itemContext);
+    if (!result.ok()) {
+      return result;
+    }
+
+    completedBytes += entry.size > 0 ? entry.size : 1;
+    if (context.progressCallback) {
+      context.progressCallback(smb::core::TransferProgress{
+          qMin(completedBytes, totalBytes), totalBytes});
+    }
+  }
+
+  return smb::core::Result<bool>::success(true);
+}
+
+void RemoteBrowserWidget::uploadLocalFiles(QVector<QString> localPaths) {
+  const auto connectionId = m_connectionId;
+  const auto currentRemotePath = m_currentRemotePath;
+  runFileOperation(
+      QStringLiteral("drop_upload"),
+      [this, connectionId, currentRemotePath,
+       localPaths =
+           std::move(localPaths)](const smb::core::OperationContext &context) {
+        qint64 totalBytes = 0;
+        for (const auto &localPath : localPaths) {
+          totalBytes += qMax<qint64>(QFileInfo(localPath).size(), 0);
+        }
+        if (totalBytes == 0) {
+          totalBytes = localPaths.size();
+        }
+
+        qint64 completedBytes = 0;
+        for (const auto &localPath : localPaths) {
+          if (context.cancellationToken != nullptr &&
+              context.cancellationToken->isCancellationRequested()) {
+            return smb::core::Result<bool>::failure(
+                smb::core::AppError::fromCode(
+                    smb::core::ErrorCode::OperationCancelled,
+                    smb::core::ErrorCategory::General,
+                    tr("Operation cancelled.")));
+          }
+
+          const QFileInfo info(localPath);
+          const auto targetPath =
+              joinRemotePath(currentRemotePath, info.fileName());
+          auto itemContext = context;
+          if (context.progressCallback) {
+            itemContext.progressCallback =
+                [&context, completedBytes,
+                 totalBytes](const smb::core::TransferProgress &progress) {
+                  context.progressCallback(smb::core::TransferProgress{
+                      qMin(totalBytes,
+                           completedBytes + progress.bytesTransferred),
+                      totalBytes});
+                };
+          }
+
+          auto uploaded = m_fileTransferUseCase.uploadFile(
+              connectionId, localPath, targetPath, itemContext);
+          if (!uploaded.ok()) {
+            return uploaded;
+          }
+
+          completedBytes += info.size() > 0 ? info.size() : 1;
+          if (context.progressCallback) {
+            context.progressCallback(smb::core::TransferProgress{
+                qMin(completedBytes, totalBytes), totalBytes});
+          }
+        }
+
+        return smb::core::Result<bool>::success(true);
+      });
 }
 
 QString RemoteBrowserWidget::normalizeRemotePath(QString remotePath) {

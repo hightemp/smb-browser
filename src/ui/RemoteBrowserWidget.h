@@ -12,6 +12,9 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QTableView;
+class QDragEnterEvent;
+class QDragMoveEvent;
+class QDropEvent;
 
 namespace smb::ui {
 
@@ -44,6 +47,8 @@ public slots:
   void renameSelected();
   void downloadSelected();
   void uploadFile();
+  void copySelected();
+  void moveSelected();
 
 signals:
   void directoryLoadStarted(const QString &connectionId,
@@ -69,6 +74,9 @@ private:
   };
 
   void requestDirectory(const QString &remotePath, HistoryMode historyMode);
+  void dragEnterEvent(QDragEnterEvent *event) override;
+  void dragMoveEvent(QDragMoveEvent *event) override;
+  void dropEvent(QDropEvent *event) override;
   void applyDirectory(smb::application::OpenConnectionResult result,
                       HistoryMode historyMode, const QString &previousPath);
   void deliverFailure(const QString &connectionId, const QString &remotePath,
@@ -83,6 +91,13 @@ private:
   void showError(const smb::core::AppError &error);
   void updateActionState();
   smb::core::RemoteFileEntry selectedEntry() const;
+  QVector<smb::core::RemoteFileEntry> selectedEntries() const;
+  smb::core::Result<bool>
+  copyOrMoveEntries(bool move,
+                    const QVector<smb::core::RemoteFileEntry> &entries,
+                    const RemoteDestination &destination,
+                    const smb::core::OperationContext &context);
+  void uploadLocalFiles(QVector<QString> localPaths);
 
   static QString normalizeRemotePath(QString remotePath);
   static QString parentRemotePath(const QString &remotePath);
@@ -108,6 +123,8 @@ private:
   QPushButton *m_createFolderButton = nullptr;
   QPushButton *m_uploadButton = nullptr;
   QPushButton *m_downloadButton = nullptr;
+  QPushButton *m_copyButton = nullptr;
+  QPushButton *m_moveButton = nullptr;
   QPushButton *m_deleteButton = nullptr;
   QPushButton *m_renameButton = nullptr;
   QString m_connectionId;

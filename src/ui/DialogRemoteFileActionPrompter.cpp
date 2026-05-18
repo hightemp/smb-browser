@@ -8,6 +8,33 @@
 
 namespace smb::ui {
 
+namespace {
+
+std::optional<RemoteDestination>
+promptDestination(QWidget *parent, const QString &title,
+                  const QString &currentConnectionId,
+                  const QString &currentRemotePath) {
+  bool accepted = false;
+  const auto defaultValue =
+      QStringLiteral("%1:%2").arg(currentConnectionId, currentRemotePath);
+  const auto value = QInputDialog::getText(
+      parent, title, QObject::tr("Destination connection and folder"),
+      QLineEdit::Normal, defaultValue, &accepted);
+  if (!accepted) {
+    return std::nullopt;
+  }
+
+  const auto separator = value.indexOf(QLatin1Char(':'));
+  if (separator <= 0 || separator == value.size() - 1) {
+    return std::nullopt;
+  }
+
+  return RemoteDestination{value.left(separator).trimmed(),
+                           value.mid(separator + 1).trimmed()};
+}
+
+} // namespace
+
 std::optional<QString> DialogRemoteFileActionPrompter::promptCreateFolderName(
     QWidget *parent, const QString &currentRemotePath) {
   bool accepted = false;
@@ -60,6 +87,24 @@ std::optional<QString> DialogRemoteFileActionPrompter::promptUploadPath(
     return std::nullopt;
   }
   return path;
+}
+
+std::optional<RemoteDestination>
+DialogRemoteFileActionPrompter::promptCopyDestination(
+    QWidget *parent, const QString &currentConnectionId,
+    const QString &currentRemotePath,
+    const QVector<smb::core::RemoteFileEntry> &) {
+  return promptDestination(parent, QObject::tr("Copy Remote Items"),
+                           currentConnectionId, currentRemotePath);
+}
+
+std::optional<RemoteDestination>
+DialogRemoteFileActionPrompter::promptMoveDestination(
+    QWidget *parent, const QString &currentConnectionId,
+    const QString &currentRemotePath,
+    const QVector<smb::core::RemoteFileEntry> &) {
+  return promptDestination(parent, QObject::tr("Move Remote Items"),
+                           currentConnectionId, currentRemotePath);
 }
 
 void DialogRemoteFileActionPrompter::showError(

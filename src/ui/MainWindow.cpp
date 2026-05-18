@@ -1,7 +1,11 @@
 #include "ui/MainWindow.h"
 
 #include "core/AppInfo.h"
+#include "logging/FileLogger.h"
 #include "ui/ConnectionsPanel.h"
+#include "ui/LogViewer.h"
+#include "ui/SettingsDialog.h"
+#include "ui/StatusPanel.h"
 
 #include <QAbstractItemView>
 #include <QFrame>
@@ -81,6 +85,23 @@ QWidget *MainWindow::createTopBar() {
             QStyle::SP_DialogOpenButton);
   addButton(QStringLiteral("importButton"), tr("Import"), QStyle::SP_ArrowDown);
   addButton(QStringLiteral("exportButton"), tr("Export"), QStyle::SP_ArrowUp);
+  auto *logsButton = addButton(QStringLiteral("logsButton"), tr("Logs"),
+                               QStyle::SP_FileDialogDetailedView);
+  connect(logsButton, &QPushButton::clicked, this, [this]() {
+    auto *viewer = new smb::ui::LogViewer(
+        smb::infrastructure::FileLogger::defaultLogFilePath(), {}, this);
+    viewer->setAttribute(Qt::WA_DeleteOnClose);
+    viewer->show();
+  });
+  auto *settingsButton = addButton(QStringLiteral("settingsButton"),
+                                   tr("Settings"),
+                                   QStyle::SP_FileDialogContentsView);
+  connect(settingsButton, &QPushButton::clicked, this, [this]() {
+    auto *dialog = new smb::ui::SettingsDialog(nullptr, nullptr, nullptr, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->loadSettings();
+    dialog->show();
+  });
 
   return bar;
 }
@@ -143,33 +164,5 @@ QWidget *MainWindow::createBrowserArea() {
 }
 
 QWidget *MainWindow::createStatusPanel() {
-  auto *panel = new QFrame(this);
-  panel->setObjectName(QStringLiteral("statusPanel"));
-  panel->setFrameShape(QFrame::StyledPanel);
-
-  auto *layout = new QHBoxLayout(panel);
-  layout->setContentsMargins(8, 6, 8, 6);
-  layout->setSpacing(8);
-
-  auto *connectionStatus = new QLabel(tr("Connection: Not connected"), panel);
-  connectionStatus->setObjectName(QStringLiteral("connectionStatusLabel"));
-  layout->addWidget(connectionStatus);
-
-  auto *lastError = new QLabel(tr("Last error: None"), panel);
-  lastError->setObjectName(QStringLiteral("lastErrorLabel"));
-  layout->addWidget(lastError, 1);
-
-  auto *progress = new QProgressBar(panel);
-  progress->setObjectName(QStringLiteral("operationProgressBar"));
-  progress->setRange(0, 100);
-  progress->setValue(0);
-  progress->setFixedWidth(180);
-  layout->addWidget(progress);
-
-  auto *cancelButton = new QPushButton(tr("Cancel"), panel);
-  cancelButton->setObjectName(QStringLiteral("cancelOperationButton"));
-  cancelButton->setEnabled(false);
-  layout->addWidget(cancelButton);
-
-  return panel;
+  return new smb::ui::StatusPanel(this);
 }

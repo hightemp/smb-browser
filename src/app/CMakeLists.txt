@@ -9,6 +9,10 @@ target_link_libraries(smb-browser
         Qt5::Widgets
 )
 
+if(TARGET smb_browser_translations)
+    add_dependencies(smb-browser smb_browser_translations)
+endif()
+
 set_target_properties(smb-browser PROPERTIES
     OUTPUT_NAME "smb-browser"
 )

@@ -44,6 +44,8 @@ private slots:
         QStringLiteral("connectButton"),
         QStringLiteral("importButton"),
         QStringLiteral("exportButton"),
+        QStringLiteral("logsButton"),
+        QStringLiteral("settingsButton"),
         QStringLiteral("backButton"),
         QStringLiteral("forwardButton"),
         QStringLiteral("upButton"),

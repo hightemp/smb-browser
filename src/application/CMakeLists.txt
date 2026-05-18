@@ -7,11 +7,17 @@ add_library(smb_browser_application STATIC
     ConnectionService.h
     DesktopServicesFileOpener.cpp
     DesktopServicesFileOpener.h
+    ImportExportService.cpp
+    ImportExportService.h
     LocalFileOpener.h
     OpenFileService.cpp
     OpenFileService.h
     OperationQueue.cpp
     OperationQueue.h
+    PreviewService.cpp
+    PreviewService.h
+    SettingsService.cpp
+    SettingsService.h
     TempFileCache.cpp
     TempFileCache.h
     TransferManager.cpp

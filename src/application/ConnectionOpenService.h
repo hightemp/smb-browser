@@ -62,6 +62,14 @@ public:
   uploadFile(const QString &connectionId, const QString &localPath,
              const QString &remotePath,
              const smb::core::OperationContext &context = {}) = 0;
+  virtual smb::core::Result<bool>
+  copy(const QString &sourceConnectionId, const QString &sourceRemotePath,
+       const QString &targetConnectionId, const QString &targetRemotePath,
+       const smb::core::OperationContext &context = {}) = 0;
+  virtual smb::core::Result<bool>
+  move(const QString &sourceConnectionId, const QString &sourceRemotePath,
+       const QString &targetConnectionId, const QString &targetRemotePath,
+       const smb::core::OperationContext &context = {}) = 0;
 };
 
 class ConnectionOpenService final : public ConnectionOpenUseCase,
@@ -97,8 +105,21 @@ public:
   uploadFile(const QString &connectionId, const QString &localPath,
              const QString &remotePath,
              const smb::core::OperationContext &context = {}) override;
+  smb::core::Result<bool>
+  copy(const QString &sourceConnectionId, const QString &sourceRemotePath,
+       const QString &targetConnectionId, const QString &targetRemotePath,
+       const smb::core::OperationContext &context = {}) override;
+  smb::core::Result<bool>
+  move(const QString &sourceConnectionId, const QString &sourceRemotePath,
+       const QString &targetConnectionId, const QString &targetRemotePath,
+       const smb::core::OperationContext &context = {}) override;
 
 private:
+  struct ConnectionWithSecret {
+    smb::core::Connection connection;
+    std::optional<smb::core::CredentialSecret> secret;
+  };
+
   using FileOperation = std::function<smb::core::Result<bool>(
       const smb::core::Connection &, const smb::core::CredentialSecret *,
       const smb::core::OperationContext &)>;
@@ -109,6 +130,8 @@ private:
   smb::core::Result<bool>
   runFileOperation(const QString &connectionId, FileOperation operation,
                    const smb::core::OperationContext &context);
+  smb::core::Result<ConnectionWithSecret>
+  loadConnectionWithSecret(const QString &connectionId) const;
   smb::core::Result<std::optional<smb::core::CredentialSecret>>
   loadSecret(const smb::core::Connection &connection) const;
   void rememberError(const QString &connectionId,

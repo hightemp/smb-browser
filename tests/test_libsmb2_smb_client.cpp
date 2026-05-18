@@ -60,19 +60,37 @@ private slots:
     QVERIFY(result.error().code == smb::core::ErrorCode::CredentialNotFound);
   }
 
-  void crossShareCopyIsExplicitlyDeferred() {
+  void copyValidatesTargetSecretBeforeNetworkCall() {
     smb::infrastructure::Libsmb2SmbClient client;
     const auto connection = passwordConnection();
     const smb::core::CredentialSecret secret{QByteArrayLiteral("test-secret")};
 
     const auto result =
         client.copy(connection, &secret, QStringLiteral("/source.txt"),
-                    connection, &secret, QStringLiteral("/target.txt"), {});
+                    connection, nullptr, QStringLiteral("/target.txt"), {});
 
     QVERIFY(!result.ok());
-    QVERIFY(result.error().code == smb::core::ErrorCode::Unknown);
-    QVERIFY(result.error().sanitizedTechnicalDetails.contains(
-        QStringLiteral("not implemented")));
+    QVERIFY(result.error().code == smb::core::ErrorCode::CredentialNotFound);
+    QVERIFY(!result.error().sanitizedTechnicalDetails.contains(
+        QStringLiteral("test-secret")));
+  }
+
+  void cancelledCopyStopsBeforeNetworkCall() {
+    smb::infrastructure::Libsmb2SmbClient client;
+    const auto connection = passwordConnection();
+    const smb::core::CredentialSecret secret{QByteArrayLiteral("test-secret")};
+
+    smb::core::CancellationToken token;
+    token.cancel();
+    smb::core::OperationContext context;
+    context.cancellationToken = &token;
+
+    const auto result = client.copy(
+        connection, &secret, QStringLiteral("/source.txt"), connection, &secret,
+        QStringLiteral("/target.txt"), context);
+
+    QVERIFY(!result.ok());
+    QVERIFY(result.error().code == smb::core::ErrorCode::OperationCancelled);
   }
 };
 

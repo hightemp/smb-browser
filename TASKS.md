@@ -395,7 +395,7 @@
   - FakeSmbClient tests обязательны.
   - Docker Samba integration tests optional profile.
 
-### [ ] T-029: Реализовать copy/move внутри SMB и между SMB-шарами
+### [x] T-029: Реализовать copy/move внутри SMB и между SMB-шарами
 
 - Приоритет: Should.
 - Зависимости: T-028.
@@ -642,7 +642,7 @@
   - FakeSmbClient tests: upload/download/timeout/cancellation.
   - Unit tests на progress state.
 
-### [ ] T-046: Реализовать copy/move внутри SMB и между SMB-шарами в UI
+### [x] T-046: Реализовать copy/move внутри SMB и между SMB-шарами в UI
 
 - Приоритет: Should.
 - Зависимости: T-029, T-033, T-042.
@@ -656,7 +656,7 @@
   - FakeSmbClient tests на cross-share copy/move.
   - Tests на cancellation и partial failure.
 
-### [ ] T-047: Реализовать drag-and-drop local to SMB
+### [x] T-047: Реализовать drag-and-drop local to SMB
 
 - Приоритет: Should.
 - Зависимости: T-033, T-042, T-045.
@@ -684,7 +684,7 @@
   - Manual tests на Windows/Linux/macOS.
   - Unit tests cache lifetime policy.
 
-### [ ] T-049: Реализовать PreviewService для текста и изображений
+### [x] T-049: Реализовать PreviewService для текста и изображений
 
 - Приоритет: Should.
 - Зависимости: T-033, T-034.
@@ -728,7 +728,7 @@
   - Unit tests `LogSanitizer` на known secret values.
   - Tests на отсутствие пароля в логах import/export/check/connect.
 
-### [ ] T-052: Реализовать LogViewer
+### [x] T-052: Реализовать LogViewer
 
 - Приоритет: Must.
 - Зависимости: T-051, T-036.
@@ -742,7 +742,7 @@
   - UI smoke test open log viewer.
   - Unit tests на feeding sanitized entries.
 
-### [ ] T-053: Реализовать ThemeManager
+### [x] T-053: Реализовать ThemeManager
 
 - Приоритет: Must.
 - Зависимости: T-012, T-017.
@@ -756,7 +756,7 @@
   - Unit tests на theme/settings logic.
   - UI smoke test на переключение режима.
 
-### [ ] T-054: Реализовать LocalizationManager
+### [x] T-054: Реализовать LocalizationManager
 
 - Приоритет: Must.
 - Зависимости: T-012, T-017.
@@ -773,7 +773,7 @@
   - UI smoke test на переключение English/Russian для главного окна и SettingsDialog.
   - Static/review check: новые user-facing строки не добавляются как непереводимые literals.
 
-### [ ] T-055: Реализовать SettingsDialog
+### [x] T-055: Реализовать SettingsDialog
 
 - Приоритет: Must.
 - Зависимости: T-017, T-053, T-051, T-054.
@@ -787,7 +787,7 @@
   - UI smoke test open/save settings.
   - Unit tests на validation logic, включая language mode.
 
-### [ ] T-056: Реализовать TrayController
+### [x] T-056: Реализовать TrayController
 
 - Приоритет: Should.
 - Зависимости: T-036, T-037, T-053.
@@ -802,7 +802,7 @@
   - Manual tests на Windows/Linux/macOS.
   - Unit tests для tray menu model через fake favorites.
 
-### [ ] T-057: Реализовать status/progress area
+### [x] T-057: Реализовать status/progress area
 
 - Приоритет: Must.
 - Зависимости: T-032, T-036, T-051.
@@ -818,7 +818,7 @@
 
 ## Этап 10. Import/export
 
-### [ ] T-058: Реализовать формат безопасного экспорта без паролей
+### [x] T-058: Реализовать формат безопасного экспорта без паролей
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-051.
@@ -833,7 +833,7 @@
   - Unit tests: exported text does not contain known secret values.
   - Log tests: export logs do not contain secrets.
 
-### [ ] T-059: Реализовать импорт подключений
+### [x] T-059: Реализовать импорт подключений
 
 - Приоритет: Must.
 - Зависимости: T-015, T-016, T-023, T-058.
@@ -848,7 +848,7 @@
   - Unit tests на duplicate handling.
   - Tests на отсутствие записи секретов в логи.
 
-### [ ] T-060: Реализовать опасный экспорт с plain-text паролями
+### [x] T-060: Реализовать опасный экспорт с plain-text паролями
 
 - Приоритет: Must.
 - Зависимости: T-019, T-023, T-058.
@@ -920,7 +920,7 @@
   - Не использовать настоящие пароли.
   - Synthetic secrets не логируются.
 
-### [ ] T-065: Покрыть ImportExportService tests
+### [x] T-065: Покрыть ImportExportService tests
 
 - Приоритет: Must.
 - Зависимости: T-058, T-059, T-060.

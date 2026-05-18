@@ -33,14 +33,6 @@ smb::core::AppError cancelledError() {
       QStringLiteral("Operation cancelled."), false);
 }
 
-smb::core::AppError notImplementedError(const QString &operation) {
-  return smb::core::AppError::fromCode(
-      smb::core::ErrorCode::Unknown, smb::core::ErrorCategory::Smb,
-      QStringLiteral("%1 is not implemented by Libsmb2SmbClient yet.")
-          .arg(operation),
-      false);
-}
-
 QString normalizedRemotePath(QString remotePath) {
   remotePath =
       remotePath.trimmed().replace(QLatin1Char('\\'), QLatin1Char('/'));
@@ -51,6 +43,12 @@ QString normalizedRemotePath(QString remotePath) {
     remotePath.chop(1);
   }
   return remotePath;
+}
+
+bool sameShare(const smb::core::Connection &left,
+               const smb::core::Connection &right) {
+  return left.server.compare(right.server, Qt::CaseInsensitive) == 0 &&
+         left.share.compare(right.share, Qt::CaseInsensitive) == 0;
 }
 
 QString joinRemotePath(const QString &parent, const QString &name) {
@@ -683,23 +681,192 @@ smb::core::Result<bool> Libsmb2SmbClient::uploadFile(
 }
 
 smb::core::Result<bool>
-Libsmb2SmbClient::copy(const smb::core::Connection &,
-                       const smb::core::CredentialSecret *, const QString &,
-                       const smb::core::Connection &,
-                       const smb::core::CredentialSecret *, const QString &,
-                       const smb::core::OperationContext &) {
-  return smb::core::Result<bool>::failure(
-      notImplementedError(QStringLiteral("copy")));
+Libsmb2SmbClient::copy(const smb::core::Connection &sourceConnection,
+                       const smb::core::CredentialSecret *sourceSecret,
+                       const QString &sourceRemotePath,
+                       const smb::core::Connection &targetConnection,
+                       const smb::core::CredentialSecret *targetSecret,
+                       const QString &targetRemotePath,
+                       const smb::core::OperationContext &context) {
+  const auto validSource =
+      validateConnectionInput(sourceConnection, sourceSecret, context);
+  if (!validSource.ok()) {
+    return validSource;
+  }
+
+  const auto validTarget =
+      validateConnectionInput(targetConnection, targetSecret, context);
+  if (!validTarget.ok()) {
+    return validTarget;
+  }
+
+  Smb2Session sourceSession(m_timeoutSeconds);
+  const auto sourceConnected = connectSession(sourceSession, sourceConnection,
+                                              sourceSecret, m_sanitizer);
+  if (!sourceConnected.ok()) {
+    return sourceConnected;
+  }
+
+  if (isCancelled(context)) {
+    return smb::core::Result<bool>::failure(cancelledError());
+  }
+
+  Smb2Session targetSession(m_timeoutSeconds);
+  const auto targetConnected = connectSession(targetSession, targetConnection,
+                                              targetSecret, m_sanitizer);
+  if (!targetConnected.ok()) {
+    return targetConnected;
+  }
+
+  const auto sourceBytes = normalizedRemotePath(sourceRemotePath).toUtf8();
+  const auto targetBytes = normalizedRemotePath(targetRemotePath).toUtf8();
+
+  smb2_stat_64 stat{};
+  const auto statRc =
+      smb2_stat(sourceSession.context(), sourceBytes.constData(), &stat);
+  if (statRc < 0) {
+    const auto details =
+        smb2Details(sourceSession.context(), statRc, QStringLiteral("stat"));
+    return smb::core::Result<bool>::failure(smbError(
+        mapLibsmb2Error(statRc, details, Libsmb2ErrorContext::FileOperation),
+        details, m_sanitizer, sourceSecret));
+  }
+
+  if (stat.smb2_type == SMB2_TYPE_DIRECTORY) {
+    return smb::core::Result<bool>::failure(smb::core::AppError::fromCode(
+        smb::core::ErrorCode::Unknown, smb::core::ErrorCategory::Smb,
+        QStringLiteral("Directory copy is not supported yet."), false));
+  }
+
+  auto *rawSource =
+      smb2_open(sourceSession.context(), sourceBytes.constData(), O_RDONLY);
+  if (rawSource == nullptr) {
+    const auto status = statusFromErrno();
+    const auto details = smb2Details(sourceSession.context(), status,
+                                     QStringLiteral("open_read"));
+    return smb::core::Result<bool>::failure(smbError(
+        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
+        details, m_sanitizer, sourceSecret));
+  }
+  Smb2FileHandle sourceFile(sourceSession.context(), rawSource);
+
+  auto *rawTarget = smb2_open(targetSession.context(), targetBytes.constData(),
+                              O_WRONLY | O_CREAT);
+  if (rawTarget == nullptr) {
+    const auto status = statusFromErrno();
+    const auto details = smb2Details(targetSession.context(), status,
+                                     QStringLiteral("open_write"));
+    return smb::core::Result<bool>::failure(smbError(
+        mapLibsmb2Error(status, details, Libsmb2ErrorContext::FileOperation),
+        details, m_sanitizer, targetSecret));
+  }
+  Smb2FileHandle targetFile(targetSession.context(), rawTarget);
+
+  const auto truncateRc =
+      smb2_ftruncate(targetSession.context(), targetFile.get(), 0);
+  if (truncateRc < 0) {
+    const auto details = smb2Details(targetSession.context(), truncateRc,
+                                     QStringLiteral("truncate"));
+    return smb::core::Result<bool>::failure(
+        smbError(mapLibsmb2Error(truncateRc, details,
+                                 Libsmb2ErrorContext::FileOperation),
+                 details, m_sanitizer, targetSecret));
+  }
+
+  const auto totalSize = static_cast<qint64>(stat.smb2_size);
+  QByteArray buffer(256 * 1024, '\0');
+  qint64 offset = 0;
+  while (true) {
+    if (isCancelled(context)) {
+      return smb::core::Result<bool>::failure(cancelledError());
+    }
+
+    const auto readRc = smb2_pread(sourceSession.context(), sourceFile.get(),
+                                   reinterpret_cast<uint8_t *>(buffer.data()),
+                                   static_cast<uint32_t>(buffer.size()),
+                                   static_cast<uint64_t>(offset));
+    if (readRc == -EAGAIN) {
+      continue;
+    }
+    if (readRc < 0) {
+      const auto details =
+          smb2Details(sourceSession.context(), readRc, QStringLiteral("read"));
+      return smb::core::Result<bool>::failure(smbError(
+          mapLibsmb2Error(readRc, details, Libsmb2ErrorContext::FileOperation),
+          details, m_sanitizer, sourceSecret));
+    }
+    if (readRc == 0) {
+      break;
+    }
+
+    qint64 chunkOffset = 0;
+    while (chunkOffset < readRc) {
+      if (isCancelled(context)) {
+        return smb::core::Result<bool>::failure(cancelledError());
+      }
+
+      const auto remaining = readRc - chunkOffset;
+      const auto writeRc = smb2_pwrite(
+          targetSession.context(), targetFile.get(),
+          reinterpret_cast<const uint8_t *>(buffer.constData() + chunkOffset),
+          static_cast<uint32_t>(remaining),
+          static_cast<uint64_t>(offset + chunkOffset));
+      if (writeRc == -EAGAIN) {
+        continue;
+      }
+      if (writeRc <= 0) {
+        const auto details = smb2Details(targetSession.context(), writeRc,
+                                         QStringLiteral("write"));
+        return smb::core::Result<bool>::failure(
+            smbError(mapLibsmb2Error(writeRc, details,
+                                     Libsmb2ErrorContext::FileOperation),
+                     details, m_sanitizer, targetSecret));
+      }
+      chunkOffset += writeRc;
+    }
+
+    offset += readRc;
+    if (context.progressCallback) {
+      context.progressCallback(smb::core::TransferProgress{offset, totalSize});
+    }
+  }
+
+  const auto fsyncRc = smb2_fsync(targetSession.context(), targetFile.get());
+  if (fsyncRc < 0) {
+    const auto details =
+        smb2Details(targetSession.context(), fsyncRc, QStringLiteral("fsync"));
+    return smb::core::Result<bool>::failure(smbError(
+        mapLibsmb2Error(fsyncRc, details, Libsmb2ErrorContext::FileOperation),
+        details, m_sanitizer, targetSecret));
+  }
+
+  return smb::core::Result<bool>::success(true);
 }
 
 smb::core::Result<bool>
-Libsmb2SmbClient::move(const smb::core::Connection &,
-                       const smb::core::CredentialSecret *, const QString &,
-                       const smb::core::Connection &,
-                       const smb::core::CredentialSecret *, const QString &,
-                       const smb::core::OperationContext &) {
-  return smb::core::Result<bool>::failure(
-      notImplementedError(QStringLiteral("move")));
+Libsmb2SmbClient::move(const smb::core::Connection &sourceConnection,
+                       const smb::core::CredentialSecret *sourceSecret,
+                       const QString &sourceRemotePath,
+                       const smb::core::Connection &targetConnection,
+                       const smb::core::CredentialSecret *targetSecret,
+                       const QString &targetRemotePath,
+                       const smb::core::OperationContext &context) {
+  if (sameShare(sourceConnection, targetConnection)) {
+    return rename(sourceConnection, sourceSecret, sourceRemotePath,
+                  targetRemotePath, context);
+  }
+
+  auto copied = copy(sourceConnection, sourceSecret, sourceRemotePath,
+                     targetConnection, targetSecret, targetRemotePath, context);
+  if (!copied.ok()) {
+    return copied;
+  }
+
+  if (isCancelled(context)) {
+    return smb::core::Result<bool>::failure(cancelledError());
+  }
+
+  return remove(sourceConnection, sourceSecret, sourceRemotePath, context);
 }
 
 } // namespace smb::infrastructure

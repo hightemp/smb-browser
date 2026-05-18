@@ -1,14 +1,19 @@
 #include "ui/RemoteBrowserWidget.h"
 
+#include <QApplication>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFile>
 #include <QHash>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QMutex>
 #include <QPushButton>
 #include <QTableView>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <QtTest/QtTest>
 #include <algorithm>
 
@@ -236,6 +241,64 @@ public:
     return smb::core::Result<bool>::success(true);
   }
 
+  smb::core::Result<bool> copy(const QString &, const QString &sourceRemotePath,
+                               const QString &, const QString &targetRemotePath,
+                               const smb::core::OperationContext &) override {
+    QMutexLocker locker(&mutex);
+    const auto source = normalizePath(sourceRemotePath);
+    const auto target = normalizePath(targetRemotePath);
+    operationPaths.push_back(QStringLiteral("copy:%1:%2").arg(source, target));
+    if (operationFailures.contains(source)) {
+      return smb::core::Result<bool>::failure(operationFailures.value(source));
+    }
+
+    auto parentEntries = directories.value(parentPath(target));
+    if (directories.contains(source)) {
+      directories.insert(target, directories.value(source));
+      parentEntries.push_back(directory(fileName(target), target));
+    } else {
+      parentEntries.push_back(::file(fileName(target), target));
+    }
+    directories.insert(parentPath(target), parentEntries);
+    return smb::core::Result<bool>::success(true);
+  }
+
+  smb::core::Result<bool>
+  move(const QString &sourceConnectionId, const QString &sourceRemotePath,
+       const QString &targetConnectionId, const QString &targetRemotePath,
+       const smb::core::OperationContext &context) override {
+    Q_UNUSED(sourceConnectionId)
+    Q_UNUSED(targetConnectionId)
+    Q_UNUSED(context)
+
+    QMutexLocker locker(&mutex);
+    const auto source = normalizePath(sourceRemotePath);
+    const auto target = normalizePath(targetRemotePath);
+    operationPaths.push_back(QStringLiteral("move:%1:%2").arg(source, target));
+    if (operationFailures.contains(source)) {
+      return smb::core::Result<bool>::failure(operationFailures.value(source));
+    }
+
+    auto targetParentEntries = directories.value(parentPath(target));
+    if (directories.contains(source)) {
+      directories.insert(target, directories.value(source));
+      targetParentEntries.push_back(directory(fileName(target), target));
+    } else {
+      targetParentEntries.push_back(::file(fileName(target), target));
+    }
+    directories.insert(parentPath(target), targetParentEntries);
+
+    auto sourceParentEntries = directories.value(parentPath(source));
+    sourceParentEntries.erase(
+        std::remove_if(
+            sourceParentEntries.begin(), sourceParentEntries.end(),
+            [source](const auto &entry) { return entry.remotePath == source; }),
+        sourceParentEntries.end());
+    directories.insert(parentPath(source), sourceParentEntries);
+    directories.remove(source);
+    return smb::core::Result<bool>::success(true);
+  }
+
   QMutex mutex;
   QHash<QString, QVector<smb::core::RemoteFileEntry>> directories;
   QHash<QString, smb::core::AppError> failures;
@@ -276,6 +339,20 @@ public:
     return nextUploadPath;
   }
 
+  std::optional<smb::ui::RemoteDestination> promptCopyDestination(
+      QWidget *, const QString &, const QString &,
+      const QVector<smb::core::RemoteFileEntry> &entries) override {
+    copyPrompts.push_back(entries.size());
+    return nextCopyDestination;
+  }
+
+  std::optional<smb::ui::RemoteDestination> promptMoveDestination(
+      QWidget *, const QString &, const QString &,
+      const QVector<smb::core::RemoteFileEntry> &entries) override {
+    movePrompts.push_back(entries.size());
+    return nextMoveDestination;
+  }
+
   void showError(QWidget *, const QString &title,
                  const smb::core::AppError &error) override {
     errors.push_back(title + QStringLiteral(":") +
@@ -286,11 +363,15 @@ public:
   std::optional<QString> nextRenameName;
   std::optional<QString> nextDownloadPath;
   std::optional<QString> nextUploadPath;
+  std::optional<smb::ui::RemoteDestination> nextCopyDestination;
+  std::optional<smb::ui::RemoteDestination> nextMoveDestination;
   bool confirmDeleteResult = true;
   QVector<QString> confirmedDeletes;
   QVector<QString> renamePrompts;
   QVector<QString> downloadPrompts;
   QVector<QString> uploadPrompts;
+  QVector<int> copyPrompts;
+  QVector<int> movePrompts;
   QVector<QString> errors;
 };
 
@@ -614,6 +695,120 @@ private slots:
       }
     }
     QVERIFY(foundUpload);
+  }
+
+  void copyAndMoveSelectedEntriesToDestination() {
+    FakeRemoteBrowserUseCase useCase;
+    useCase.directories.insert(
+        QStringLiteral("/"),
+        {file(QStringLiteral("a.txt"), QStringLiteral("/a.txt")),
+         file(QStringLiteral("b.txt"), QStringLiteral("/b.txt"))});
+    useCase.directories.insert(QStringLiteral("/dest"), {});
+
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {file(QStringLiteral("a.txt"), QStringLiteral("/a.txt")),
+         file(QStringLiteral("b.txt"), QStringLiteral("/b.txt"))}));
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    auto *copyButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserCopyButton"));
+    auto *moveButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserMoveButton"));
+    QVERIFY(view != nullptr);
+    QVERIFY(copyButton != nullptr);
+    QVERIFY(moveButton != nullptr);
+
+    view->selectionModel()->select(view->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+    view->selectionModel()->select(view->model()->index(1, 0),
+                                   QItemSelectionModel::Select |
+                                       QItemSelectionModel::Rows);
+    prompter.nextCopyDestination = smb::ui::RemoteDestination{
+        QStringLiteral("conn-2"), QStringLiteral("/dest")};
+    copyButton->click();
+
+    QTRY_COMPARE(prompter.copyPrompts, QVector<int>{2});
+    QTRY_VERIFY([&useCase]() {
+      QMutexLocker locker(&useCase.mutex);
+      return useCase.operationPaths.contains(
+                 QStringLiteral("copy:/a.txt:/dest/a.txt")) &&
+             useCase.operationPaths.contains(
+                 QStringLiteral("copy:/b.txt:/dest/b.txt"));
+    }());
+
+    view->selectionModel()->select(view->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+    view->selectionModel()->select(view->model()->index(1, 0),
+                                   QItemSelectionModel::Select |
+                                       QItemSelectionModel::Rows);
+    prompter.nextMoveDestination = smb::ui::RemoteDestination{
+        QStringLiteral("conn-2"), QStringLiteral("/dest")};
+    moveButton->click();
+    QTRY_COMPARE(widget.model()->rowCount(), 0);
+    QCOMPARE(prompter.movePrompts, QVector<int>{2});
+  }
+
+  void dragAndDropLocalFilesUploadsToCurrentFolder() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const auto firstPath = tempDir.filePath(QStringLiteral("first.txt"));
+    const auto secondPath = tempDir.filePath(QStringLiteral("second.txt"));
+    {
+      QFile first(firstPath);
+      QVERIFY(first.open(QIODevice::WriteOnly | QIODevice::Truncate));
+      first.write("first");
+      QFile second(secondPath);
+      QVERIFY(second.open(QIODevice::WriteOnly | QIODevice::Truncate));
+      second.write("second");
+    }
+
+    FakeRemoteBrowserUseCase useCase;
+    useCase.directories.insert(QStringLiteral("/"), {});
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.setDirectory(directoryResult(QStringLiteral("/"), {}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QMimeData mimeData;
+    mimeData.setUrls(
+        {QUrl::fromLocalFile(firstPath), QUrl::fromLocalFile(secondPath)});
+
+    QDragEnterEvent dragEnterEvent(QPoint(10, 10), Qt::CopyAction, &mimeData,
+                                   Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &dragEnterEvent);
+    QVERIFY(dragEnterEvent.isAccepted());
+
+    QDropEvent dropEvent(QPointF(10, 10), Qt::CopyAction, &mimeData,
+                         Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &dropEvent);
+
+    QTRY_VERIFY(widget.model()->rowCount() >= 2);
+    bool foundFirst = false;
+    bool foundSecond = false;
+    for (const auto &entry : widget.model()->entries()) {
+      foundFirst = foundFirst || entry.name == QStringLiteral("first.txt");
+      foundSecond = foundSecond || entry.name == QStringLiteral("second.txt");
+    }
+    QVERIFY(foundFirst);
+    QVERIFY(foundSecond);
+
+    QMutexLocker locker(&useCase.mutex);
+    QVERIFY(
+        useCase.operationPaths.contains(QStringLiteral("upload:/first.txt")));
+    QVERIFY(
+        useCase.operationPaths.contains(QStringLiteral("upload:/second.txt")));
   }
 };
 

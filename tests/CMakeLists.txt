@@ -331,6 +331,42 @@ target_link_libraries(test_open_file_service
 
 add_test(NAME open_file_service COMMAND test_open_file_service)
 
+add_executable(test_preview_service
+    test_preview_service.cpp
+)
+
+target_link_libraries(test_preview_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME preview_service COMMAND test_preview_service)
+
+add_executable(test_import_export_service
+    test_import_export_service.cpp
+)
+
+target_link_libraries(test_import_export_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME import_export_service COMMAND test_import_export_service)
+
+add_executable(test_settings_service
+    test_settings_service.cpp
+)
+
+target_link_libraries(test_settings_service
+    PRIVATE
+        smb_browser_application
+        Qt5::Test
+)
+
+add_test(NAME settings_service COMMAND test_settings_service)
+
 add_executable(test_remote_file_model
     test_remote_file_model.cpp
 )
@@ -360,6 +396,58 @@ target_link_libraries(test_remote_browser_widget
 
 add_test(NAME remote_browser_widget COMMAND test_remote_browser_widget)
 set_tests_properties(remote_browser_widget PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_log_viewer
+    test_log_viewer.cpp
+)
+
+target_link_libraries(test_log_viewer
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME log_viewer COMMAND test_log_viewer)
+set_tests_properties(log_viewer PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_theme_manager
+    test_theme_manager.cpp
+)
+
+target_link_libraries(test_theme_manager
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME theme_manager COMMAND test_theme_manager)
+set_tests_properties(theme_manager PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_localization_manager
+    test_localization_manager.cpp
+)
+
+target_link_libraries(test_localization_manager
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+if(TARGET smb_browser_translations)
+    add_dependencies(test_localization_manager smb_browser_translations)
+endif()
+
+add_test(NAME localization_manager COMMAND test_localization_manager)
+set_tests_properties(localization_manager PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
@@ -408,6 +496,54 @@ target_link_libraries(test_connection_dialog
 
 add_test(NAME connection_dialog COMMAND test_connection_dialog)
 set_tests_properties(connection_dialog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_settings_dialog
+    test_settings_dialog.cpp
+)
+
+target_link_libraries(test_settings_dialog
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME settings_dialog COMMAND test_settings_dialog)
+set_tests_properties(settings_dialog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_status_panel
+    test_status_panel.cpp
+)
+
+target_link_libraries(test_status_panel
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME status_panel COMMAND test_status_panel)
+set_tests_properties(status_panel PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_tray_controller
+    test_tray_controller.cpp
+)
+
+target_link_libraries(test_tray_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME tray_controller COMMAND test_tray_controller)
+set_tests_properties(tray_controller PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 

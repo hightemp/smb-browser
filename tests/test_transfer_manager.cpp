@@ -17,6 +17,14 @@ smb::core::Connection connection() {
   return value;
 }
 
+smb::core::Connection archiveConnection() {
+  auto value = connection();
+  value.name = QStringLiteral("Archive Share");
+  value.normalizedUri = QStringLiteral("smb://server/archive");
+  value.share = QStringLiteral("archive");
+  return value;
+}
+
 class SlowDownloadSmbClient final : public smb::core::SmbClient {
 public:
   smb::core::Result<bool>
@@ -179,6 +187,42 @@ private slots:
                 .downloadFile(connection(), nullptr,
                               QStringLiteral("/moved.txt"), target, {})
                 .ok());
+  }
+
+  void crossShareMoveDoesNotDeleteSourceWhenCopyFails() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::tests::FakeSmbClient smbClient;
+    smbClient.addFile(QStringLiteral("/source.txt"), QByteArrayLiteral("copy"));
+    smbClient.failOperation(smb::tests::FakeSmbOperation::Copy,
+                            smb::core::ErrorCode::PermissionDenied);
+
+    smb::application::OperationQueue queue(1);
+    smb::application::TransferManager manager(queue, smbClient);
+
+    const auto moveId = manager.move(
+        connection(), std::nullopt, QStringLiteral("/source.txt"),
+        archiveConnection(), std::nullopt, QStringLiteral("/moved.txt"));
+    QTRY_VERIFY(queue.snapshot(moveId).state ==
+                smb::application::OperationState::Failed);
+    QVERIFY(queue.snapshot(moveId).error.code ==
+            smb::core::ErrorCode::PermissionDenied);
+
+    const auto source = tempDir.filePath(QStringLiteral("source.txt"));
+    QVERIFY(smbClient
+                .downloadFile(connection(), nullptr,
+                              QStringLiteral("/source.txt"), source, {})
+                .ok());
+    QFile sourceFile(source);
+    QVERIFY(sourceFile.open(QIODevice::ReadOnly));
+    QCOMPARE(sourceFile.readAll(), QByteArrayLiteral("copy"));
+
+    const auto target = tempDir.filePath(QStringLiteral("target.txt"));
+    QVERIFY(!smbClient
+                 .downloadFile(archiveConnection(), nullptr,
+                               QStringLiteral("/moved.txt"), target, {})
+                 .ok());
   }
 
   void cancellationIsForwardedThroughOperationQueue() {

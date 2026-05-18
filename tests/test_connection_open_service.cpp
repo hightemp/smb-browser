@@ -322,6 +322,56 @@ private slots:
     }
     QVERIFY(foundUpload);
   }
+
+  void copyAndMoveOperationsLoadBothConnections() {
+    auto fixture = createFixture();
+    QVERIFY(fixture->repository != nullptr);
+    QVERIFY(
+        fixture->repository->add(connection(QStringLiteral("conn-1"))).ok());
+    auto targetConnection = connection(QStringLiteral("conn-2"));
+    targetConnection.share = QStringLiteral("archive");
+    targetConnection.normalizedUri = QStringLiteral("smb://server/archive");
+    QVERIFY(fixture->repository->add(targetConnection).ok());
+
+    FakeCredentialStore credentialStore;
+    credentialStore.values.insert(QStringLiteral("credential-ref"),
+                                  QByteArrayLiteral("expected-secret"));
+
+    smb::tests::FakeSmbClient smbClient;
+    smbClient.setRequirePassword(true);
+    smbClient.setExpectedSecret(QByteArrayLiteral("expected-secret"));
+    smbClient.addFile(QStringLiteral("/reports/source.txt"),
+                      QByteArrayLiteral("copy-data"));
+
+    smb::application::ConnectionOpenService service(*fixture->repository,
+                                                    credentialStore, smbClient);
+
+    const auto copied = service.copy(
+        QStringLiteral("conn-1"), QStringLiteral("/reports/source.txt"),
+        QStringLiteral("conn-2"), QStringLiteral("/reports/copy.txt"));
+    QVERIFY2(copied.ok(), qPrintable(copied.error().sanitizedTechnicalDetails));
+
+    const auto moved = service.move(
+        QStringLiteral("conn-1"), QStringLiteral("/reports/copy.txt"),
+        QStringLiteral("conn-2"), QStringLiteral("/reports/moved.txt"));
+    QVERIFY2(moved.ok(), qPrintable(moved.error().sanitizedTechnicalDetails));
+
+    const auto listed = service.listDirectory(QStringLiteral("conn-1"),
+                                              QStringLiteral("/reports"));
+    QVERIFY(listed.ok());
+
+    bool foundSource = false;
+    bool foundCopy = false;
+    bool foundMoved = false;
+    for (const auto &entry : listed.value().entries) {
+      foundSource = foundSource || entry.name == QStringLiteral("source.txt");
+      foundCopy = foundCopy || entry.name == QStringLiteral("copy.txt");
+      foundMoved = foundMoved || entry.name == QStringLiteral("moved.txt");
+    }
+    QVERIFY(foundSource);
+    QVERIFY(!foundCopy);
+    QVERIFY(foundMoved);
+  }
 };
 
 QTEST_MAIN(ConnectionOpenServiceTest)

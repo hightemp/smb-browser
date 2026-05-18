@@ -134,6 +134,78 @@ smb::core::Result<bool> ConnectionOpenService::uploadFile(
       context);
 }
 
+smb::core::Result<bool> ConnectionOpenService::copy(
+    const QString &sourceConnectionId, const QString &sourceRemotePath,
+    const QString &targetConnectionId, const QString &targetRemotePath,
+    const smb::core::OperationContext &context) {
+  auto source = loadConnectionWithSecret(sourceConnectionId);
+  if (!source.ok()) {
+    rememberError(sourceConnectionId, source.error());
+    return smb::core::Result<bool>::failure(source.error());
+  }
+
+  auto target = loadConnectionWithSecret(targetConnectionId);
+  if (!target.ok()) {
+    rememberError(source.value().connection.id, target.error());
+    return smb::core::Result<bool>::failure(target.error());
+  }
+
+  const auto sourcePath = normalizedStartPath(sourceRemotePath);
+  const auto targetPath = normalizedStartPath(targetRemotePath);
+  const auto *sourceSecret = source.value().secret.has_value()
+                                 ? &source.value().secret.value()
+                                 : nullptr;
+  const auto *targetSecret = target.value().secret.has_value()
+                                 ? &target.value().secret.value()
+                                 : nullptr;
+  auto copied = m_smbClient.copy(source.value().connection, sourceSecret,
+                                 sourcePath, target.value().connection,
+                                 targetSecret, targetPath, context);
+  if (!copied.ok()) {
+    rememberError(source.value().connection.id, copied.error());
+    if (source.value().connection.id != target.value().connection.id) {
+      rememberError(target.value().connection.id, copied.error());
+    }
+  }
+  return copied;
+}
+
+smb::core::Result<bool> ConnectionOpenService::move(
+    const QString &sourceConnectionId, const QString &sourceRemotePath,
+    const QString &targetConnectionId, const QString &targetRemotePath,
+    const smb::core::OperationContext &context) {
+  auto source = loadConnectionWithSecret(sourceConnectionId);
+  if (!source.ok()) {
+    rememberError(sourceConnectionId, source.error());
+    return smb::core::Result<bool>::failure(source.error());
+  }
+
+  auto target = loadConnectionWithSecret(targetConnectionId);
+  if (!target.ok()) {
+    rememberError(source.value().connection.id, target.error());
+    return smb::core::Result<bool>::failure(target.error());
+  }
+
+  const auto sourcePath = normalizedStartPath(sourceRemotePath);
+  const auto targetPath = normalizedStartPath(targetRemotePath);
+  const auto *sourceSecret = source.value().secret.has_value()
+                                 ? &source.value().secret.value()
+                                 : nullptr;
+  const auto *targetSecret = target.value().secret.has_value()
+                                 ? &target.value().secret.value()
+                                 : nullptr;
+  auto moved = m_smbClient.move(source.value().connection, sourceSecret,
+                                sourcePath, target.value().connection,
+                                targetSecret, targetPath, context);
+  if (!moved.ok()) {
+    rememberError(source.value().connection.id, moved.error());
+    if (source.value().connection.id != target.value().connection.id) {
+      rememberError(target.value().connection.id, moved.error());
+    }
+  }
+  return moved;
+}
+
 smb::core::Result<OpenConnectionResult> ConnectionOpenService::openAtPath(
     const QString &connectionId, const QString &remotePath,
     bool updateLastOpened, const smb::core::OperationContext &context) {
@@ -204,6 +276,27 @@ smb::core::Result<bool> ConnectionOpenService::runFileOperation(
     rememberError(connection.id, result.error());
   }
   return result;
+}
+
+smb::core::Result<ConnectionOpenService::ConnectionWithSecret>
+ConnectionOpenService::loadConnectionWithSecret(
+    const QString &connectionId) const {
+  auto loadedConnection = m_repository.getById(connectionId);
+  if (!loadedConnection.ok()) {
+    return smb::core::Result<ConnectionWithSecret>::failure(
+        loadedConnection.error());
+  }
+
+  auto loadedSecret = loadSecret(loadedConnection.value());
+  if (!loadedSecret.ok()) {
+    return smb::core::Result<ConnectionWithSecret>::failure(
+        loadedSecret.error());
+  }
+
+  ConnectionWithSecret result;
+  result.connection = loadedConnection.value();
+  result.secret = std::move(loadedSecret.value());
+  return smb::core::Result<ConnectionWithSecret>::success(std::move(result));
 }
 
 smb::core::Result<std::optional<smb::core::CredentialSecret>>
