@@ -274,6 +274,7 @@ void SettingsDialog::accept() {
     m_localizationManager->apply(*QCoreApplication::instance());
   }
 
+  emit settingsSaved(m_settings);
   QDialog::accept();
 }
 

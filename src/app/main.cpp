@@ -143,12 +143,21 @@ QString statusForCheck(
   return QObject::tr("Connection: Unavailable");
 }
 
+bool closeToTrayDisabledByEnvironment() {
+  return qEnvironmentVariableIsSet("SMB_BROWSER_DISABLE_CLOSE_TO_TRAY");
+}
+
+bool effectiveCloseToTray(const smb::core::ApplicationSettings &settings) {
+  return settings.closeToTray && !closeToTrayDisabledByEnvironment();
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   QApplication::setApplicationName(QStringLiteral("SMB Browser"));
   QApplication::setOrganizationName(QStringLiteral("SMB Browser"));
+  QApplication::setQuitOnLastWindowClosed(true);
 
   const auto appDataPath = writableAppDataPath();
   if (!QDir().mkpath(appDataPath)) {
@@ -315,6 +324,14 @@ int main(int argc, char *argv[]) {
 
   smb::ui::TrayController trayController;
   trayController.setMainWindow(&window);
+  trayController.setCloseToTrayEnabled(effectiveCloseToTray(settings));
+  trayController.setNotificationsEnabled(settings.showTrayNotifications);
+  QObject::connect(
+      &window, &MainWindow::settingsSaved, &trayController,
+      [&trayController](const smb::core::ApplicationSettings &next) {
+        trayController.setCloseToTrayEnabled(effectiveCloseToTray(next));
+        trayController.setNotificationsEnabled(next.showTrayNotifications);
+      });
   trayController.showTrayIcon();
   window.show();
 

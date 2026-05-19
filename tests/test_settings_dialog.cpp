@@ -101,6 +101,14 @@ private slots:
     FakeSettingsUseCase useCase;
     smb::ui::SettingsDialog dialog(&useCase);
     QVERIFY(dialog.loadSettings());
+    bool settingsSavedEmitted = false;
+    smb::core::ApplicationSettings emittedSettings;
+    QObject::connect(&dialog, &smb::ui::SettingsDialog::settingsSaved,
+                     [&settingsSavedEmitted, &emittedSettings](
+                         const smb::core::ApplicationSettings &settings) {
+                       settingsSavedEmitted = true;
+                       emittedSettings = settings;
+                     });
 
     auto *theme = dialog.findChild<QComboBox *>(QStringLiteral("themeModeCombo"));
     auto *language =
@@ -122,6 +130,9 @@ private slots:
     QVERIFY(useCase.saved.themeMode == smb::core::ThemeMode::Dark);
     QVERIFY(useCase.saved.languageMode == smb::core::LanguageMode::Russian);
     QCOMPARE(useCase.saved.operationTimeoutMs, 120000);
+    QVERIFY(settingsSavedEmitted);
+    QVERIFY(emittedSettings.themeMode == smb::core::ThemeMode::Dark);
+    QVERIFY(emittedSettings.languageMode == smb::core::LanguageMode::Russian);
   }
 
   void clearCacheButtonClearsConfiguredCache() {

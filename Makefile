@@ -75,7 +75,7 @@ ci: test
 
 .PHONY: run
 run: build
-	$(APP)
+	SMB_BROWSER_DISABLE_CLOSE_TO_TRAY=1 $(APP)
 
 .PHONY: run-offscreen
 run-offscreen: build

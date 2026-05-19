@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Settings.h"
+
 #include <QMainWindow>
 #include <memory>
 
@@ -44,6 +46,7 @@ public:
 
 signals:
   void connectionsImported();
+  void settingsSaved(const smb::core::ApplicationSettings &settings);
 
 private:
   void changeEvent(QEvent *event) override;

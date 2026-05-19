@@ -94,6 +94,8 @@ QWidget *MainWindow::createTopBar() {
         m_settingsUseCase, m_themeManager, m_localizationManager, this,
         m_tempFileCache);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &smb::ui::SettingsDialog::settingsSaved, this,
+            &MainWindow::settingsSaved);
     dialog->loadSettings();
     dialog->show();
   });

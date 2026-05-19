@@ -9,6 +9,7 @@
 
 #include <QHash>
 #include <QPoint>
+#include <QSet>
 #include <QUrl>
 #include <QWidget>
 #include <functional>
@@ -19,7 +20,9 @@ class QHBoxLayout;
 class QLineEdit;
 class QPushButton;
 class QScrollArea;
+class QFileSystemWatcher;
 class QTableView;
+class QTimer;
 class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
@@ -115,6 +118,11 @@ private:
                     const smb::core::OperationContext &context);
   void uploadLocalFiles(QVector<QString> localPaths);
   void openRemoteFile(const smb::core::RemoteFileEntry &entry);
+  void registerOpenFileSession(const QString &connectionId,
+                               const QString &remotePath,
+                               const QString &localPath);
+  void scheduleOpenFileSync(const QString &localPath);
+  void flushPendingOpenFileSyncs();
   void startExternalDragFromMouse();
   void startExternalDragWithUrls(const QVector<QUrl> &urls);
 
@@ -124,6 +132,12 @@ private:
                                 const QString &childName);
   static bool isValidEntryName(const QString &name);
   static smb::core::AppError invalidNameError();
+
+  struct OpenFileSession {
+    QString connectionId;
+    QString remotePath;
+    QString localPath;
+  };
 
   smb::application::RemoteDirectoryUseCase &m_directoryUseCase;
   smb::application::RemoteFileOperationUseCase &m_fileOperationUseCase;
@@ -140,6 +154,8 @@ private:
   QScrollArea *m_locationScrollArea = nullptr;
   QWidget *m_locationBar = nullptr;
   QHBoxLayout *m_locationLayout = nullptr;
+  QFileSystemWatcher *m_openFileWatcher = nullptr;
+  QTimer *m_openFileSyncTimer = nullptr;
   QLineEdit *m_searchEdit = nullptr;
   QPushButton *m_backButton = nullptr;
   QPushButton *m_forwardButton = nullptr;
@@ -156,6 +172,8 @@ private:
   QString m_locationRootText;
   QString m_currentRemotePath;
   QHash<QString, smb::core::RemoteFileEntry> m_pendingSymlinkFileFallbacks;
+  QHash<QString, OpenFileSession> m_openFileSessions;
+  QSet<QString> m_pendingOpenFileSyncs;
   QVector<QString> m_backStack;
   QVector<QString> m_forwardStack;
   QPoint m_dragStartPosition;

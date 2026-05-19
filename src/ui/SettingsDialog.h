@@ -39,6 +39,9 @@ public:
 public slots:
   void accept() override;
 
+signals:
+  void settingsSaved(const smb::core::ApplicationSettings &settings);
+
 private:
   void updateTrayControls();
   void clearCache();

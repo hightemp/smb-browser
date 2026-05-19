@@ -27,7 +27,7 @@ struct ApplicationSettings {
   LanguageMode languageMode = LanguageMode::English;
   CredentialStoreMode credentialStoreMode =
       CredentialStoreMode::SystemKeychainWithVaultFallback;
-  bool closeToTray = true;
+  bool closeToTray = false;
   bool showTrayNotifications = true;
   QString logLevel = QStringLiteral("info");
   int operationTimeoutMs = 30000;

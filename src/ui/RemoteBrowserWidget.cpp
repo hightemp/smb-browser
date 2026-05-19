@@ -10,6 +10,7 @@
 #include <QDropEvent>
 #include <QEvent>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -27,6 +28,7 @@
 #include <QSizePolicy>
 #include <QStyle>
 #include <QTableView>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -72,6 +74,10 @@ bool isDownloadableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
          entry.type != smb::core::RemoteFileType::Directory;
 }
 
+QString normalizedLocalPath(const QString &path) {
+  return QFileInfo(path).absoluteFilePath();
+}
+
 } // namespace
 
 RemoteBrowserWidget::RemoteBrowserWidget(
@@ -102,6 +108,18 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   m_model = new RemoteFileModel(this);
   m_filterModel = new RemoteFileFilterProxyModel(this);
   m_filterModel->setSourceModel(m_model);
+
+  m_openFileWatcher = new QFileSystemWatcher(this);
+  m_openFileWatcher->setObjectName(QStringLiteral("openFileWatcher"));
+  connect(m_openFileWatcher, &QFileSystemWatcher::fileChanged, this,
+          [this](const QString &path) { scheduleOpenFileSync(path); });
+
+  m_openFileSyncTimer = new QTimer(this);
+  m_openFileSyncTimer->setObjectName(QStringLiteral("openFileSyncTimer"));
+  m_openFileSyncTimer->setSingleShot(true);
+  m_openFileSyncTimer->setInterval(1200);
+  connect(m_openFileSyncTimer, &QTimer::timeout, this,
+          &RemoteBrowserWidget::flushPendingOpenFileSyncs);
 
   auto *rootLayout = new QVBoxLayout(this);
   rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -1182,10 +1200,11 @@ void RemoteBrowserWidget::openRemoteFile(
 
   emit fileActivated(entry);
 
+  QPointer<RemoteBrowserWidget> self(this);
   const auto connectionId = m_connectionId;
   runFileOperation(
       QStringLiteral("open"),
-      [this, connectionId,
+      [this, self, connectionId,
        remotePath = entry.remotePath](const smb::core::OperationContext
                                           &context) {
         const auto localPath =
@@ -1201,9 +1220,105 @@ void RemoteBrowserWidget::openRemoteFile(
         }
 
         m_tempFileCache.protectPath(localPath.value());
-        return m_fileOpener->openLocalFile(localPath.value());
+        auto opened = m_fileOpener->openLocalFile(localPath.value());
+        if (!opened.ok()) {
+          return opened;
+        }
+
+        if (self) {
+          const auto local = localPath.value();
+          QMetaObject::invokeMethod(
+              self.data(),
+              [self, connectionId, remotePath, local]() {
+                if (!self) {
+                  return;
+                }
+                self->registerOpenFileSession(connectionId, remotePath, local);
+              },
+              Qt::QueuedConnection);
+        }
+        return opened;
       },
       false);
+}
+
+void RemoteBrowserWidget::registerOpenFileSession(const QString &connectionId,
+                                                  const QString &remotePath,
+                                                  const QString &localPath) {
+  const auto normalizedPath = normalizedLocalPath(localPath);
+  if (normalizedPath.isEmpty() || !QFileInfo::exists(normalizedPath)) {
+    return;
+  }
+
+  m_openFileSessions.insert(
+      normalizedPath,
+      OpenFileSession{connectionId, normalizeRemotePath(remotePath),
+                      normalizedPath});
+  if (m_openFileWatcher != nullptr &&
+      !m_openFileWatcher->files().contains(normalizedPath)) {
+    m_openFileWatcher->addPath(normalizedPath);
+  }
+}
+
+void RemoteBrowserWidget::scheduleOpenFileSync(const QString &localPath) {
+  const auto normalizedPath = normalizedLocalPath(localPath);
+  if (!m_openFileSessions.contains(normalizedPath)) {
+    return;
+  }
+
+  if (QFileInfo::exists(normalizedPath) && m_openFileWatcher != nullptr &&
+      !m_openFileWatcher->files().contains(normalizedPath)) {
+    m_openFileWatcher->addPath(normalizedPath);
+  }
+
+  m_pendingOpenFileSyncs.insert(normalizedPath);
+  if (m_openFileSyncTimer != nullptr) {
+    m_openFileSyncTimer->start();
+  }
+}
+
+void RemoteBrowserWidget::flushPendingOpenFileSyncs() {
+  const auto pending = m_pendingOpenFileSyncs.values();
+  m_pendingOpenFileSyncs.clear();
+
+  for (const auto &localPath : pending) {
+    const auto session = m_openFileSessions.value(localPath);
+    if (session.connectionId.isEmpty() || session.remotePath.isEmpty() ||
+        !QFileInfo::exists(session.localPath)) {
+      continue;
+    }
+
+    runFileOperation(
+        QStringLiteral("sync_open_file"),
+        [this, connectionId = session.connectionId,
+         remotePath = session.remotePath,
+         localPath = session.localPath](const smb::core::OperationContext
+                                            &context) {
+          smb::core::Result<bool> lastResult =
+              smb::core::Result<bool>::success(false);
+          for (int attempt = 0; attempt < 30; ++attempt) {
+            if (context.cancellationToken != nullptr &&
+                context.cancellationToken->isCancellationRequested()) {
+              return smb::core::Result<bool>::failure(
+                  smb::core::AppError::fromCode(
+                      smb::core::ErrorCode::OperationCancelled,
+                      smb::core::ErrorCategory::Transfer,
+                      tr("Operation cancelled.")));
+            }
+
+            lastResult = m_fileTransferUseCase.uploadFile(
+                connectionId, localPath, remotePath, context);
+            if (lastResult.ok() ||
+                lastResult.error().code != smb::core::ErrorCode::LocalIoError) {
+              return lastResult;
+            }
+
+            QThread::msleep(1000);
+          }
+          return lastResult;
+        },
+        false);
+  }
 }
 
 void RemoteBrowserWidget::startExternalDragFromMouse() {

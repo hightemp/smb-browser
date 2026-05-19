@@ -47,7 +47,7 @@ ApplicationSettings ApplicationSettings::defaults() {
   settings.languageMode = LanguageMode::English;
   settings.credentialStoreMode =
       CredentialStoreMode::SystemKeychainWithVaultFallback;
-  settings.closeToTray = true;
+  settings.closeToTray = false;
   settings.showTrayNotifications = true;
   settings.logLevel = QStringLiteral("info");
   settings.operationTimeoutMs = 30000;

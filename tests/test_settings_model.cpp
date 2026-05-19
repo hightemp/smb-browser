@@ -13,7 +13,7 @@ private slots:
     QVERIFY(settings.languageMode == smb::core::LanguageMode::English);
     QVERIFY(settings.credentialStoreMode ==
             smb::core::CredentialStoreMode::SystemKeychainWithVaultFallback);
-    QVERIFY(settings.closeToTray);
+    QVERIFY(!settings.closeToTray);
     QCOMPARE(settings.operationTimeoutMs, 30000);
     QCOMPARE(settings.cacheRetentionDays, 7);
     QCOMPARE(settings.cacheMaxSizeMb, 512);

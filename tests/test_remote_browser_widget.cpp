@@ -499,6 +499,18 @@ private slots:
     QCOMPARE(activated.first().remotePath, QStringLiteral("/readme.txt"));
     QTRY_COMPARE(fileOpener.openedPaths.size(), 1);
     QVERIFY(QFile::exists(fileOpener.openedPaths.first()));
+
+    {
+      QFile edited(fileOpener.openedPaths.first());
+      QVERIFY(edited.open(QIODevice::WriteOnly | QIODevice::Truncate));
+      edited.write("edited");
+    }
+
+    QTRY_VERIFY([&useCase]() {
+      QMutexLocker locker(&useCase.mutex);
+      return useCase.operationPaths.contains(
+          QStringLiteral("upload:/readme.txt"));
+    }());
   }
 
   void doubleClickFallsBackToOpenSymlinkAsFileWhenDirectoryOpenFails() {

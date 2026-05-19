@@ -1130,3 +1130,51 @@
   - Unit tests parser для `smbclient -c showconnect`.
   - Unit tests fallback/retry/cache wrapper.
   - Manual safe check на `tmp/mylist.json` без вывода пароля.
+
+## Этап 14. Regression fixes после ручного прогона
+
+### [x] T-079: Завершать приложение при закрытии главного окна по умолчанию
+
+- Приоритет: Must.
+- Зависимости: T-055, T-056.
+- Описание: Убрать неожиданное зависание `make run` после закрытия главного
+  окна: clean/default конфигурация должна завершать приложение, а close-to-tray
+  должен включаться только настройкой пользователя.
+- Acceptance criteria:
+  - `ApplicationSettings::defaults()` задает `closeToTray = false`.
+  - `TrayController` получает значения `closeToTray` и
+    `showTrayNotifications` из сохраненных настроек при запуске.
+  - `make run` запускает приложение с dev-override, который отключает
+    close-to-tray даже при старой сохраненной настройке.
+  - Сохранение Settings применяет tray behavior без перезапуска приложения.
+  - При выключенном close-to-tray close event не перехватывается tray
+    controller.
+- Заметки по тестам:
+  - Unit test defaults в `test_settings_model`.
+  - UI/unit test, что `SettingsDialog` эмитит сохраненные settings.
+  - Unit test `TrayController`: disabled close-to-tray позволяет закрыть окно.
+  - Smoke: `make run-offscreen`.
+
+### [x] T-080: Синхронизировать изменения открытого файла обратно на SMB
+
+- Приоритет: Must.
+- Зависимости: T-033, T-034, T-035, T-045.
+- Описание: После открытия файла через системное приложение отслеживать
+  локальный cache-файл и при сохранении заливать измененную версию обратно в
+  исходный remote path.
+- Acceptance criteria:
+  - После успешного download/open создается open-file session для пары
+    `local cache path -> original SMB path`.
+  - Изменения cache-файла отслеживаются через file watcher с debounce.
+  - Upload выполняется асинхронно и не блокирует UI.
+  - Для приложений, временно блокирующих файл при сохранении, upload
+    повторяется ограниченное число раз.
+  - Ошибки upload отображаются через общий operation/status flow и не логируют
+    секреты.
+  - Поведение явно основано на событии сохранения/изменения файла, а не на
+    отслеживании процесса внешнего редактора.
+- Заметки по тестам:
+  - UI/widget test с fake file opener: открыть remote file, изменить cache-файл,
+    проверить запуск upload в исходный SMB path.
+  - Regression test на отсутствие настоящих credentials в путях cache/logs
+    остается частью security suite.

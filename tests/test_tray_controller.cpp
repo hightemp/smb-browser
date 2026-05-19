@@ -57,6 +57,22 @@ private slots:
     QVERIFY(!window.isVisible());
   }
 
+  void closeEventClosesWindowWhenCloseToTrayDisabled() {
+    QMainWindow window;
+    smb::ui::TrayController controller;
+    controller.setMainWindow(&window);
+    controller.setCloseToTrayEnabled(false);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(window.isVisible());
+
+    QVERIFY(window.close());
+    QCoreApplication::processEvents();
+
+    QVERIFY(!window.isVisible());
+  }
+
   void exitActionEmitsExitAndAllowsWindowClose() {
     QMainWindow window;
     smb::ui::TrayController controller;
