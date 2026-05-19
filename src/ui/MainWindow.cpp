@@ -159,6 +159,29 @@ smb::ui::ConnectionsPanel *MainWindow::connectionsPanel() const {
   return m_connectionsPanel;
 }
 
+smb::ui::StatusPanel *MainWindow::statusPanel() const { return m_statusPanel; }
+
+void MainWindow::attachRemoteBrowser(QWidget &browserWidget) {
+  if (m_browserArea == nullptr || m_browserArea->layout() == nullptr) {
+    return;
+  }
+
+  auto *layout = qobject_cast<QVBoxLayout *>(m_browserArea->layout());
+  if (layout == nullptr) {
+    return;
+  }
+
+  while (auto *item = layout->takeAt(0)) {
+    if (auto *widget = item->widget()) {
+      widget->deleteLater();
+    }
+    delete item;
+  }
+
+  browserWidget.setParent(m_browserArea);
+  layout->addWidget(&browserWidget, 1);
+}
+
 void MainWindow::wireConnectionActions() {
   if (m_connectionsPanel == nullptr) {
     return;
@@ -200,6 +223,11 @@ void MainWindow::wireConnectionActions() {
       }
     });
   }
+
+  connect(m_connectionsPanel,
+          &smb::ui::ConnectionsPanel::selectionAvailabilityChanged, this,
+          &MainWindow::setTopConnectionActionsEnabled);
+  setTopConnectionActionsEnabled(false);
 }
 
 void MainWindow::retranslateUi() {
@@ -244,8 +272,24 @@ void MainWindow::retranslateUi() {
   statusBar()->showMessage(tr("Ready"));
 }
 
+void MainWindow::setTopConnectionActionsEnabled(bool enabled) {
+  if (m_editConnectionButton != nullptr) {
+    m_editConnectionButton->setEnabled(enabled);
+  }
+  if (m_deleteConnectionButton != nullptr) {
+    m_deleteConnectionButton->setEnabled(enabled);
+  }
+  if (m_checkConnectionButton != nullptr) {
+    m_checkConnectionButton->setEnabled(enabled);
+  }
+  if (m_connectButton != nullptr) {
+    m_connectButton->setEnabled(enabled);
+  }
+}
+
 QWidget *MainWindow::createBrowserArea() {
   auto *area = new QFrame(this);
+  m_browserArea = area;
   area->setObjectName(QStringLiteral("browserArea"));
   area->setFrameShape(QFrame::StyledPanel);
 
@@ -296,5 +340,6 @@ QWidget *MainWindow::createBrowserArea() {
 }
 
 QWidget *MainWindow::createStatusPanel() {
-  return new smb::ui::StatusPanel(this);
+  m_statusPanel = new smb::ui::StatusPanel(this);
+  return m_statusPanel;
 }

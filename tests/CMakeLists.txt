@@ -649,6 +649,22 @@ set_tests_properties(connection_management_controller PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+add_executable(test_connectivity_check_controller
+    test_connectivity_check_controller.cpp
+)
+
+target_link_libraries(test_connectivity_check_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connectivity_check_controller COMMAND test_connectivity_check_controller)
+set_tests_properties(connectivity_check_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 add_executable(test_connection_open_controller
     test_connection_open_controller.cpp
 )
@@ -662,5 +678,21 @@ target_link_libraries(test_connection_open_controller
 
 add_test(NAME connection_open_controller COMMAND test_connection_open_controller)
 set_tests_properties(connection_open_controller PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+add_executable(test_connection_clipboard_controller
+    test_connection_clipboard_controller.cpp
+)
+
+target_link_libraries(test_connection_clipboard_controller
+    PRIVATE
+        smb_browser_ui
+        Qt5::Test
+        Qt5::Widgets
+)
+
+add_test(NAME connection_clipboard_controller COMMAND test_connection_clipboard_controller)
+set_tests_properties(connection_clipboard_controller PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )

@@ -6,6 +6,8 @@
 #include "core/SmbError.h"
 #include "storage/ConnectionRepository.h"
 
+#include <QDateTime>
+#include <QMetaType>
 #include <optional>
 
 namespace smb::application {
@@ -17,7 +19,16 @@ struct ConnectivityCheckResult {
   QDateTime checkedAtUtc;
 };
 
-class ConnectivityCheckService {
+class ConnectivityCheckUseCase {
+public:
+  virtual ~ConnectivityCheckUseCase() = default;
+
+  virtual smb::core::Result<ConnectivityCheckResult>
+  check(const QString &connectionId,
+        const smb::core::OperationContext &context = {}) = 0;
+};
+
+class ConnectivityCheckService final : public ConnectivityCheckUseCase {
 public:
   ConnectivityCheckService(
       smb::infrastructure::ConnectionRepository &repository,
@@ -26,7 +37,7 @@ public:
 
   smb::core::Result<ConnectivityCheckResult>
   check(const QString &connectionId,
-        const smb::core::OperationContext &context = {});
+        const smb::core::OperationContext &context = {}) override;
 
 private:
   smb::core::Result<std::optional<smb::core::CredentialSecret>>
@@ -40,3 +51,5 @@ private:
 };
 
 } // namespace smb::application
+
+Q_DECLARE_METATYPE(smb::application::ConnectivityCheckResult)

@@ -179,6 +179,7 @@ void ConnectionsPanel::updateActionState() {
   m_checkButton->setEnabled(hasSelection);
   m_connectButton->setEnabled(hasSelection);
   m_copyPathButton->setEnabled(hasSelection);
+  emit selectionAvailabilityChanged(hasSelection);
 }
 
 } // namespace smb::ui

@@ -149,6 +149,54 @@
 <context>
     <name>QObject</name>
     <message>
+        <source>Unable to Start</source>
+        <translation>Не удалось запустить приложение</translation>
+    </message>
+    <message>
+        <source>Unable to create application data directory: %1</source>
+        <translation>Не удалось создать каталог данных приложения: %1</translation>
+    </message>
+    <message>
+        <source>Unable to Open Database</source>
+        <translation>Не удалось открыть базу данных</translation>
+    </message>
+    <message>
+        <source>Unable to Migrate Database</source>
+        <translation>Не удалось обновить схему базы данных</translation>
+    </message>
+    <message>
+        <source>SMB backend is not enabled in this build.</source>
+        <translation>SMB backend не включен в этой сборке.</translation>
+    </message>
+    <message>
+        <source>Connection: Available</source>
+        <translation>Подключение: доступно</translation>
+    </message>
+    <message>
+        <source>Connection: Unavailable</source>
+        <translation>Подключение: недоступно</translation>
+    </message>
+    <message>
+        <source>Connection: Checking</source>
+        <translation>Подключение: проверка</translation>
+    </message>
+    <message>
+        <source>Connection: Check failed</source>
+        <translation>Подключение: проверка не удалась</translation>
+    </message>
+    <message>
+        <source>Connection: Opening</source>
+        <translation>Подключение: открытие</translation>
+    </message>
+    <message>
+        <source>Connection: %1</source>
+        <translation>Подключение: %1</translation>
+    </message>
+    <message>
+        <source>Connection: Open failed</source>
+        <translation>Подключение: открыть не удалось</translation>
+    </message>
+    <message>
         <source>Export Connections</source>
         <translation>Экспорт подключений</translation>
     </message>
@@ -195,6 +243,28 @@
     <message>
         <source>Create Copies</source>
         <translation>Создать копии</translation>
+    </message>
+</context>
+<context>
+    <name>smb::ui::ConnectionClipboardController</name>
+    <message>
+        <source>Copied path: %1</source>
+        <translation>Путь скопирован: %1</translation>
+    </message>
+</context>
+<context>
+    <name>smb::ui::ConnectivityCheckController</name>
+    <message>
+        <source>Check connection</source>
+        <translation>Проверка подключения</translation>
+    </message>
+    <message>
+        <source>Connection is unavailable.</source>
+        <translation>Подключение недоступно.</translation>
+    </message>
+    <message>
+        <source>Unable to Check Connection</source>
+        <translation>Не удалось проверить подключение</translation>
     </message>
 </context>
 <context>

@@ -32,6 +32,7 @@ signals:
   void checkRequested(const QString &connectionId);
   void connectRequested(const QString &connectionId);
   void copyPathRequested(const QString &normalizedUri);
+  void selectionAvailabilityChanged(bool hasSelection);
 
 private:
   void changeEvent(QEvent *event) override;

@@ -109,6 +109,62 @@ private slots:
     QCOMPARE(spy.count(), 1);
   }
 
+  void topCheckAndConnectButtonsForwardSelectedConnection() {
+    MainWindow window;
+    QVERIFY(window.connectionsPanel() != nullptr);
+
+    auto connection = smb::core::Connection::createEmpty();
+    connection.id = QStringLiteral("conn-1");
+    connection.name = QStringLiteral("Finance");
+    connection.normalizedUri = QStringLiteral("smb://server/share");
+    connection.server = QStringLiteral("server");
+    connection.share = QStringLiteral("share");
+    window.connectionsPanel()->setConnections({connection});
+
+    auto *list =
+        window.findChild<QListView *>(QStringLiteral("connectionsList"));
+    QVERIFY(list != nullptr);
+    list->selectionModel()->select(list->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+
+    QSignalSpy checkSpy(window.connectionsPanel(),
+                        &smb::ui::ConnectionsPanel::checkRequested);
+    QSignalSpy connectSpy(window.connectionsPanel(),
+                          &smb::ui::ConnectionsPanel::connectRequested);
+
+    auto *checkButton =
+        window.findChild<QPushButton *>(QStringLiteral("checkConnectionButton"));
+    auto *connectButton =
+        window.findChild<QPushButton *>(QStringLiteral("connectButton"));
+    QVERIFY(checkButton != nullptr);
+    QVERIFY(connectButton != nullptr);
+
+    checkButton->click();
+    connectButton->click();
+
+    QCOMPARE(checkSpy.count(), 1);
+    QCOMPARE(checkSpy.takeFirst().at(0).toString(), QStringLiteral("conn-1"));
+    QCOMPARE(connectSpy.count(), 1);
+    QCOMPARE(connectSpy.takeFirst().at(0).toString(), QStringLiteral("conn-1"));
+  }
+
+  void remoteBrowserCanReplacePlaceholderShell() {
+    MainWindow window;
+    auto *placeholder =
+        window.findChild<QLabel *>(QStringLiteral("browserPlaceholder"));
+    QVERIFY(placeholder != nullptr);
+
+    QWidget browser;
+    browser.setObjectName(QStringLiteral("attachedRemoteBrowser"));
+    window.attachRemoteBrowser(browser);
+
+    QCOMPARE(browser.parentWidget(),
+             window.findChild<QWidget *>(QStringLiteral("browserArea")));
+    QVERIFY(window.findChild<QWidget *>(
+                QStringLiteral("attachedRemoteBrowser")) != nullptr);
+  }
+
   void settingsButtonUsesAttachedDependencies() {
     QTemporaryDir tempDir;
     QVERIFY(tempDir.isValid());

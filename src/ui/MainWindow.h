@@ -5,6 +5,7 @@
 
 class QPushButton;
 class QEvent;
+class QFrame;
 
 namespace smb::application {
 class ImportExportUseCase;
@@ -16,6 +17,7 @@ class ConnectionsPanel;
 class ImportExportActionPrompter;
 class ImportExportController;
 class LocalizationManager;
+class StatusPanel;
 class ThemeManager;
 }
 
@@ -36,7 +38,9 @@ public:
                       smb::ui::ThemeManager &themeManager,
                       smb::ui::LocalizationManager &localizationManager,
                       smb::application::TempFileCache &tempFileCache);
+  void attachRemoteBrowser(QWidget &browserWidget);
   smb::ui::ConnectionsPanel *connectionsPanel() const;
+  smb::ui::StatusPanel *statusPanel() const;
 
 private:
   void changeEvent(QEvent *event) override;
@@ -46,8 +50,11 @@ private:
   QWidget *createStatusPanel();
   void wireConnectionActions();
   void retranslateUi();
+  void setTopConnectionActionsEnabled(bool enabled);
 
   smb::ui::ConnectionsPanel *m_connectionsPanel = nullptr;
+  QFrame *m_browserArea = nullptr;
+  smb::ui::StatusPanel *m_statusPanel = nullptr;
   QPushButton *m_addConnectionButton = nullptr;
   QPushButton *m_editConnectionButton = nullptr;
   QPushButton *m_deleteConnectionButton = nullptr;

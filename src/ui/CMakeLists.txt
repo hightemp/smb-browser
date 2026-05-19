@@ -1,5 +1,7 @@
 add_library(smb_browser_ui STATIC
     ConnectionActionPrompter.h
+    ConnectionClipboardController.cpp
+    ConnectionClipboardController.h
     ConnectionListModel.cpp
     ConnectionListModel.h
     ConnectionDialog.cpp
@@ -10,6 +12,8 @@ add_library(smb_browser_ui STATIC
     ConnectionOpenController.h
     ConnectionsPanel.cpp
     ConnectionsPanel.h
+    ConnectivityCheckController.cpp
+    ConnectivityCheckController.h
     DialogImportExportActionPrompter.cpp
     DialogImportExportActionPrompter.h
     DialogRemoteFileActionPrompter.cpp
