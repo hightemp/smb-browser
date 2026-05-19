@@ -18,6 +18,10 @@ smb::core::ErrorCode mapConnectionError(int status, const QString &details) {
   if (lower.contains(QStringLiteral("bad network name")) ||
       lower.contains(QStringLiteral("bad_network_name")) ||
       lower.contains(QStringLiteral("status_bad_network_name")) ||
+      lower.contains(QStringLiteral("path not covered")) ||
+      lower.contains(QStringLiteral("path_not_covered")) ||
+      lower.contains(QStringLiteral("status_path_not_covered")) ||
+      lower.contains(QStringLiteral("0xc0000257")) ||
       lower.contains(QStringLiteral("tree connect")) ||
       lower.contains(QStringLiteral("share"))) {
     return smb::core::ErrorCode::ShareUnavailable;
@@ -66,6 +70,10 @@ smb::core::ErrorCode mapDirectoryError(int status, const QString &details) {
   }
   if (lower.contains(QStringLiteral("bad network name")) ||
       lower.contains(QStringLiteral("bad_network_name")) ||
+      lower.contains(QStringLiteral("path not covered")) ||
+      lower.contains(QStringLiteral("path_not_covered")) ||
+      lower.contains(QStringLiteral("status_path_not_covered")) ||
+      lower.contains(QStringLiteral("0xc0000257")) ||
       lower.contains(QStringLiteral("tree connect")) ||
       lower.contains(QStringLiteral("share"))) {
     return smb::core::ErrorCode::ShareUnavailable;
@@ -100,6 +108,12 @@ smb::core::ErrorCode mapFileOperationError(int status, const QString &details) {
   if (lower.contains(QStringLiteral("permission")) ||
       lower.contains(QStringLiteral("access denied"))) {
     return smb::core::ErrorCode::PermissionDenied;
+  }
+  if (lower.contains(QStringLiteral("path not covered")) ||
+      lower.contains(QStringLiteral("path_not_covered")) ||
+      lower.contains(QStringLiteral("status_path_not_covered")) ||
+      lower.contains(QStringLiteral("0xc0000257"))) {
+    return smb::core::ErrorCode::ShareUnavailable;
   }
   if (lower.contains(QStringLiteral("already exists"))) {
     return smb::core::ErrorCode::AlreadyExists;
@@ -150,16 +164,10 @@ QString diagnosticHint(smb::core::ErrorCode code, Libsmb2ErrorContext context) {
         "Check network connectivity, firewall rules, and whether the SMB "
         "server is reachable.");
   case smb::core::ErrorCode::ShareUnavailable:
-    return context == Libsmb2ErrorContext::Connection
-               ? QStringLiteral(
-                     "Check that the share name exists and is exported by the "
-                     "server. If this path is a DFS namespace, use the "
-                     "resolved "
-                     "target or install smbclient so the DFS resolver can find "
-                     "it.")
-               : QStringLiteral(
-                     "Check that the share name exists and is exported by the "
-                     "server.");
+    return QStringLiteral(
+        "Check that the share or DFS link exists and is exported by the "
+        "server. If this path is a DFS namespace, use the resolved target or "
+        "install smbclient so the DFS resolver can find it.");
   case smb::core::ErrorCode::AuthenticationFailed:
     return QStringLiteral(
         "Check username, domain or workgroup, password, and guest access "

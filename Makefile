@@ -50,6 +50,7 @@ setup:
 		ninja-build \
 		pkg-config \
 		qtbase5-dev \
+		libqt5svg5-dev \
 		qttools5-dev-tools \
 		qtkeychain-qt5-dev \
 		libsodium-dev \

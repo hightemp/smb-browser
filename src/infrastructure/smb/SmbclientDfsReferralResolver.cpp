@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTemporaryFile>
 
 #include <algorithm>
@@ -38,6 +39,67 @@ QString uncPath(const smb::core::Connection &connection) {
 
 QString normalizedUri(const QString &server, const QString &share) {
   return QStringLiteral("smb://%1/%2").arg(server, share);
+}
+
+QString normalizeRemotePath(QString remotePath) {
+  remotePath = remotePath.trimmed();
+  remotePath.replace(QLatin1Char('\\'), QLatin1Char('/'));
+  while (remotePath.contains(QStringLiteral("//"))) {
+    remotePath.replace(QStringLiteral("//"), QStringLiteral("/"));
+  }
+  if (remotePath.isEmpty()) {
+    remotePath = QStringLiteral("/");
+  }
+  if (!remotePath.startsWith(QLatin1Char('/'))) {
+    remotePath.prepend(QLatin1Char('/'));
+  }
+  while (remotePath.size() > 1 && remotePath.endsWith(QLatin1Char('/'))) {
+    remotePath.chop(1);
+  }
+  return remotePath;
+}
+
+QStringList remotePathSegments(const QString &remotePath) {
+  const auto normalized = normalizeRemotePath(remotePath);
+  if (normalized == QStringLiteral("/")) {
+    return {};
+  }
+  return normalized.mid(1).split(QLatin1Char('/'), Qt::SkipEmptyParts);
+}
+
+QString pathFromSegments(const QStringList &segments, int count) {
+  if (count <= 0) {
+    return QStringLiteral("/");
+  }
+  return QStringLiteral("/%1")
+      .arg(segments.mid(0, count).join(QLatin1Char('/')));
+}
+
+QString pathFromSegments(const QStringList &segments, int first, int count) {
+  if (count <= 0 || first >= segments.size()) {
+    return QStringLiteral("/");
+  }
+  return QStringLiteral("/%1")
+      .arg(segments.mid(first, count).join(QLatin1Char('/')));
+}
+
+QString smbclientQuotedPath(const QString &remotePath) {
+  auto relative = normalizeRemotePath(remotePath);
+  if (relative.startsWith(QLatin1Char('/'))) {
+    relative.remove(0, 1);
+  }
+  relative.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+  relative.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+  return relative;
+}
+
+QString smbclientCommandForPath(const QString &remotePath) {
+  const auto normalized = normalizeRemotePath(remotePath);
+  if (normalized == QStringLiteral("/")) {
+    return QStringLiteral("showconnect");
+  }
+  return QStringLiteral("cd \"%1\"; showconnect")
+      .arg(smbclientQuotedPath(normalized));
 }
 
 bool isSameShare(const smb::core::Connection &connection,
@@ -134,13 +196,14 @@ parseSmbclientShowconnectTarget(const QString &output) {
 SmbclientDfsReferralResolver::SmbclientDfsReferralResolver(int timeoutSeconds)
     : m_timeoutMs(std::max(1, timeoutSeconds) * 1000) {}
 
-smb::core::Result<std::optional<smb::core::Connection>>
-SmbclientDfsReferralResolver::resolve(
+smb::core::Result<std::optional<SmbclientDfsTarget>>
+SmbclientDfsReferralResolver::resolveTarget(
     const smb::core::Connection &connection,
     const smb::core::CredentialSecret *secret,
-    const smb::core::OperationContext &context) {
+    const smb::core::OperationContext &context, const QString &remotePath,
+    bool commandFailureIsError) {
   if (isCancelled(context)) {
-    return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+    return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
         resolverError(smb::core::ErrorCode::OperationCancelled,
                       QStringLiteral("DFS referral resolution was cancelled."),
                       false));
@@ -148,21 +211,21 @@ SmbclientDfsReferralResolver::resolve(
 
   const auto smbclient = findSmbclientExecutable();
   if (smbclient.isEmpty()) {
-    return smb::core::Result<std::optional<smb::core::Connection>>::success(
+    return smb::core::Result<std::optional<SmbclientDfsTarget>>::success(
         std::nullopt);
   }
 
   QTemporaryFile credentialsFile;
   QStringList args;
   args << uncPath(connection) << QStringLiteral("-m") << QStringLiteral("SMB3")
-       << QStringLiteral("-c") << QStringLiteral("showconnect");
+       << QStringLiteral("-c") << smbclientCommandForPath(remotePath);
 
   QByteArray credentials;
   if (connection.authType == smb::core::AuthType::Password ||
       connection.authType == smb::core::AuthType::Guest) {
     credentials = credentialFileContent(connection, secret);
     if (!credentialsFile.open()) {
-      return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+      return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
           resolverError(
               smb::core::ErrorCode::LocalIoError,
               QStringLiteral("Unable to create temporary credentials file for "
@@ -174,7 +237,7 @@ SmbclientDfsReferralResolver::resolve(
     if (credentialsFile.write(credentials) != credentials.size() ||
         !credentialsFile.flush()) {
       credentials.fill('\0');
-      return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+      return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
           resolverError(
               smb::core::ErrorCode::LocalIoError,
               QStringLiteral("Unable to write temporary credentials file for "
@@ -187,7 +250,7 @@ SmbclientDfsReferralResolver::resolve(
   } else if (connection.authType == smb::core::AuthType::Anonymous) {
     args << QStringLiteral("-N");
   } else {
-    return smb::core::Result<std::optional<smb::core::Connection>>::success(
+    return smb::core::Result<std::optional<SmbclientDfsTarget>>::success(
         std::nullopt);
   }
 
@@ -195,7 +258,7 @@ SmbclientDfsReferralResolver::resolve(
   process.setProcessChannelMode(QProcess::MergedChannels);
   process.start(smbclient, args);
   if (!process.waitForStarted(3000)) {
-    return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+    return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
         resolverError(smb::core::ErrorCode::ServerUnavailable,
                       QStringLiteral("Unable to start smbclient for DFS "
                                      "referral resolution."),
@@ -208,7 +271,7 @@ SmbclientDfsReferralResolver::resolve(
     if (isCancelled(context)) {
       process.kill();
       process.waitForFinished(kPollIntervalMs);
-      return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+      return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
           resolverError(
               smb::core::ErrorCode::OperationCancelled,
               QStringLiteral("DFS referral resolution was cancelled."), false));
@@ -216,7 +279,7 @@ SmbclientDfsReferralResolver::resolve(
     if (timer.elapsed() > m_timeoutMs) {
       process.kill();
       process.waitForFinished(kPollIntervalMs);
-      return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+      return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
           resolverError(smb::core::ErrorCode::Timeout,
                         QStringLiteral("DFS referral resolution timed out."),
                         true));
@@ -226,7 +289,11 @@ SmbclientDfsReferralResolver::resolve(
 
   const auto output = process.readAll();
   if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-    return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+    if (!commandFailureIsError) {
+      return smb::core::Result<std::optional<SmbclientDfsTarget>>::success(
+          std::nullopt);
+    }
+    return smb::core::Result<std::optional<SmbclientDfsTarget>>::failure(
         resolverError(
             smb::core::ErrorCode::ShareUnavailable,
             QStringLiteral("smbclient DFS referral resolution failed: %1")
@@ -236,6 +303,22 @@ SmbclientDfsReferralResolver::resolve(
 
   const auto target =
       parseSmbclientShowconnectTarget(QString::fromUtf8(output));
+  return smb::core::Result<std::optional<SmbclientDfsTarget>>::success(target);
+}
+
+smb::core::Result<std::optional<smb::core::Connection>>
+SmbclientDfsReferralResolver::resolve(
+    const smb::core::Connection &connection,
+    const smb::core::CredentialSecret *secret,
+    const smb::core::OperationContext &context) {
+  const auto targetResult = resolveTarget(
+      connection, secret, context, QStringLiteral("/"), true);
+  if (!targetResult.ok()) {
+    return smb::core::Result<std::optional<smb::core::Connection>>::failure(
+        targetResult.error());
+  }
+
+  const auto target = targetResult.value();
   if (!target.has_value() || isSameShare(connection, target.value())) {
     return smb::core::Result<std::optional<smb::core::Connection>>::success(
         std::nullopt);
@@ -248,6 +331,64 @@ SmbclientDfsReferralResolver::resolve(
 
   return smb::core::Result<std::optional<smb::core::Connection>>::success(
       std::move(resolved));
+}
+
+smb::core::Result<std::optional<smb::core::DfsResolvedPath>>
+SmbclientDfsReferralResolver::resolvePath(
+    const smb::core::Connection &connection,
+    const smb::core::CredentialSecret *secret, const QString &remotePath,
+    const smb::core::OperationContext &context) {
+  const auto normalized = normalizeRemotePath(remotePath);
+  if (normalized == QStringLiteral("/")) {
+    const auto resolved = resolve(connection, secret, context);
+    if (!resolved.ok()) {
+      return smb::core::Result<
+          std::optional<smb::core::DfsResolvedPath>>::failure(resolved.error());
+    }
+    if (!resolved.value().has_value()) {
+      return smb::core::Result<
+          std::optional<smb::core::DfsResolvedPath>>::success(std::nullopt);
+    }
+
+    smb::core::DfsResolvedPath path;
+    path.connection = resolved.value().value();
+    path.remotePath = QStringLiteral("/");
+    path.originalPathPrefix = QStringLiteral("/");
+    path.targetPathPrefix = QStringLiteral("/");
+    return smb::core::Result<
+        std::optional<smb::core::DfsResolvedPath>>::success(std::move(path));
+  }
+
+  const auto segments = remotePathSegments(normalized);
+  for (int i = 0; i < segments.size(); ++i) {
+    const auto prefix = pathFromSegments(segments, i + 1);
+    const auto targetResult =
+        resolveTarget(connection, secret, context, prefix, false);
+    if (!targetResult.ok()) {
+      return smb::core::Result<
+          std::optional<smb::core::DfsResolvedPath>>::failure(
+          targetResult.error());
+    }
+    const auto target = targetResult.value();
+    if (!target.has_value() || isSameShare(connection, target.value())) {
+      continue;
+    }
+
+    smb::core::DfsResolvedPath path;
+    path.connection = connection;
+    path.connection.server = target->server;
+    path.connection.share = target->share;
+    path.connection.normalizedUri = normalizedUri(target->server, target->share);
+    path.remotePath = pathFromSegments(segments, i + 1,
+                                       segments.size() - i - 1);
+    path.originalPathPrefix = prefix;
+    path.targetPathPrefix = QStringLiteral("/");
+    return smb::core::Result<
+        std::optional<smb::core::DfsResolvedPath>>::success(std::move(path));
+  }
+
+  return smb::core::Result<std::optional<smb::core::DfsResolvedPath>>::success(
+      std::nullopt);
 }
 
 } // namespace smb::infrastructure

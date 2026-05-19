@@ -25,7 +25,19 @@ public:
           const smb::core::CredentialSecret *secret,
           const smb::core::OperationContext &context) override;
 
+  smb::core::Result<std::optional<smb::core::DfsResolvedPath>>
+  resolvePath(const smb::core::Connection &connection,
+              const smb::core::CredentialSecret *secret,
+              const QString &remotePath,
+              const smb::core::OperationContext &context) override;
+
 private:
+  smb::core::Result<std::optional<SmbclientDfsTarget>>
+  resolveTarget(const smb::core::Connection &connection,
+                const smb::core::CredentialSecret *secret,
+                const smb::core::OperationContext &context,
+                const QString &remotePath, bool commandFailureIsError);
+
   int m_timeoutMs = 15000;
 };
 

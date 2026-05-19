@@ -18,7 +18,7 @@ include(FetchContent)
 include(GNUInstallDirs)
 include(CTest)
 
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Sql Widgets Test)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Sql Svg Widgets Test)
 find_package(Qt5Keychain REQUIRED)
 find_package(PkgConfig REQUIRED)
 
@@ -125,7 +125,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5keychain1, libsodium23, smbclient"
+        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5svg5, libqt5keychain1, libsodium23, smbclient"
     )
 elseif(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")

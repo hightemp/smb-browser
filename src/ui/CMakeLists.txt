@@ -42,6 +42,7 @@ add_library(smb_browser_ui STATIC
     ThemeManager.h
     TrayController.cpp
     TrayController.h
+    icons.qrc
 )
 
 target_include_directories(smb_browser_ui
@@ -53,8 +54,18 @@ target_link_libraries(smb_browser_ui
     PUBLIC
         smb_browser_application
         smb_browser_core
+        Qt5::Svg
         Qt5::Widgets
 )
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/breeze/COPYRIGHT"
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/smb-browser/licenses
+        RENAME breeze-icons.COPYRIGHT)
+if(APPLE)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/breeze/COPYRIGHT"
+            DESTINATION "smb-browser.app/Contents/Resources/licenses"
+            RENAME breeze-icons.COPYRIGHT)
+endif()
 
 set(SMB_BROWSER_TRANSLATION_OUTPUT_DIR "${CMAKE_BINARY_DIR}/i18n")
 target_compile_definitions(smb_browser_ui

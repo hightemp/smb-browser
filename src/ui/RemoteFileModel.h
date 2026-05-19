@@ -3,6 +3,7 @@
 #include "core/RemoteFileEntry.h"
 
 #include <QAbstractTableModel>
+#include <QIcon>
 #include <QSortFilterProxyModel>
 
 namespace smb::ui {
@@ -51,6 +52,7 @@ public:
 
 private:
   QString displayType(const smb::core::RemoteFileEntry &entry) const;
+  QIcon iconForEntry(const smb::core::RemoteFileEntry &entry) const;
   QVariant displayData(const smb::core::RemoteFileEntry &entry,
                        int column) const;
 

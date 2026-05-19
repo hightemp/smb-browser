@@ -4,7 +4,32 @@
 #include <QStringList>
 #include <utility>
 
+extern int qInitResources_icons();
+
 namespace smb::ui {
+
+namespace {
+
+void ensureIconResources() {
+  static const int initialized = ::qInitResources_icons();
+  Q_UNUSED(initialized);
+}
+
+QIcon resourceIcon(const QString &path) {
+  ensureIconResources();
+  return QIcon(path);
+}
+
+bool containsAny(const QString &value, const QStringList &needles) {
+  for (const auto &needle : needles) {
+    if (value.contains(needle)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
 
 RemoteFileModel::RemoteFileModel(QObject *parent)
     : QAbstractTableModel(parent) {}
@@ -33,6 +58,11 @@ QVariant RemoteFileModel::data(const QModelIndex &index, int role) const {
   switch (role) {
   case Qt::DisplayRole:
     return displayData(entry, index.column());
+  case Qt::DecorationRole:
+    if (index.column() == NameColumn) {
+      return iconForEntry(entry);
+    }
+    return {};
   case Qt::TextAlignmentRole:
     if (index.column() == SizeColumn) {
       return QVariant::fromValue(Qt::AlignRight | Qt::AlignVCenter);
@@ -135,6 +165,79 @@ RemoteFileModel::displayType(const smb::core::RemoteFileEntry &entry) const {
   }
 
   return tr("Unknown");
+}
+
+QIcon RemoteFileModel::iconForEntry(
+    const smb::core::RemoteFileEntry &entry) const {
+  const auto name = entry.name.toLower();
+  if (entry.type == smb::core::RemoteFileType::Symlink) {
+    return resourceIcon(
+        QStringLiteral(":/icons/breeze/places/22/folder-publicshare.svg"));
+  }
+
+  if (entry.type == smb::core::RemoteFileType::Directory) {
+    if (containsAny(name,
+                    {QStringLiteral("download"), QStringLiteral("загруз")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-download.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("design"), QStringLiteral("drawing"),
+                           QStringLiteral("дизайн")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-drawing.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("picture"), QStringLiteral("image"),
+                           QStringLiteral("photo"), QStringLiteral("фото"),
+                           QStringLiteral("картин")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-pictures.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("video"), QStringLiteral("видео")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-videos.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("music"), QStringLiteral("sound"),
+                           QStringLiteral("audio"), QStringLiteral("музык")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-sound.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("temp"), QStringLiteral("врем")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-temp.svg"));
+    }
+    if (containsAny(name,
+                    {QStringLiteral("favorite"), QStringLiteral("избран")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-favorites.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("private"), QStringLiteral("secure"),
+                           QStringLiteral("locked")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-locked.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("text"), QStringLiteral("doc"),
+                           QStringLiteral("документ")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-text.svg"));
+    }
+    if (containsAny(name, {QStringLiteral("network"), QStringLiteral("share"),
+                           QStringLiteral("group"), QStringLiteral("общ")})) {
+      return resourceIcon(
+          QStringLiteral(":/icons/breeze/places/22/folder-network.svg"));
+    }
+    return resourceIcon(QStringLiteral(":/icons/breeze/places/22/folder.svg"));
+  }
+
+  if (containsAny(name, {QStringLiteral(".png"), QStringLiteral(".jpg"),
+                         QStringLiteral(".jpeg"), QStringLiteral(".gif"),
+                         QStringLiteral(".webp"), QStringLiteral(".bmp"),
+                         QStringLiteral(".svg")})) {
+    return resourceIcon(
+        QStringLiteral(":/icons/breeze/mimetypes/22/image-x-generic.svg"));
+  }
+
+  return resourceIcon(
+      QStringLiteral(":/icons/breeze/mimetypes/22/text-x-generic.svg"));
 }
 
 QVariant RemoteFileModel::displayData(const smb::core::RemoteFileEntry &entry,

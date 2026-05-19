@@ -6,9 +6,9 @@
 #include "ui/RemoteFileActionPrompter.h"
 #include "ui/RemoteFileModel.h"
 
-#include <QWidget>
 #include <QPoint>
 #include <QUrl>
+#include <QWidget>
 #include <functional>
 
 class QLabel;
@@ -18,6 +18,7 @@ class QTableView;
 class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
+class QResizeEvent;
 
 namespace smb::ui {
 
@@ -82,6 +83,7 @@ private:
   void dragEnterEvent(QDragEnterEvent *event) override;
   void dragMoveEvent(QDragMoveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
   bool eventFilter(QObject *watched, QEvent *event) override;
   void applyDirectory(smb::application::OpenConnectionResult result,
                       HistoryMode historyMode, const QString &previousPath);
@@ -96,6 +98,7 @@ private:
   void showDirectoryState();
   void showError(const smb::core::AppError &error);
   void updateActionState();
+  void applyColumnProportions();
   smb::core::RemoteFileEntry selectedEntry() const;
   QVector<smb::core::RemoteFileEntry> selectedEntries() const;
   smb::core::Result<bool>

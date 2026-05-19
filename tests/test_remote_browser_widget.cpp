@@ -8,6 +8,7 @@
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMetaObject>
 #include <QMimeData>
 #include <QMutex>
 #include <QPushButton>
@@ -75,6 +76,14 @@ smb::core::RemoteFileEntry file(const QString &name, const QString &path) {
   entry.remotePath = path;
   entry.type = smb::core::RemoteFileType::File;
   entry.size = 42;
+  return entry;
+}
+
+smb::core::RemoteFileEntry symlink(const QString &name, const QString &path) {
+  smb::core::RemoteFileEntry entry;
+  entry.name = name;
+  entry.remotePath = path;
+  entry.type = smb::core::RemoteFileType::Symlink;
   return entry;
 }
 
@@ -413,6 +422,67 @@ private slots:
     QCOMPARE(widget.model()->entryAt(0).name, QStringLiteral("readme.txt"));
   }
 
+  void doubleClickOpensSymlinkLikeFolder() {
+    FakeRemoteBrowserUseCase useCase;
+    useCase.directories.insert(QStringLiteral("/dept"),
+                               {file(QStringLiteral("readme.txt"),
+                                     QStringLiteral("/dept/readme.txt"))});
+
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.resize(900, 500);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {symlink(QStringLiteral("Department"), QStringLiteral("/dept"))}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    QVERIFY(view != nullptr);
+
+    const auto index =
+        view->model()->index(0, smb::ui::RemoteFileModel::NameColumn);
+    QVERIFY(index.isValid());
+    QVERIFY(QMetaObject::invokeMethod(view, "doubleClicked",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QModelIndex, index)));
+
+    QTRY_COMPARE(widget.currentRemotePath(), QStringLiteral("/dept"));
+    QCOMPARE(widget.model()->entryAt(0).name, QStringLiteral("readme.txt"));
+  }
+
+  void browserKeepsSearchUsableAndUsesRequestedColumnProportions() {
+    FakeRemoteBrowserUseCase useCase;
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.resize(1100, 600);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {directory(QStringLiteral("Finance"), QStringLiteral("/Finance"))}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    auto *search =
+        widget.findChild<QLineEdit *>(QStringLiteral("remoteFileSearchEdit"));
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    QVERIFY(search != nullptr);
+    QVERIFY(view != nullptr);
+
+    QVERIFY(search->width() >= 240);
+    QVERIFY(view->columnWidth(smb::ui::RemoteFileModel::NameColumn) >
+            view->columnWidth(smb::ui::RemoteFileModel::ModifiedColumn));
+    QVERIFY(view->columnWidth(smb::ui::RemoteFileModel::ModifiedColumn) >
+            view->columnWidth(smb::ui::RemoteFileModel::TypeColumn));
+    QVERIFY(qAbs(view->columnWidth(smb::ui::RemoteFileModel::TypeColumn) -
+                 view->columnWidth(smb::ui::RemoteFileModel::SizeColumn)) <= 8);
+  }
+
   void supportsBackForwardUpAndRefresh() {
     FakeRemoteBrowserUseCase useCase;
     useCase.directories.insert(
@@ -671,10 +741,11 @@ private slots:
                                    QItemSelectionModel::ClearAndSelect |
                                        QItemSelectionModel::Rows);
     downloadButton->click();
-    QTRY_VERIFY(QFile::exists(downloadedPath));
-    QFile downloaded(downloadedPath);
-    QVERIFY(downloaded.open(QIODevice::ReadOnly));
-    QCOMPARE(downloaded.readAll(), QByteArrayLiteral("downloaded"));
+    QTRY_VERIFY([&downloadedPath]() {
+      QFile downloaded(downloadedPath);
+      return downloaded.open(QIODevice::ReadOnly) &&
+             downloaded.readAll() == QByteArrayLiteral("downloaded");
+    }());
 
     const auto uploadPath = tempDir.filePath(QStringLiteral("upload.txt"));
     {
@@ -845,8 +916,8 @@ private slots:
     QCOMPARE(downloaded.readAll(), QByteArrayLiteral("downloaded"));
 
     QMutexLocker locker(&useCase.mutex);
-    QVERIFY(
-        useCase.operationPaths.contains(QStringLiteral("download:/remote.txt")));
+    QVERIFY(useCase.operationPaths.contains(
+        QStringLiteral("download:/remote.txt")));
   }
 };
 

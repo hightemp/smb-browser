@@ -1,0 +1,20 @@
+<RCC>
+  <qresource prefix="/icons/breeze">
+    <file alias="emblems/22/emblem-symbolic-link.svg">icons/breeze/emblems/22/emblem-symbolic-link.svg</file>
+    <file alias="mimetypes/22/image-x-generic.svg">icons/breeze/mimetypes/22/image-x-generic.svg</file>
+    <file alias="mimetypes/22/text-x-generic.svg">icons/breeze/mimetypes/22/text-x-generic.svg</file>
+    <file alias="places/22/folder-download.svg">icons/breeze/places/22/folder-download.svg</file>
+    <file alias="places/22/folder-drawing.svg">icons/breeze/places/22/folder-drawing.svg</file>
+    <file alias="places/22/folder-favorites.svg">icons/breeze/places/22/folder-favorites.svg</file>
+    <file alias="places/22/folder-locked.svg">icons/breeze/places/22/folder-locked.svg</file>
+    <file alias="places/22/folder-network.svg">icons/breeze/places/22/folder-network.svg</file>
+    <file alias="places/22/folder-open.svg">icons/breeze/places/22/folder-open.svg</file>
+    <file alias="places/22/folder-pictures.svg">icons/breeze/places/22/folder-pictures.svg</file>
+    <file alias="places/22/folder-publicshare.svg">icons/breeze/places/22/folder-publicshare.svg</file>
+    <file alias="places/22/folder-sound.svg">icons/breeze/places/22/folder-sound.svg</file>
+    <file alias="places/22/folder-temp.svg">icons/breeze/places/22/folder-temp.svg</file>
+    <file alias="places/22/folder-text.svg">icons/breeze/places/22/folder-text.svg</file>
+    <file alias="places/22/folder-videos.svg">icons/breeze/places/22/folder-videos.svg</file>
+    <file alias="places/22/folder.svg">icons/breeze/places/22/folder.svg</file>
+  </qresource>
+</RCC>

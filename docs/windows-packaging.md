@@ -31,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1
 Run `windeployqt` against the installed or staged `smb-browser.exe` before
 publishing the package. The package must include:
 
-- Qt5 Core/Gui/Widgets/Sql runtime DLLs and platform plugins.
+- Qt5 Core/Gui/Widgets/Sql/Svg runtime DLLs and platform/image plugins.
 - QtKeychain runtime DLLs.
 - libsodium runtime DLL.
 - libsmb2 runtime DLL when the backend is enabled.

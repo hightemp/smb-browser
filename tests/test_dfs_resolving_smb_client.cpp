@@ -1,5 +1,6 @@
 #include "smb/DfsResolvingSmbClient.h"
 
+#include <QHash>
 #include <QtTest/QtTest>
 
 #include <utility>
@@ -24,6 +25,14 @@ smb::core::AppError smbFailure(smb::core::ErrorCode code,
                                        details, false);
 }
 
+smb::core::RemoteFileEntry remoteEntry(QString name, QString path) {
+  smb::core::RemoteFileEntry entry;
+  entry.name = std::move(name);
+  entry.remotePath = std::move(path);
+  entry.type = smb::core::RemoteFileType::Directory;
+  return entry;
+}
+
 class RecordingSmbClient final : public smb::core::SmbClient {
 public:
   smb::core::ErrorCode originalError = smb::core::ErrorCode::ShareUnavailable;
@@ -31,6 +40,9 @@ public:
       QStringLiteral("Tree Connect failed with STATUS_BAD_NETWORK_NAME");
   QString targetServer = QStringLiteral("target.example.com");
   QVector<QString> checkedServers;
+  QVector<QPair<QString, QString>> listedPaths;
+  bool failOriginalListWithPathReferral = false;
+  QHash<QString, QVector<smb::core::RemoteFileEntry>> targetDirectoryEntries;
 
   smb::core::Result<bool>
   checkConnection(const smb::core::Connection &candidate,
@@ -45,9 +57,20 @@ public:
   }
 
   smb::core::Result<QVector<smb::core::RemoteFileEntry>>
-  listDirectory(const smb::core::Connection &,
-                const smb::core::CredentialSecret *, const QString &,
+  listDirectory(const smb::core::Connection &candidate,
+                const smb::core::CredentialSecret *, const QString &remotePath,
                 const smb::core::OperationContext &) override {
+    listedPaths.push_back({candidate.server, remotePath});
+    if (candidate.server == targetServer) {
+      return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::success(
+          targetDirectoryEntries.value(remotePath));
+    }
+    if (failOriginalListWithPathReferral) {
+      return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::failure(
+          smbFailure(smb::core::ErrorCode::ShareUnavailable,
+                     QStringLiteral("SMB2_STATUS_PATH_NOT_COVERED "
+                                    "ntstatus=0xc0000257")));
+    }
     return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::success({});
   }
 
@@ -109,7 +132,11 @@ class StaticDfsResolver final : public smb::core::DfsReferralResolver {
 public:
   smb::core::Connection resolved =
       connection(QStringLiteral("target.example.com"), QStringLiteral("RU"));
+  smb::core::DfsResolvedPath resolvedPath{
+      resolved, QStringLiteral("/"), QStringLiteral("/Finance"),
+      QStringLiteral("/")};
   int calls = 0;
+  int pathCalls = 0;
 
   smb::core::Result<std::optional<smb::core::Connection>>
   resolve(const smb::core::Connection &, const smb::core::CredentialSecret *,
@@ -117,6 +144,15 @@ public:
     ++calls;
     return smb::core::Result<std::optional<smb::core::Connection>>::success(
         resolved);
+  }
+
+  smb::core::Result<std::optional<smb::core::DfsResolvedPath>>
+  resolvePath(const smb::core::Connection &,
+              const smb::core::CredentialSecret *, const QString &,
+              const smb::core::OperationContext &) override {
+    ++pathCalls;
+    return smb::core::Result<
+        std::optional<smb::core::DfsResolvedPath>>::success(resolvedPath);
   }
 };
 
@@ -174,6 +210,65 @@ private slots:
     QVERIFY(result.error().code == smb::core::ErrorCode::DnsError);
     QCOMPARE(resolver.calls, 0);
     QCOMPARE(delegate.checkedServers.size(), 1);
+  }
+
+  void resolvesPathLevelDfsAndRebasesListedEntries() {
+    RecordingSmbClient delegate;
+    delegate.failOriginalListWithPathReferral = true;
+    delegate.targetDirectoryEntries.insert(
+        QStringLiteral("/"),
+        {remoteEntry(QStringLiteral("Budget"), QStringLiteral("/Budget"))});
+    StaticDfsResolver resolver;
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+
+    const auto result = client.listDirectory(
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru")),
+        nullptr, QStringLiteral("/Finance"), {});
+
+    QVERIFY(result.ok());
+    QCOMPARE(resolver.calls, 0);
+    QCOMPARE(resolver.pathCalls, 1);
+    QCOMPARE(delegate.listedPaths.size(), 2);
+    QCOMPARE(delegate.listedPaths.at(0).first,
+             QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.listedPaths.at(0).second, QStringLiteral("/Finance"));
+    QCOMPARE(delegate.listedPaths.at(1).first,
+             QStringLiteral("target.example.com"));
+    QCOMPARE(delegate.listedPaths.at(1).second, QStringLiteral("/"));
+    QCOMPARE(result.value().size(), 1);
+    QCOMPARE(result.value().at(0).remotePath,
+             QStringLiteral("/Finance/Budget"));
+  }
+
+  void usesCachedPathTargetForNestedDfsNavigation() {
+    RecordingSmbClient delegate;
+    delegate.failOriginalListWithPathReferral = true;
+    delegate.targetDirectoryEntries.insert(
+        QStringLiteral("/"),
+        {remoteEntry(QStringLiteral("Budget"), QStringLiteral("/Budget"))});
+    delegate.targetDirectoryEntries.insert(
+        QStringLiteral("/Budget"),
+        {remoteEntry(QStringLiteral("2026"), QStringLiteral("/Budget/2026"))});
+    StaticDfsResolver resolver;
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+    const auto original =
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru"));
+
+    QVERIFY(client.listDirectory(original, nullptr, QStringLiteral("/Finance"),
+                                 {})
+                .ok());
+    const auto nested = client.listDirectory(
+        original, nullptr, QStringLiteral("/Finance/Budget"), {});
+
+    QVERIFY(nested.ok());
+    QCOMPARE(resolver.pathCalls, 1);
+    QCOMPARE(delegate.listedPaths.size(), 3);
+    QCOMPARE(delegate.listedPaths.at(2).first,
+             QStringLiteral("target.example.com"));
+    QCOMPARE(delegate.listedPaths.at(2).second, QStringLiteral("/Budget"));
+    QCOMPARE(nested.value().size(), 1);
+    QCOMPARE(nested.value().at(0).remotePath,
+             QStringLiteral("/Finance/Budget/2026"));
   }
 };
 

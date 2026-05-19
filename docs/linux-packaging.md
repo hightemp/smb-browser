@@ -39,6 +39,7 @@ The DEB profile declares the baseline runtime packages:
 - `libqt5widgets5`
 - `libqt5sql5`
 - `libqt5sql5-sqlite`
+- `libqt5svg5`
 - `libqt5keychain1`
 - `libsodium23`
 - `smbclient`

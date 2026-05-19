@@ -18,13 +18,26 @@
 #include <QMouseEvent>
 #include <QPointer>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QSize>
+#include <QSizePolicy>
 #include <QStyle>
 #include <QTableView>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <utility>
 
 namespace smb::ui {
+
+namespace {
+
+bool isBrowsableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
+  return entry.type == smb::core::RemoteFileType::Directory ||
+         entry.type == smb::core::RemoteFileType::Symlink;
+}
+
+} // namespace
 
 RemoteBrowserWidget::RemoteBrowserWidget(
     smb::application::RemoteDirectoryUseCase &directoryUseCase,
@@ -52,9 +65,12 @@ RemoteBrowserWidget::RemoteBrowserWidget(
 
   auto *toolbar = new QWidget(this);
   toolbar->setObjectName(QStringLiteral("remoteBrowserToolbar"));
-  auto *toolbarLayout = new QHBoxLayout(toolbar);
+  auto *toolbarLayout = new QVBoxLayout(toolbar);
   toolbarLayout->setContentsMargins(0, 0, 0, 0);
   toolbarLayout->setSpacing(6);
+  auto *buttonLayout = new QHBoxLayout();
+  buttonLayout->setContentsMargins(0, 0, 0, 0);
+  buttonLayout->setSpacing(6);
 
   m_backButton = new QPushButton(style()->standardIcon(QStyle::SP_ArrowBack),
                                  tr("Back"), toolbar);
@@ -93,22 +109,30 @@ RemoteBrowserWidget::RemoteBrowserWidget(
                                    tr("Rename"), toolbar);
   m_renameButton->setObjectName(QStringLiteral("remoteBrowserRenameButton"));
 
-  toolbarLayout->addWidget(m_backButton);
-  toolbarLayout->addWidget(m_forwardButton);
-  toolbarLayout->addWidget(m_upButton);
-  toolbarLayout->addWidget(m_refreshButton);
-  toolbarLayout->addWidget(m_createFolderButton);
-  toolbarLayout->addWidget(m_uploadButton);
-  toolbarLayout->addWidget(m_downloadButton);
-  toolbarLayout->addWidget(m_copyButton);
-  toolbarLayout->addWidget(m_moveButton);
-  toolbarLayout->addWidget(m_renameButton);
-  toolbarLayout->addWidget(m_deleteButton);
+  buttonLayout->addWidget(m_backButton);
+  buttonLayout->addWidget(m_forwardButton);
+  buttonLayout->addWidget(m_upButton);
+  buttonLayout->addWidget(m_refreshButton);
+  buttonLayout->addWidget(m_createFolderButton);
+  buttonLayout->addWidget(m_uploadButton);
+  buttonLayout->addWidget(m_downloadButton);
+  buttonLayout->addWidget(m_copyButton);
+  buttonLayout->addWidget(m_moveButton);
+  buttonLayout->addWidget(m_renameButton);
+  buttonLayout->addWidget(m_deleteButton);
+  buttonLayout->addStretch(1);
+  toolbarLayout->addLayout(buttonLayout);
 
   m_searchEdit = new QLineEdit(toolbar);
   m_searchEdit->setObjectName(QStringLiteral("remoteFileSearchEdit"));
   m_searchEdit->setPlaceholderText(tr("Search current folder"));
-  toolbarLayout->addWidget(m_searchEdit, 1);
+  m_searchEdit->setMinimumWidth(240);
+  m_searchEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  auto *searchLayout = new QHBoxLayout();
+  searchLayout->setContentsMargins(0, 0, 0, 0);
+  searchLayout->setSpacing(0);
+  searchLayout->addWidget(m_searchEdit);
+  toolbarLayout->addLayout(searchLayout);
   rootLayout->addWidget(toolbar);
 
   m_stateLabel =
@@ -128,9 +152,13 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   m_tableView->viewport()->setAcceptDrops(false);
   m_tableView->viewport()->installEventFilter(this);
   m_tableView->setAlternatingRowColors(true);
-  m_tableView->horizontalHeader()->setStretchLastSection(true);
+  m_tableView->setIconSize(QSize(22, 22));
+  m_tableView->horizontalHeader()->setSectionResizeMode(
+      QHeaderView::Interactive);
+  m_tableView->horizontalHeader()->setStretchLastSection(false);
   m_tableView->verticalHeader()->setVisible(false);
   rootLayout->addWidget(m_tableView, 1);
+  QTimer::singleShot(0, this, &RemoteBrowserWidget::applyColumnProportions);
 
   connect(m_backButton, &QPushButton::clicked, this,
           &RemoteBrowserWidget::goBack);
@@ -165,7 +193,7 @@ RemoteBrowserWidget::RemoteBrowserWidget(
             if (entry.name.isEmpty()) {
               return;
             }
-            if (entry.isDirectory()) {
+            if (isBrowsableRemoteEntry(entry)) {
               openDirectory(entry.remotePath);
               return;
             }
@@ -424,8 +452,7 @@ void RemoteBrowserWidget::prepareExternalDragForSelected() {
 
   if (fileEntries.isEmpty()) {
     const auto error = smb::core::AppError::fromCode(
-        smb::core::ErrorCode::InvalidPath,
-        smb::core::ErrorCategory::Validation,
+        smb::core::ErrorCode::InvalidPath, smb::core::ErrorCategory::Validation,
         tr("Only files can be dragged to the local desktop."));
     m_prompter.showError(this, tr("Unable to Drag Remote Items"), error);
     emit remoteOperationFailed(QStringLiteral("external_drag"), error);
@@ -605,6 +632,11 @@ void RemoteBrowserWidget::dropEvent(QDropEvent *event) {
 
   uploadLocalFiles(std::move(localPaths));
   event->acceptProposedAction();
+}
+
+void RemoteBrowserWidget::resizeEvent(QResizeEvent *event) {
+  QWidget::resizeEvent(event);
+  applyColumnProportions();
 }
 
 bool RemoteBrowserWidget::eventFilter(QObject *watched, QEvent *event) {
@@ -803,6 +835,36 @@ void RemoteBrowserWidget::updateActionState() {
   m_moveButton->setEnabled(hasConnection && hasSelection);
   m_deleteButton->setEnabled(hasConnection && hasSelection);
   m_renameButton->setEnabled(hasConnection && hasSelection);
+}
+
+void RemoteBrowserWidget::applyColumnProportions() {
+  if (m_tableView == nullptr) {
+    return;
+  }
+
+  static constexpr int kWeights[RemoteFileModel::ColumnCount] = {493, 99,  100,
+                                                                 167, 100, 124};
+  static constexpr int kMinimums[RemoteFileModel::ColumnCount] = {
+      260, 90, 80, 160, 100, 110};
+  constexpr int kTotalWeight = 493 + 99 + 100 + 167 + 100 + 124;
+
+  const auto availableWidth = m_tableView->viewport()->width();
+  if (availableWidth <= 0) {
+    return;
+  }
+
+  int usedWidth = 0;
+  for (int column = 0; column < RemoteFileModel::ColumnCount; ++column) {
+    int width = 0;
+    if (column == RemoteFileModel::ColumnCount - 1) {
+      width = qMax(kMinimums[column], availableWidth - usedWidth);
+    } else {
+      width = qMax(kMinimums[column],
+                   (availableWidth * kWeights[column]) / kTotalWeight);
+      usedWidth += width;
+    }
+    m_tableView->setColumnWidth(column, width);
+  }
 }
 
 smb::core::RemoteFileEntry RemoteBrowserWidget::selectedEntry() const {

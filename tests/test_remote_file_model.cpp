@@ -1,5 +1,6 @@
 #include "ui/RemoteFileModel.h"
 
+#include <QIcon>
 #include <QSignalSpy>
 #include <QTableView>
 #include <QtTest/QtTest>
@@ -50,6 +51,9 @@ private slots:
         model.index(0, smb::ui::RemoteFileModel::NameColumn);
     QCOMPARE(model.data(folderName, Qt::DisplayRole).toString(),
              QStringLiteral("Documents"));
+    QVERIFY(
+        model.data(folderName, Qt::DecorationRole).value<QIcon>().isNull() ==
+        false);
     QCOMPARE(model.data(folderName, smb::ui::RemoteFileModel::RemotePathRole)
                  .toString(),
              QStringLiteral("/Documents"));

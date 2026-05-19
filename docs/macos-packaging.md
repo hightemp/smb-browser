@@ -31,7 +31,7 @@ scripts/package-smoke-macos.sh
 Run `macdeployqt` against `smb-browser.app` before publishing the DMG. The app
 bundle must include:
 
-- Qt5 frameworks and platform plugins.
+- Qt5 Core/Gui/Widgets/Sql/Svg frameworks and platform/image plugins.
 - QtKeychain runtime dependency.
 - libsodium runtime dependency.
 - libsmb2 runtime dependency when the backend is enabled.
