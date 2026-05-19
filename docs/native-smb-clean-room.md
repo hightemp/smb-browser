@@ -137,6 +137,10 @@ engine без Samba/libsmb2 source input.
 - Guest and anonymous auth modes are handled explicitly in the NTLM token
   provider. Current-user/Kerberos auth is reported as unsupported until T-095
   defines the platform strategy.
+- Current-user/Kerberos design is documented in `docs/current-user-kerberos.md`.
+  Planned implementations are SSPI on Windows, optional GSSAPI/Kerberos on
+  Linux and macOS system GSS/Kerberos frameworks. UI must keep current-user auth
+  feature-gated until the backend reports support.
 - SMB2.0.2/2.1 signing is implemented with HMAC-SHA256. SMB3.0/3.0.2 signing
   is implemented with AES-CMAC and SMB3 signing-key derivation. SMB3
   encryption and SMB3.1.1 preauth-integrity signing remain open work.
@@ -152,6 +156,10 @@ engine без Samba/libsmb2 source input.
 - Native file-object operations include create-directory, delete, recursive
   delete and wildcard delete at library level. Recursive delete avoids walking
   into reparse/symlink directories and checks cancellation between steps.
+- Native change notification now has protocol primitives and a single-shot
+  `watchDirectoryOnce` facade. It is intended for future auto-refresh; UI
+  integration remains disabled by default and unsupported/failed notify calls
+  should fall back to manual refresh.
 - Move semantics use native rename when source and target are on the same
   authenticated SMB tree. Cross-share move remains copy followed by source
   delete only after the copy succeeds.

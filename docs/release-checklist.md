@@ -41,6 +41,12 @@ cmake -S . -B tmp/package-linux -DCMAKE_BUILD_TYPE=Release
 cmake --build tmp/package-linux --target package
 ```
 
+- [ ] Generate release dependency manifest:
+
+```bash
+make sbom
+```
+
 ## Default test gate
 
 - [ ] Full default test suite passes:

@@ -345,6 +345,45 @@ smb::native_smb::ByteVector buildQueryDirectoryResponse() {
   return bytes;
 }
 
+smb::native_smb::ByteVector notifyEntry(const std::string &name,
+                                        std::uint32_t action,
+                                        std::uint32_t nextEntryOffset) {
+  auto encodedName = smb::native_smb::encodeUtf16Le(name);
+  smb::native_smb::ByteVector bytes;
+  appendU32Le(bytes, nextEntryOffset);
+  appendU32Le(bytes, action);
+  appendU32Le(bytes, static_cast<std::uint32_t>(encodedName.size()));
+  bytes.insert(bytes.end(), encodedName.begin(), encodedName.end());
+  if (nextEntryOffset > bytes.size()) {
+    appendZeros(bytes, nextEntryOffset - bytes.size());
+  }
+  return bytes;
+}
+
+smb::native_smb::ByteVector buildChangeNotifyResponse(
+    std::uint32_t status = smb::native_smb::kStatusSuccess) {
+  auto entries = notifyEntry("old.txt",
+                             smb::native_smb::kFileActionRenamedOldName, 28);
+  const auto newEntry = notifyEntry(
+      "new.txt", smb::native_smb::kFileActionRenamedNewName, 0);
+  entries.insert(entries.end(), newEntry.begin(), newEntry.end());
+
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::ChangeNotify;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = status;
+  header.messageId = 27;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kChangeNotifyResponseStructureSize);
+  appendU16Le(bytes, 72);
+  appendU32Le(bytes, static_cast<std::uint32_t>(entries.size()));
+  bytes.insert(bytes.end(), entries.begin(), entries.end());
+  return bytes;
+}
+
 } // namespace
 
 class NativeSmbProtocolTest final : public QObject {
@@ -1055,6 +1094,65 @@ private slots:
              QStringLiteral("folder"));
     QVERIFY(response.value.entries[1].isDirectory);
     QCOMPARE(response.value.entries[1].fileId, std::uint64_t{1002});
+  }
+
+  void buildsChangeNotifyRequest() {
+    smb::native_smb::ChangeNotifyRequestOptions options;
+    options.fileId.persistent = 0x0102030405060708ULL;
+    options.fileId.volatileId = 0x1112131415161718ULL;
+    options.flags = smb::native_smb::kSmb2WatchTree;
+    options.outputBufferLength = 131072;
+    options.completionFilter =
+        smb::native_smb::kFileNotifyChangeFileName |
+        smb::native_smb::kFileNotifyChangeLastWrite;
+
+    const auto bytes =
+        smb::native_smb::buildChangeNotifyRequest(options, 27, 77, 34);
+
+    QCOMPARE(bytes.size(), std::size_t{96});
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kChangeNotifyRequestStructureSize);
+    QCOMPARE(readU16Le(bytes, 66), smb::native_smb::kSmb2WatchTree);
+    QCOMPARE(readU32Le(bytes, 68), std::uint32_t{131072});
+    QCOMPARE(readU64Le(bytes, 72), std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(readU64Le(bytes, 80), std::uint64_t{0x1112131415161718ULL});
+    QCOMPARE(readU32Le(bytes, 88),
+             smb::native_smb::kFileNotifyChangeFileName |
+                 smb::native_smb::kFileNotifyChangeLastWrite);
+    QCOMPARE(readU32Le(bytes, 92), std::uint32_t{0});
+
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::ChangeNotify));
+    QCOMPARE(header.value.creditCharge, std::uint16_t{2});
+  }
+
+  void decodesChangeNotifyResponse() {
+    const auto response = smb::native_smb::decodeChangeNotifyResponse(
+        buildChangeNotifyResponse());
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.status, smb::native_smb::kStatusSuccess);
+    QCOMPARE(response.value.outputBufferOffset, std::uint16_t{72});
+    QCOMPARE(response.value.entries.size(), std::size_t{2});
+    QCOMPARE(response.value.entries[0].action,
+             smb::native_smb::kFileActionRenamedOldName);
+    QCOMPARE(QString::fromStdString(response.value.entries[0].name),
+             QStringLiteral("old.txt"));
+    QCOMPARE(response.value.entries[1].action,
+             smb::native_smb::kFileActionRenamedNewName);
+    QCOMPARE(QString::fromStdString(response.value.entries[1].name),
+             QStringLiteral("new.txt"));
+  }
+
+  void changeNotifyEnumDirIsSuccessfulEmptyResponse() {
+    const auto response = smb::native_smb::decodeChangeNotifyResponse(
+        buildChangeNotifyResponse(smb::native_smb::kStatusNotifyEnumDir));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.status, smb::native_smb::kStatusNotifyEnumDir);
+    QCOMPARE(response.value.entries.size(), std::size_t{2});
   }
 
   void mapsSigningPolicyToSecurityMode() {

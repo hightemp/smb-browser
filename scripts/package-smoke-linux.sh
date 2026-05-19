@@ -56,6 +56,22 @@ if LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRAR
   exit 1
 fi
 
+if command -v readelf >/dev/null 2>&1; then
+  if ! readelf -W -l "$ROOTFS/usr/bin/smb-browser" | grep -q 'GNU_RELRO'; then
+    echo "Executable is missing GNU_RELRO." >&2
+    exit 1
+  fi
+  if ! readelf -d "$ROOTFS/usr/bin/smb-browser" | grep -q 'BIND_NOW'; then
+    echo "Executable is missing BIND_NOW." >&2
+    exit 1
+  fi
+  if readelf -W -l "$ROOTFS/usr/bin/smb-browser" |
+    awk '/GNU_STACK/ && $7 ~ /E/ { found=1 } END { exit found ? 0 : 1 }'; then
+    echo "Executable stack is marked executable." >&2
+    exit 1
+  fi
+fi
+
 set +e
 QT_QPA_PLATFORM=offscreen \
 LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \

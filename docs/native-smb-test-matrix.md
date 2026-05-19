@@ -166,6 +166,13 @@ A `Must` native library feature is not complete until:
 - `native_smb_close_exchanger`: scripted handle close flow, close response
   attribute parsing, unexpected response handling and cancellation before
   transport IO.
+- `native_smb_change_notify_exchanger`: scripted CHANGE_NOTIFY flow,
+  `FILE_NOTIFY_INFORMATION` response parsing, unexpected response handling and
+  cancellation before transport IO.
+- `native_smb_directory_watcher`: composed `CREATE directory ->
+  CHANGE_NOTIFY -> CLOSE` flow, watch-tree flag routing, notification entry
+  propagation, `STATUS_NOTIFY_ENUM_DIR` preservation and cancellation before
+  transport IO.
 - `native_smb_read_exchanger`: scripted file read flow, READ request/response
   data parsing, unexpected response handling and cancellation before transport
   IO.
@@ -196,6 +203,6 @@ A `Must` native library feature is not complete until:
   transport IO.
 - `native_smb_session`: baseline C++ facade over native primitives, operation
   routing for list/stat/read/write/delete/create-directory/rename, recursive
-  delete, wildcard delete, message id allocation, result mapping, cancellation
-  before recursive delete network IO and error propagation without exposing raw
-  packet buffers to callers.
+  delete, wildcard delete, single-shot directory watch, message id allocation,
+  result mapping, cancellation before recursive delete network IO and error
+  propagation without exposing raw packet buffers to callers.

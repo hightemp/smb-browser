@@ -1999,7 +1999,7 @@ Samba в проект запрещено.
   - `native_smb_ntlm_v2_token_provider` covers password/domain, guest,
     anonymous and current-user unsupported behavior without real secrets.
 
-### [ ] T-095: Спроектировать current user / Kerberos support
+### [x] T-095: Спроектировать current user / Kerberos support
 
 - Приоритет: Must.
 - Зависимости: T-083, T-093.
@@ -2203,7 +2203,7 @@ Samba в проект запрещено.
   - Unit tests capability gating.
   - Optional integration tests on Samba with UNIX extensions/ACL support.
 
-### [ ] T-106: Реализовать change notify/watch capability
+### [x] T-106: Реализовать change notify/watch capability
 
 - Приоритет: Must.
 - Зависимости: T-093, T-098.
@@ -2353,7 +2353,7 @@ Samba в проект запрещено.
   - macOS package smoke script.
   - Dependency audit via `otool -L`.
 
-### [ ] T-115: Добавить security hardening для static native SMB engine
+### [x] T-115: Добавить security hardening для static native SMB engine
 
 - Приоритет: Must.
 - Зависимости: T-089, T-111.

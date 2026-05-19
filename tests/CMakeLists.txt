@@ -301,6 +301,22 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-fake-transport"
     )
 
+    add_executable(test_native_smb_change_notify_exchanger
+        test_native_smb_change_notify_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_change_notify_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_change_notify_exchanger
+             COMMAND test_native_smb_change_notify_exchanger)
+    set_tests_properties(native_smb_change_notify_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
     add_executable(test_native_smb_read_exchanger
         test_native_smb_read_exchanger.cpp
     )
@@ -378,6 +394,22 @@ if(TARGET smb_browser_native_smb)
     add_test(NAME native_smb_directory_lister
              COMMAND test_native_smb_directory_lister)
     set_tests_properties(native_smb_directory_lister PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_directory_watcher
+        test_native_smb_directory_watcher.cpp
+    )
+
+    target_link_libraries(test_native_smb_directory_watcher
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_directory_watcher
+             COMMAND test_native_smb_directory_watcher)
+    set_tests_properties(native_smb_directory_watcher PROPERTIES
         LABELS "native-unit;native-fake-transport;native-contract"
     )
 

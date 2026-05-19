@@ -31,6 +31,11 @@ DecodeResult<NativeObjectMutationResult> mutationFailureFrom(
                                                            error.message);
 }
 
+DecodeResult<NativeNotifyResult> notifyFailureFrom(
+    const ProtocolError &error) {
+  return DecodeResult<NativeNotifyResult>::failure(error.code, error.message);
+}
+
 DecodeResult<NativeObjectMutationResult> mutationFailure(
     ErrorCode code, std::string message) {
   return DecodeResult<NativeObjectMutationResult>::failure(code,
@@ -106,6 +111,13 @@ NativeRemoteEntry toNativeEntry(const DirectoryEntry &entry) {
   result.attributes = entry.fileAttributes;
   result.directory = entry.isDirectory;
   result.reparsePoint = entry.isReparsePoint;
+  return result;
+}
+
+NativeNotifyEntry toNativeNotifyEntry(const ChangeNotifyEntry &entry) {
+  NativeNotifyEntry result;
+  result.action = entry.action;
+  result.name = entry.name;
   return result;
 }
 
@@ -300,6 +312,27 @@ DecodeResult<NativeObjectMutationResult> NativeSmbSession::renameObject(
   NativeObjectMutationResult mutation;
   mutation.path = toPath;
   return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeNotifyResult> NativeSmbSession::watchDirectoryOnce(
+    const std::string &path, std::uint32_t completionFilter, bool watchTree,
+    const OperationContext &context) {
+  const auto messageId = allocateMessageIds(3);
+  const DirectoryWatcher watcher;
+  const auto result =
+      watcher.waitOnce(m_transport, path, completionFilter, watchTree, 65536,
+                       messageId, m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    return notifyFailureFrom(result.error);
+  }
+
+  NativeNotifyResult notify;
+  notify.enumerationRequired = result.value.status == kStatusNotifyEnumDir;
+  notify.entries.reserve(result.value.entries.size());
+  for (const auto &entry : result.value.entries) {
+    notify.entries.push_back(toNativeNotifyEntry(entry));
+  }
+  return DecodeResult<NativeNotifyResult>::success(std::move(notify));
 }
 
 DecodeResult<NativeObjectMutationResult>

@@ -1,10 +1,14 @@
 add_library(smb_browser_native_smb STATIC
+    ChangeNotifyExchanger.cpp
+    ChangeNotifyExchanger.h
     CloseExchanger.cpp
     CloseExchanger.h
     DirectTcpTransport.cpp
     DirectTcpTransport.h
     DirectoryLister.cpp
     DirectoryLister.h
+    DirectoryWatcher.cpp
+    DirectoryWatcher.h
     FileReader.cpp
     FileReader.h
     FileWriter.cpp

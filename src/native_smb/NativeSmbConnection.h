@@ -50,6 +50,10 @@ public:
   renameObject(const std::string &fromPath, const std::string &toPath,
                bool replaceIfExists, const OperationContext &context);
 
+  DecodeResult<NativeNotifyResult>
+  watchDirectoryOnce(const std::string &path, std::uint32_t completionFilter,
+                     bool watchTree, const OperationContext &context);
+
   DecodeResult<bool> disconnect(const OperationContext &context);
 
 private:

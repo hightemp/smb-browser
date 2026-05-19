@@ -326,6 +326,24 @@ struct QueryDirectoryResponse {
   std::vector<DirectoryEntry> entries;
 };
 
+struct ChangeNotifyRequestOptions {
+  FileId fileId;
+  std::uint16_t flags = 0;
+  std::uint32_t outputBufferLength = 65536;
+  std::uint32_t completionFilter = 0;
+};
+
+struct ChangeNotifyEntry {
+  std::uint32_t action = 0;
+  std::string name;
+};
+
+struct ChangeNotifyResponse {
+  std::uint32_t status = 0;
+  std::uint16_t outputBufferOffset = 0;
+  std::vector<ChangeNotifyEntry> entries;
+};
+
 constexpr std::size_t kSmb2HeaderSize = 64;
 constexpr std::size_t kDirectTcpHeaderSize = 4;
 constexpr std::uint32_t kSmb2ProtocolId = 0x424D53FE;
@@ -354,7 +372,10 @@ constexpr std::uint16_t kQueryInfoRequestStructureSize = 41;
 constexpr std::uint16_t kQueryInfoResponseStructureSize = 9;
 constexpr std::uint16_t kQueryDirectoryRequestStructureSize = 33;
 constexpr std::uint16_t kQueryDirectoryResponseStructureSize = 9;
+constexpr std::uint16_t kChangeNotifyRequestStructureSize = 32;
+constexpr std::uint16_t kChangeNotifyResponseStructureSize = 9;
 constexpr std::uint32_t kStatusSuccess = 0x00000000;
+constexpr std::uint32_t kStatusNotifyEnumDir = 0x0000010C;
 constexpr std::uint32_t kStatusNoSuchFile = 0xC000000F;
 constexpr std::uint32_t kStatusAccessDenied = 0xC0000022;
 constexpr std::uint32_t kStatusObjectNameNotFound = 0xC0000034;
@@ -422,6 +443,28 @@ constexpr std::uint32_t kWriteFlagWriteThrough = 0x00000001;
 constexpr std::uint32_t kWriteFlagWriteUnbuffered = 0x00000002;
 constexpr std::uint8_t kFileIdBothDirectoryInformation = 0x25;
 constexpr std::uint8_t kQueryDirectoryRestartScans = 0x01;
+constexpr std::uint16_t kSmb2WatchTree = 0x0001;
+constexpr std::uint32_t kFileNotifyChangeFileName = 0x00000001;
+constexpr std::uint32_t kFileNotifyChangeDirName = 0x00000002;
+constexpr std::uint32_t kFileNotifyChangeAttributes = 0x00000004;
+constexpr std::uint32_t kFileNotifyChangeSize = 0x00000008;
+constexpr std::uint32_t kFileNotifyChangeLastWrite = 0x00000010;
+constexpr std::uint32_t kFileNotifyChangeLastAccess = 0x00000020;
+constexpr std::uint32_t kFileNotifyChangeCreation = 0x00000040;
+constexpr std::uint32_t kFileNotifyChangeEa = 0x00000080;
+constexpr std::uint32_t kFileNotifyChangeSecurity = 0x00000100;
+constexpr std::uint32_t kFileNotifyChangeStreamName = 0x00000200;
+constexpr std::uint32_t kFileNotifyChangeStreamSize = 0x00000400;
+constexpr std::uint32_t kFileNotifyChangeStreamWrite = 0x00000800;
+constexpr std::uint32_t kFileNotifyChangeDefault =
+    kFileNotifyChangeFileName | kFileNotifyChangeDirName |
+    kFileNotifyChangeAttributes | kFileNotifyChangeSize |
+    kFileNotifyChangeLastWrite | kFileNotifyChangeCreation;
+constexpr std::uint32_t kFileActionAdded = 0x00000001;
+constexpr std::uint32_t kFileActionRemoved = 0x00000002;
+constexpr std::uint32_t kFileActionModified = 0x00000003;
+constexpr std::uint32_t kFileActionRenamedOldName = 0x00000004;
+constexpr std::uint32_t kFileActionRenamedNewName = 0x00000005;
 
 std::uint32_t capabilityMask(std::initializer_list<GlobalCapability> values);
 std::uint16_t securityModeForPolicy(SecurityPolicy policy);
@@ -530,6 +573,14 @@ DecodeResult<QueryDirectoryResponse>
 decodeQueryDirectoryResponse(const std::uint8_t *data, std::size_t size);
 DecodeResult<QueryDirectoryResponse>
 decodeQueryDirectoryResponse(const ByteVector &bytes);
+ByteVector buildChangeNotifyRequest(const ChangeNotifyRequestOptions &options,
+                                    std::uint64_t messageId,
+                                    std::uint32_t treeId,
+                                    std::uint64_t sessionId);
+DecodeResult<ChangeNotifyResponse>
+decodeChangeNotifyResponse(const std::uint8_t *data, std::size_t size);
+DecodeResult<ChangeNotifyResponse>
+decodeChangeNotifyResponse(const ByteVector &bytes);
 
 ByteVector encodeDirectTcpFrame(const ByteVector &smb2Message);
 DecodeResult<std::uint32_t>

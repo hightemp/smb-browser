@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DirectoryLister.h"
+#include "DirectoryWatcher.h"
 #include "FileReader.h"
 #include "FileWriter.h"
 #include "RemoteObjectOperator.h"
@@ -58,6 +59,16 @@ struct NativeObjectMutationResult {
   std::string path;
 };
 
+struct NativeNotifyEntry {
+  std::uint32_t action = 0;
+  std::string name;
+};
+
+struct NativeNotifyResult {
+  std::vector<NativeNotifyEntry> entries;
+  bool enumerationRequired = false;
+};
+
 struct NativeSmbSessionConfig {
   std::uint32_t treeId = 0;
   std::uint64_t sessionId = 0;
@@ -99,6 +110,10 @@ public:
   DecodeResult<NativeObjectMutationResult>
   renameObject(const std::string &fromPath, const std::string &toPath,
                bool replaceIfExists, const OperationContext &context);
+
+  DecodeResult<NativeNotifyResult>
+  watchDirectoryOnce(const std::string &path, std::uint32_t completionFilter,
+                     bool watchTree, const OperationContext &context);
 
   std::uint32_t treeId() const;
   std::uint64_t sessionId() const;

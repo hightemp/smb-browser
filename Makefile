@@ -39,6 +39,7 @@ help:
 	@printf '  %-22s %s\n' 'make samba-down' 'Stop Docker Samba fixture'
 	@printf '\n%s\n' 'Maintenance:'
 	@printf '  %-22s %s\n' 'make status' 'Show git status'
+	@printf '  %-22s %s\n' 'make sbom' 'Generate release dependency manifest under tmp/sbom'
 	@printf '  %-22s %s\n' 'make clean' 'Remove common build/package directories under tmp'
 	@printf '  %-22s %s\n' 'make distclean' 'Remove all tmp outputs'
 
@@ -125,7 +126,7 @@ native-configure:
 .PHONY: native-test
 native-test: native-configure
 	cmake --build $(NATIVE_BUILD_DIR) \
-		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_direct_tcp_transport test_native_smb_ntlm_messages test_native_smb_ntlm_crypto test_native_smb_spnego_token test_native_smb_signing test_native_smb_ntlm_v2_token_provider test_native_smb_connector test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector test_native_smb_close_exchanger test_native_smb_read_exchanger test_native_smb_write_exchanger test_native_smb_set_info_exchanger test_native_smb_query_info_exchanger test_native_smb_directory_lister test_native_smb_file_reader test_native_smb_file_writer test_native_smb_remote_object_operator test_native_smb_remote_stat_reader test_native_smb_session test_native_smb_error_mapper $(JOBS)
+		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_direct_tcp_transport test_native_smb_ntlm_messages test_native_smb_ntlm_crypto test_native_smb_spnego_token test_native_smb_signing test_native_smb_ntlm_v2_token_provider test_native_smb_connector test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector test_native_smb_close_exchanger test_native_smb_change_notify_exchanger test_native_smb_read_exchanger test_native_smb_write_exchanger test_native_smb_set_info_exchanger test_native_smb_query_info_exchanger test_native_smb_directory_lister test_native_smb_directory_watcher test_native_smb_file_reader test_native_smb_file_writer test_native_smb_remote_object_operator test_native_smb_remote_stat_reader test_native_smb_session test_native_smb_error_mapper $(JOBS)
 	ctest --test-dir $(NATIVE_BUILD_DIR) -L native-unit $(CTEST_ARGS)
 
 .PHONY: libsmb2
@@ -154,6 +155,10 @@ samba-down:
 .PHONY: status
 status:
 	git status --short
+
+.PHONY: sbom
+sbom:
+	scripts/generate-sbom.sh
 
 .PHONY: clean
 clean:

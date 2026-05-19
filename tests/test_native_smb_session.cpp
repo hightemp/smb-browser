@@ -183,6 +183,30 @@ smb::native_smb::ByteVector queryDirectoryNoMoreFilesPayload() {
   return smb::native_smb::encodeSmb2SyncHeader(header);
 }
 
+smb::native_smb::ByteVector changeNotifyResponsePayload(
+    std::uint32_t status = smb::native_smb::kStatusSuccess) {
+  const auto name = smb::native_smb::encodeUtf16Le("changed.txt");
+  smb::native_smb::ByteVector entry;
+  appendU32Le(entry, 0);
+  appendU32Le(entry, smb::native_smb::kFileActionModified);
+  appendU32Le(entry, static_cast<std::uint32_t>(name.size()));
+  entry.insert(entry.end(), name.begin(), name.end());
+
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::ChangeNotify;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = status;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kChangeNotifyResponseStructureSize);
+  appendU16Le(bytes, 72);
+  appendU32Le(bytes, static_cast<std::uint32_t>(entry.size()));
+  bytes.insert(bytes.end(), entry.begin(), entry.end());
+  return bytes;
+}
+
 smb::native_smb::ByteVector readResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::Read;
@@ -539,6 +563,63 @@ private slots:
     QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[7]).command),
              static_cast<int>(smb::native_smb::Command::Create));
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{410});
+  }
+
+  void routesDirectoryWatchOnce() {
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload(
+            smb::native_smb::Command::Create,
+            smb::native_smb::kFileAttributeDirectory)),
+        framedSuccess(changeNotifyResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 500;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto notify = session.watchDirectoryOnce(
+        "docs", smb::native_smb::kFileNotifyChangeDefault, true, {});
+
+    QVERIFY(notify.ok);
+    QVERIFY(!notify.value.enumerationRequired);
+    QCOMPARE(notify.value.entries.size(), std::size_t{1});
+    QCOMPARE(notify.value.entries[0].action,
+             smb::native_smb::kFileActionModified);
+    QCOMPARE(QString::fromStdString(notify.value.entries[0].name),
+             QStringLiteral("changed.txt"));
+    QCOMPARE(transport.requestFrames.size(), std::size_t{3});
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[1]).command),
+             static_cast<int>(smb::native_smb::Command::ChangeNotify));
+    QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
+             std::uint64_t{500});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{503});
+  }
+
+  void routesDirectoryWatchEnumDirStatus() {
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload(
+            smb::native_smb::Command::Create,
+            smb::native_smb::kFileAttributeDirectory)),
+        framedSuccess(changeNotifyResponsePayload(
+            smb::native_smb::kStatusNotifyEnumDir)),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 600;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto notify = session.watchDirectoryOnce(
+        "docs", smb::native_smb::kFileNotifyChangeDefault, false, {});
+
+    QVERIFY(notify.ok);
+    QVERIFY(notify.value.enumerationRequired);
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{603});
   }
 
   void cancelsRecursiveDeleteBeforeNetworkIo() {

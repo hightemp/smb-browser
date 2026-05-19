@@ -131,6 +131,7 @@ std::uint16_t securityModeForPolicy(SecurityPolicy policy) {
 ErrorCode errorCodeForNtStatus(std::uint32_t status) {
   switch (status) {
   case kStatusSuccess:
+  case kStatusNotifyEnumDir:
     return ErrorCode::None;
   case kStatusLogonFailure:
   case kStatusAccountRestriction:
@@ -172,6 +173,8 @@ std::string ntStatusName(std::uint32_t status) {
   switch (status) {
   case kStatusSuccess:
     return "STATUS_SUCCESS";
+  case kStatusNotifyEnumDir:
+    return "STATUS_NOTIFY_ENUM_DIR";
   case kStatusNoSuchFile:
     return "STATUS_NO_SUCH_FILE";
   case kStatusAccessDenied:
@@ -1537,6 +1540,135 @@ decodeQueryDirectoryResponse(const std::uint8_t *data, std::size_t size) {
 DecodeResult<QueryDirectoryResponse>
 decodeQueryDirectoryResponse(const ByteVector &bytes) {
   return decodeQueryDirectoryResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildChangeNotifyRequest(const ChangeNotifyRequestOptions &options,
+                                    std::uint64_t messageId,
+                                    std::uint32_t treeId,
+                                    std::uint64_t sessionId) {
+  Smb2SyncHeader header;
+  header.command = Command::ChangeNotify;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+  if (options.outputBufferLength > 0) {
+    header.creditCharge = static_cast<std::uint16_t>(
+        1 + ((options.outputBufferLength - 1) / 65536));
+  }
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kChangeNotifyRequestStructureSize);
+  appendU16Le(bytes, options.flags);
+  appendU32Le(bytes, options.outputBufferLength);
+  appendFileId(bytes, options.fileId);
+  appendU32Le(bytes, options.completionFilter);
+  appendU32Le(bytes, 0);
+  return bytes;
+}
+
+DecodeResult<ChangeNotifyResponse>
+decodeChangeNotifyResponse(const std::uint8_t *data, std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        headerResult.error.code, headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::ChangeNotify) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a CHANGE_NOTIFY response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 CHANGE_NOTIFY response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess &&
+      headerResult.value.status != kStatusNotifyEnumDir) {
+    return failureFromNtStatus<ChangeNotifyResponse>(
+        headerResult.value.status, "SMB2 CHANGE_NOTIFY");
+  }
+  if (size < kSmb2HeaderSize + 8) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 CHANGE_NOTIFY response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kChangeNotifyResponseStructureSize) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 CHANGE_NOTIFY response structure size.");
+  }
+
+  const auto outputOffset = readU16Le(body + 2);
+  const auto outputLength = readU32Le(body + 4);
+  const auto outputEnd = static_cast<std::size_t>(outputOffset) + outputLength;
+  if (outputLength > 0 &&
+      (outputOffset < kSmb2HeaderSize || outputEnd > size ||
+       outputEnd < outputOffset)) {
+    return DecodeResult<ChangeNotifyResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 CHANGE_NOTIFY response output buffer is out of bounds.");
+  }
+
+  ChangeNotifyResponse response;
+  response.status = headerResult.value.status;
+  response.outputBufferOffset = outputOffset;
+
+  std::size_t entryOffset = outputOffset;
+  const auto entriesEnd = outputEnd;
+  while (outputLength > 0 && entryOffset < entriesEnd) {
+    if (entriesEnd - entryOffset < 12) {
+      return DecodeResult<ChangeNotifyResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_NOTIFY_INFORMATION entry is shorter than fixed part.");
+    }
+
+    const auto *entry = data + entryOffset;
+    const auto nextEntryOffset = readU32Le(entry);
+    const auto fileNameLength = readU32Le(entry + 8);
+    const auto fileNameOffset = entryOffset + 12;
+    const auto fileNameEnd = fileNameOffset + fileNameLength;
+    if (fileNameEnd > entriesEnd || fileNameEnd < fileNameOffset) {
+      return DecodeResult<ChangeNotifyResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_NOTIFY_INFORMATION file name is out of bounds.");
+    }
+    if (nextEntryOffset != 0 &&
+        ((nextEntryOffset % 4) != 0 ||
+         nextEntryOffset < 12 + fileNameLength ||
+         entryOffset + nextEntryOffset > entriesEnd)) {
+      return DecodeResult<ChangeNotifyResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_NOTIFY_INFORMATION next entry offset is invalid.");
+    }
+
+    const auto decodedName = decodeUtf16Le(data + fileNameOffset,
+                                           fileNameLength);
+    if (!decodedName.ok) {
+      return DecodeResult<ChangeNotifyResponse>::failure(
+          decodedName.error.code, decodedName.error.message);
+    }
+
+    ChangeNotifyEntry parsed;
+    parsed.action = readU32Le(entry + 4);
+    parsed.name = decodedName.value;
+    response.entries.push_back(parsed);
+
+    if (nextEntryOffset == 0) {
+      break;
+    }
+    entryOffset += nextEntryOffset;
+  }
+
+  return DecodeResult<ChangeNotifyResponse>::success(std::move(response));
+}
+
+DecodeResult<ChangeNotifyResponse>
+decodeChangeNotifyResponse(const ByteVector &bytes) {
+  return decodeChangeNotifyResponse(bytes.data(), bytes.size());
 }
 
 ByteVector encodeDirectTcpFrame(const ByteVector &smb2Message) {

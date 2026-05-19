@@ -98,6 +98,13 @@ DecodeResult<NativeObjectMutationResult> NativeSmbConnection::renameObject(
   return m_session.renameObject(fromPath, toPath, replaceIfExists, context);
 }
 
+DecodeResult<NativeNotifyResult> NativeSmbConnection::watchDirectoryOnce(
+    const std::string &path, std::uint32_t completionFilter, bool watchTree,
+    const OperationContext &context) {
+  return m_session.watchDirectoryOnce(path, completionFilter, watchTree,
+                                      context);
+}
+
 DecodeResult<bool>
 NativeSmbConnection::disconnect(const OperationContext &context) {
   if (m_disconnected) {
