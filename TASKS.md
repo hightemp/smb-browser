@@ -1212,6 +1212,8 @@ later notice, поэтому любое копирование/статичес�
 структуры, таблицы команд, комментарии или переносить внутренние реализации
 Samba в проект запрещено.
 
+Подробный gate-документ: `docs/native-smb-clean-room.md`.
+
 Продуктовые решения для native SMB migration:
 
 - Проект переводится в open-source/GPL-compatible модель распространения.
@@ -1232,7 +1234,7 @@ Samba в проект запрещено.
   validation на корпоративном Windows SMB/DFS server без сохранения реальных
   credentials в репозитории.
 
-### [ ] T-082: Зафиксировать результаты анализа Samba source в TASKS/notes
+### [x] T-082: Зафиксировать результаты анализа Samba source в TASKS/notes
 
 - Приоритет: Must.
 - Зависимости: нет.
@@ -1276,7 +1278,7 @@ Samba в проект запрещено.
   - Manual legal/compliance review gate.
   - CI может проверять наличие license files, notices и source bundle metadata.
 
-### [ ] T-084: Уточнить определение “один portable binary”
+### [x] T-084: Уточнить определение “один portable binary”
 
 - Приоритет: Must.
 - Зависимости: T-083.
@@ -1298,7 +1300,7 @@ Samba в проект запрещено.
   - Packaging smoke должен проверять отсутствие `libsmb2` и `smbclient`.
   - Dependency audit добавляется в CI для release profiles.
 
-### [ ] T-085: Составить feature parity matrix для внутренней SMB-библиотеки
+### [x] T-085: Составить feature parity matrix для внутренней SMB-библиотеки
 
 - Приоритет: Must.
 - Зависимости: T-082.
@@ -1324,7 +1326,7 @@ Samba в проект запрещено.
 
 ## Этап 16. Native SMB library architecture и build integration
 
-### [ ] T-086: Спроектировать модуль `SmbNative` как internal library
+### [x] T-086: Спроектировать модуль `SmbNative` как internal library
 
 - Приоритет: Must.
 - Зависимости: T-083, T-085.
@@ -1343,7 +1345,7 @@ Samba в проект запрещено.
   - Unit tests на lifecycle без реального network через fake transport layer,
     если выбран clean-room/адаптерный дизайн.
 
-### [ ] T-087: Спроектировать clean-room implementation path
+### [x] T-087: Спроектировать clean-room implementation path
 
 - Приоритет: Must.
 - Зависимости: T-083, T-086.
@@ -1365,53 +1367,61 @@ Samba в проект запрещено.
   - No runtime tests.
   - Review gate: нельзя начинать T-088/T-091 без утвержденного path.
 
-### [ ] T-088: Настроить reproducible source acquisition для SMB engine
+### [x] T-088: Настроить reproducible source acquisition для SMB engine
 
 - Приоритет: Must.
 - Зависимости: T-087.
 - Описание: Сделать воспроизводимый способ получения source для внутреннего
   SMB engine без runtime dependencies.
 - Acceptance criteria:
-  - Source pin не указывает на плавающий `master`; используется commit/tag +
-    checksum.
-  - CMake не требует установленного `libsmb2` или `smbclient`.
-  - Build может работать из clean clone: либо vendored source, либо скачивание
-    в `tmp/`/build cache с проверкой checksum.
-  - Offline build path описан для release.
-  - Никакие временные checkout-ы из `tmp/` не коммитятся.
+  - Для clean-room native engine внешний source acquisition step отсутствует:
+    исходники живут в `src/native_smb`.
+  - CMake не скачивает Samba, `libsmb2` или другой SMB client source для
+    native engine.
+  - CMake не требует установленного `libsmb2` или `smbclient` для сборки
+    native engine target.
+  - Offline build path native engine описан для release.
+  - Никакие временные checkout-ы из `tmp/` не коммитятся и не входят в source
+    distribution.
+  - Если позже появится внешний dependency для native engine, он должен иметь
+    pinned version/checksum и отдельный license/security review.
 - Заметки по тестам:
   - CI clean-clone configure test.
   - Test, что build не обращается к system `libsmb2`/`smbclient`.
 
-### [ ] T-089: Собрать минимальный static SMB client core
+### [ ] T-089: Реализовать минимальный static clean-room SMB2/3 core
 
 - Приоритет: Must.
 - Зависимости: T-087, T-088.
-- Описание: Сформировать минимальный static build внутреннего SMB engine,
-  исключив CLI-only части `smbclient`.
+- Описание: Реализовать минимальный статический clean-room SMB2/3 protocol
+  core внутри `src/native_smb` без Samba-derived source.
 - Acceptance criteria:
-  - Не используется `source3/client/client.c` как CLI entry point в runtime.
-  - Исключены readline/history/shell command/stdin processing.
-  - В build входят только нужные client/session/file/DFS/auth components.
+  - Не используется `source3/client/client.c`, Samba headers или Samba
+    libraries.
+  - Нет readline/history/shell command/stdin processing.
+  - В build входят только clean-room protocol/session/file/DFS/auth components.
   - Static library собирается на Linux в отдельном CMake target.
   - Build artifact может линковаться в `smb-browser` без `libsmb2` и external
     `smbclient`.
+  - Стартовый target `smb_browser_native_smb` расширен от scaffold до
+    минимального protocol core.
 - Заметки по тестам:
   - Linux build target smoke.
   - Link test проверяет отсутствие `-lsmb2`.
   - Dependency audit проверяет отсутствие `smbclient` process dependency.
 
-### [ ] T-090: Спроектировать C/C++ facade поверх native SMB core
+### [ ] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.
 - Зависимости: T-086, T-089.
-- Описание: Изолировать Samba/C/protocol details за small C++ facade, чтобы
+- Описание: Изолировать protocol details за small C++ facade, чтобы
   application layer не зависел от внутренних заголовков SMB engine.
 - Acceptance criteria:
   - Есть `NativeSmbSession`, `NativeSmbDirectory`, `NativeSmbFile` или
     эквивалентные RAII wrappers.
   - Все errors конвертируются в internal `NativeSmbError`, затем в `AppError`.
-  - Facade не экспортирует Samba structs, NTSTATUS или raw C pointers в UI.
+  - Facade не экспортирует raw protocol packets/status values или internal
+    pointers в UI.
   - Facade имеет injectable logging/progress/cancellation callbacks.
   - Memory ownership покрыт tests/review.
 - Заметки по тестам:
@@ -1423,7 +1433,7 @@ Samba в проект запрещено.
 - Приоритет: Must.
 - Зависимости: T-090.
 - Описание: Все сетевые операции должны оставаться async для UI и корректно
-  отменяться, несмотря на blocking/tevent/Samba internals.
+  отменяться, несмотря на blocking OS/socket paths внутри native core.
 - Acceptance criteria:
   - Каждая long-running operation принимает `OperationContext`.
   - Cancellation прерывает transfer/list/connect настолько быстро, насколько
@@ -1445,7 +1455,7 @@ Samba в проект запрещено.
   - Wrong credentials, no rights, DNS, timeout, share unavailable, DFS errors,
     protocol unsupported и local IO различаются.
   - Raw technical details sanitized.
-  - Error mapping не зависит от локализованных строк Samba.
+  - Error mapping не зависит от локализованных строк backend-а или OS.
   - Все existing UI error flows продолжают работать.
 - Заметки по тестам:
   - Unit tests mapping для NTSTATUS/system errors.
@@ -1842,9 +1852,11 @@ Samba в проект запрещено.
   supply-chain risks vendored/native SMB code.
 - Acceptance criteria:
   - Release builds use hardened flags where supported.
-  - Vendored source checksum/signature verified.
+  - Vendored third-party source checksum/signature verified, если такой source
+    появится.
   - SBOM/dependency manifest generated for release.
-  - Known CVE tracking process documented for Samba-derived/native SMB code.
+  - Known CVE/security advisory tracking process documented for native SMB
+    code and third-party dependencies.
   - Secrets are not included in crash/log diagnostics.
 - Заметки по тестам:
   - CI checks hardening flags where practical.

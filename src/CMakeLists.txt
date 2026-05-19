@@ -1,4 +1,7 @@
 add_subdirectory(core)
+if(SMB_BROWSER_WITH_NATIVE_SMB)
+    add_subdirectory(native_smb)
+endif()
 add_subdirectory(infrastructure)
 add_subdirectory(application)
 add_subdirectory(ui)

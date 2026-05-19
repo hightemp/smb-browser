@@ -97,6 +97,20 @@ target_link_libraries(test_smb_error_mapping
 
 add_test(NAME smb_error_mapping COMMAND test_smb_error_mapping)
 
+if(TARGET smb_browser_native_smb)
+    add_executable(test_native_smb_scaffold
+        test_native_smb_scaffold.cpp
+    )
+
+    target_link_libraries(test_native_smb_scaffold
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_scaffold COMMAND test_native_smb_scaffold)
+endif()
+
 add_executable(test_log_sanitizer
     test_log_sanitizer.cpp
 )
