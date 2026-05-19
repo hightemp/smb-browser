@@ -8,6 +8,7 @@
 #include <QDropEvent>
 #include <QEvent>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QItemSelectionModel>
@@ -19,6 +20,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScrollArea>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStyle>
@@ -35,6 +37,36 @@ namespace {
 bool isBrowsableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
   return entry.type == smb::core::RemoteFileType::Directory ||
          entry.type == smb::core::RemoteFileType::Symlink;
+}
+
+QString locationRootText(const smb::core::Connection &connection) {
+  if (!connection.normalizedUri.trimmed().isEmpty()) {
+    return connection.normalizedUri.trimmed();
+  }
+  if (!connection.server.trimmed().isEmpty() &&
+      !connection.share.trimmed().isEmpty()) {
+    return QStringLiteral("smb://%1/%2")
+        .arg(connection.server.trimmed(), connection.share.trimmed());
+  }
+  if (!connection.name.trimmed().isEmpty()) {
+    return connection.name.trimmed();
+  }
+  return connection.id.trimmed();
+}
+
+QString displayLocation(QString rootText, const QString &remotePath) {
+  rootText = rootText.trimmed();
+  while (rootText.endsWith(QLatin1Char('/'))) {
+    rootText.chop(1);
+  }
+  auto path = remotePath.trimmed();
+  if (path.isEmpty()) {
+    path = QStringLiteral("/");
+  }
+  if (!path.startsWith(QLatin1Char('/'))) {
+    path.prepend(QLatin1Char('/'));
+  }
+  return rootText + path;
 }
 
 } // namespace
@@ -123,6 +155,24 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   buttonLayout->addStretch(1);
   toolbarLayout->addLayout(buttonLayout);
 
+  m_locationScrollArea = new QScrollArea(toolbar);
+  m_locationScrollArea->setObjectName(QStringLiteral("remotePathScrollArea"));
+  m_locationScrollArea->setFrameShape(QFrame::NoFrame);
+  m_locationScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  m_locationScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  m_locationScrollArea->setWidgetResizable(true);
+  m_locationScrollArea->setSizePolicy(QSizePolicy::Expanding,
+                                      QSizePolicy::Fixed);
+  m_locationScrollArea->setMinimumHeight(30);
+
+  m_locationBar = new QWidget(m_locationScrollArea);
+  m_locationBar->setObjectName(QStringLiteral("remotePathBar"));
+  m_locationLayout = new QHBoxLayout(m_locationBar);
+  m_locationLayout->setContentsMargins(0, 0, 0, 0);
+  m_locationLayout->setSpacing(4);
+  m_locationScrollArea->setWidget(m_locationBar);
+  toolbarLayout->addWidget(m_locationScrollArea);
+
   m_searchEdit = new QLineEdit(toolbar);
   m_searchEdit->setObjectName(QStringLiteral("remoteFileSearchEdit"));
   m_searchEdit->setPlaceholderText(tr("Search current folder"));
@@ -202,28 +252,33 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   connect(m_tableView->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, [this]() { updateActionState(); });
 
+  updateLocationBar();
   updateActionState();
 }
 
 void RemoteBrowserWidget::setDirectory(
     smb::application::OpenConnectionResult result) {
   m_connectionId = result.connection.id;
+  m_locationRootText = locationRootText(result.connection);
   m_currentRemotePath = normalizeRemotePath(result.currentRemotePath);
   m_backStack.clear();
   m_forwardStack.clear();
   m_searchEdit->clear();
   m_model->setEntries(std::move(result.entries), m_currentRemotePath);
+  updateLocationBar();
   showDirectoryState();
   updateActionState();
 }
 
 void RemoteBrowserWidget::clear() {
   m_connectionId.clear();
+  m_locationRootText.clear();
   m_currentRemotePath.clear();
   m_backStack.clear();
   m_forwardStack.clear();
   m_searchEdit->clear();
   m_model->clear();
+  updateLocationBar();
   m_stateLabel->setText(tr("Select a connection to browse remote files."));
   m_stateLabel->setVisible(true);
   updateActionState();
@@ -704,9 +759,11 @@ void RemoteBrowserWidget::applyDirectory(
   }
 
   m_connectionId = result.connection.id;
+  m_locationRootText = locationRootText(result.connection);
   m_currentRemotePath = targetPath;
   m_searchEdit->clear();
   m_model->setEntries(std::move(result.entries), m_currentRemotePath);
+  updateLocationBar();
   showDirectoryState();
   updateActionState();
   emit directoryOpened(m_connectionId, m_currentRemotePath);
@@ -835,6 +892,75 @@ void RemoteBrowserWidget::updateActionState() {
   m_moveButton->setEnabled(hasConnection && hasSelection);
   m_deleteButton->setEnabled(hasConnection && hasSelection);
   m_renameButton->setEnabled(hasConnection && hasSelection);
+}
+
+void RemoteBrowserWidget::updateLocationBar() {
+  if (m_locationLayout == nullptr || m_locationScrollArea == nullptr) {
+    return;
+  }
+
+  while (auto *item = m_locationLayout->takeAt(0)) {
+    delete item->widget();
+    delete item;
+  }
+
+  const auto hasConnection =
+      !m_connectionId.isEmpty() && !m_currentRemotePath.isEmpty();
+  m_locationScrollArea->setVisible(hasConnection);
+  if (!hasConnection) {
+    return;
+  }
+
+  const auto fullPath = displayLocation(m_locationRootText, m_currentRemotePath);
+  const auto rootText = m_locationRootText.isEmpty() ? QStringLiteral("/")
+                                                     : m_locationRootText;
+
+  auto *rootButton = new QPushButton(
+      style()->standardIcon(QStyle::SP_DriveNetIcon), rootText, m_locationBar);
+  rootButton->setObjectName(QStringLiteral("remotePathRootButton"));
+  rootButton->setFlat(true);
+  rootButton->setFocusPolicy(Qt::NoFocus);
+  rootButton->setToolTip(fullPath);
+  rootButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+  connect(rootButton, &QPushButton::clicked, this, [this]() {
+    if (m_currentRemotePath != QStringLiteral("/")) {
+      openDirectory(QStringLiteral("/"));
+    }
+  });
+  m_locationLayout->addWidget(rootButton);
+
+  const auto normalizedPath = normalizeRemotePath(m_currentRemotePath);
+  if (normalizedPath != QStringLiteral("/")) {
+    const auto segments =
+        normalizedPath.mid(1).split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    QString prefix;
+    for (const auto &segment : segments) {
+      prefix += QStringLiteral("/") + segment;
+
+      auto *separator = new QLabel(QStringLiteral(">"), m_locationBar);
+      separator->setObjectName(QStringLiteral("remotePathSeparator"));
+      separator->setAlignment(Qt::AlignCenter);
+      m_locationLayout->addWidget(separator);
+
+      auto *segmentButton = new QPushButton(
+          style()->standardIcon(QStyle::SP_DirIcon), segment, m_locationBar);
+      segmentButton->setObjectName(QStringLiteral("remotePathSegmentButton"));
+      segmentButton->setFlat(true);
+      segmentButton->setFocusPolicy(Qt::NoFocus);
+      segmentButton->setToolTip(displayLocation(m_locationRootText, prefix));
+      segmentButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+      const auto segmentPath = prefix;
+      connect(segmentButton, &QPushButton::clicked, this,
+              [this, segmentPath]() {
+                if (segmentPath != m_currentRemotePath) {
+                  openDirectory(segmentPath);
+                }
+              });
+      m_locationLayout->addWidget(segmentButton);
+    }
+  }
+
+  m_locationLayout->addStretch(1);
 }
 
 void RemoteBrowserWidget::applyColumnProportions() {

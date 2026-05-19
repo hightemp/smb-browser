@@ -483,6 +483,47 @@ private slots:
                  view->columnWidth(smb::ui::RemoteFileModel::SizeColumn)) <= 8);
   }
 
+  void showsCurrentRemotePathBreadcrumbAndAllowsSegmentNavigation() {
+    FakeRemoteBrowserUseCase useCase;
+    useCase.directories.insert(
+        QStringLiteral("/Finance"),
+        {file(QStringLiteral("budget.xlsx"),
+              QStringLiteral("/Finance/budget.xlsx"))});
+
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.resize(900, 500);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/Finance/Reports"),
+        {file(QStringLiteral("q1.pdf"),
+              QStringLiteral("/Finance/Reports/q1.pdf"))}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    auto *pathBar =
+        widget.findChild<QWidget *>(QStringLiteral("remotePathBar"));
+    auto *rootButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remotePathRootButton"));
+    const auto segmentButtons = widget.findChildren<QPushButton *>(
+        QStringLiteral("remotePathSegmentButton"));
+    QVERIFY(pathBar != nullptr);
+    QVERIFY(pathBar->isVisible());
+    QVERIFY(rootButton != nullptr);
+    QCOMPARE(rootButton->text(), QStringLiteral("smb://server/share"));
+    QCOMPARE(rootButton->toolTip(),
+             QStringLiteral("smb://server/share/Finance/Reports"));
+    QCOMPARE(segmentButtons.size(), 2);
+    QCOMPARE(segmentButtons.at(0)->text(), QStringLiteral("Finance"));
+    QCOMPARE(segmentButtons.at(1)->text(), QStringLiteral("Reports"));
+
+    segmentButtons.at(0)->click();
+
+    QTRY_COMPARE(widget.currentRemotePath(), QStringLiteral("/Finance"));
+    QCOMPARE(widget.model()->entryAt(0).name, QStringLiteral("budget.xlsx"));
+  }
+
   void supportsBackForwardUpAndRefresh() {
     FakeRemoteBrowserUseCase useCase;
     useCase.directories.insert(

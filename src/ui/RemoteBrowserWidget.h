@@ -12,8 +12,10 @@
 #include <functional>
 
 class QLabel;
+class QHBoxLayout;
 class QLineEdit;
 class QPushButton;
+class QScrollArea;
 class QTableView;
 class QDragEnterEvent;
 class QDragMoveEvent;
@@ -98,6 +100,7 @@ private:
   void showDirectoryState();
   void showError(const smb::core::AppError &error);
   void updateActionState();
+  void updateLocationBar();
   void applyColumnProportions();
   smb::core::RemoteFileEntry selectedEntry() const;
   QVector<smb::core::RemoteFileEntry> selectedEntries() const;
@@ -127,6 +130,9 @@ private:
   RemoteFileFilterProxyModel *m_filterModel = nullptr;
   QTableView *m_tableView = nullptr;
   QLabel *m_stateLabel = nullptr;
+  QScrollArea *m_locationScrollArea = nullptr;
+  QWidget *m_locationBar = nullptr;
+  QHBoxLayout *m_locationLayout = nullptr;
   QLineEdit *m_searchEdit = nullptr;
   QPushButton *m_backButton = nullptr;
   QPushButton *m_forwardButton = nullptr;
@@ -140,6 +146,7 @@ private:
   QPushButton *m_deleteButton = nullptr;
   QPushButton *m_renameButton = nullptr;
   QString m_connectionId;
+  QString m_locationRootText;
   QString m_currentRemotePath;
   QVector<QString> m_backStack;
   QVector<QString> m_forwardStack;
