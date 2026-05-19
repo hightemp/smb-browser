@@ -175,6 +175,70 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-fake-transport"
     )
 
+    add_executable(test_native_smb_close_exchanger
+        test_native_smb_close_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_close_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_close_exchanger
+             COMMAND test_native_smb_close_exchanger)
+    set_tests_properties(native_smb_close_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
+    add_executable(test_native_smb_read_exchanger
+        test_native_smb_read_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_read_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_read_exchanger
+             COMMAND test_native_smb_read_exchanger)
+    set_tests_properties(native_smb_read_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
+    add_executable(test_native_smb_write_exchanger
+        test_native_smb_write_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_write_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_write_exchanger
+             COMMAND test_native_smb_write_exchanger)
+    set_tests_properties(native_smb_write_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
+    add_executable(test_native_smb_set_info_exchanger
+        test_native_smb_set_info_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_set_info_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_set_info_exchanger
+             COMMAND test_native_smb_set_info_exchanger)
+    set_tests_properties(native_smb_set_info_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
     add_executable(test_native_smb_directory_lister
         test_native_smb_directory_lister.cpp
     )
@@ -188,6 +252,54 @@ if(TARGET smb_browser_native_smb)
     add_test(NAME native_smb_directory_lister
              COMMAND test_native_smb_directory_lister)
     set_tests_properties(native_smb_directory_lister PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_file_reader
+        test_native_smb_file_reader.cpp
+    )
+
+    target_link_libraries(test_native_smb_file_reader
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_file_reader
+             COMMAND test_native_smb_file_reader)
+    set_tests_properties(native_smb_file_reader PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_file_writer
+        test_native_smb_file_writer.cpp
+    )
+
+    target_link_libraries(test_native_smb_file_writer
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_file_writer
+             COMMAND test_native_smb_file_writer)
+    set_tests_properties(native_smb_file_writer PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_remote_object_operator
+        test_native_smb_remote_object_operator.cpp
+    )
+
+    target_link_libraries(test_native_smb_remote_object_operator
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_remote_object_operator
+             COMMAND test_native_smb_remote_object_operator)
+    set_tests_properties(native_smb_remote_object_operator PROPERTIES
         LABELS "native-unit;native-fake-transport;native-contract"
     )
 endif()

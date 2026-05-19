@@ -189,6 +189,73 @@ struct CreateResponse {
   bool isReparsePoint = false;
 };
 
+struct CloseRequestOptions {
+  FileId fileId;
+  std::uint16_t flags = 0;
+};
+
+struct CloseResponse {
+  std::uint32_t status = 0;
+  std::uint16_t flags = 0;
+  std::uint64_t creationTime = 0;
+  std::uint64_t lastAccessTime = 0;
+  std::uint64_t lastWriteTime = 0;
+  std::uint64_t changeTime = 0;
+  std::uint64_t allocationSize = 0;
+  std::uint64_t endOfFile = 0;
+  std::uint32_t fileAttributes = 0;
+  bool hasPostQueryAttributes = false;
+};
+
+struct ReadRequestOptions {
+  FileId fileId;
+  std::uint32_t length = 0;
+  std::uint64_t offset = 0;
+  std::uint8_t flags = 0;
+  std::uint32_t minimumCount = 0;
+  std::uint32_t channel = 0;
+  std::uint32_t remainingBytes = 0;
+  ByteVector channelInfo;
+};
+
+struct ReadResponse {
+  std::uint32_t status = 0;
+  std::uint8_t dataOffset = 0;
+  std::uint32_t dataRemaining = 0;
+  std::uint8_t flags = 0;
+  ByteVector data;
+};
+
+struct WriteRequestOptions {
+  FileId fileId;
+  ByteVector data;
+  std::uint64_t offset = 0;
+  std::uint32_t channel = 0;
+  std::uint32_t remainingBytes = 0;
+  ByteVector channelInfo;
+  std::uint32_t flags = 0;
+};
+
+struct WriteResponse {
+  std::uint32_t status = 0;
+  std::uint32_t count = 0;
+  std::uint32_t remaining = 0;
+  std::uint16_t writeChannelInfoOffset = 0;
+  std::uint16_t writeChannelInfoLength = 0;
+};
+
+struct SetInfoRequestOptions {
+  FileId fileId;
+  std::uint8_t infoType = 0x01;
+  std::uint8_t fileInfoClass = 0;
+  ByteVector buffer;
+  std::uint32_t additionalInformation = 0;
+};
+
+struct SetInfoResponse {
+  std::uint32_t status = 0;
+};
+
 struct QueryDirectoryRequestOptions {
   FileId fileId;
   std::string pattern = "*";
@@ -231,6 +298,14 @@ constexpr std::uint16_t kTreeConnectRequestStructureSize = 9;
 constexpr std::uint16_t kTreeConnectResponseStructureSize = 16;
 constexpr std::uint16_t kCreateRequestStructureSize = 57;
 constexpr std::uint16_t kCreateResponseStructureSize = 89;
+constexpr std::uint16_t kCloseRequestStructureSize = 24;
+constexpr std::uint16_t kCloseResponseStructureSize = 60;
+constexpr std::uint16_t kReadRequestStructureSize = 49;
+constexpr std::uint16_t kReadResponseStructureSize = 17;
+constexpr std::uint16_t kWriteRequestStructureSize = 49;
+constexpr std::uint16_t kWriteResponseStructureSize = 17;
+constexpr std::uint16_t kSetInfoRequestStructureSize = 33;
+constexpr std::uint16_t kSetInfoResponseStructureSize = 2;
 constexpr std::uint16_t kQueryDirectoryRequestStructureSize = 33;
 constexpr std::uint16_t kQueryDirectoryResponseStructureSize = 9;
 constexpr std::uint32_t kStatusSuccess = 0x00000000;
@@ -246,10 +321,17 @@ constexpr std::uint32_t kShareCapabilityDfs = 0x00000008;
 constexpr std::uint16_t kSessionFlagIsGuest = 0x0001;
 constexpr std::uint16_t kSessionFlagIsNull = 0x0002;
 constexpr std::uint16_t kSessionFlagEncryptData = 0x0004;
+constexpr std::uint8_t kInfoTypeFile = 0x01;
+constexpr std::uint8_t kFileRenameInformation = 0x0A;
+constexpr std::uint8_t kFileDispositionInformation = 0x0D;
 constexpr std::uint32_t kFileReadData = 0x00000001;
 constexpr std::uint32_t kFileListDirectory = 0x00000001;
+constexpr std::uint32_t kFileWriteData = 0x00000002;
+constexpr std::uint32_t kFileAppendData = 0x00000004;
 constexpr std::uint32_t kFileReadEa = 0x00000008;
+constexpr std::uint32_t kFileWriteEa = 0x00000010;
 constexpr std::uint32_t kFileReadAttributes = 0x00000080;
+constexpr std::uint32_t kFileWriteAttributes = 0x00000100;
 constexpr std::uint32_t kFileAttributeDirectory = 0x00000010;
 constexpr std::uint32_t kFileAttributeNormal = 0x00000080;
 constexpr std::uint32_t kFileAttributeReparsePoint = 0x00000400;
@@ -257,8 +339,16 @@ constexpr std::uint32_t kFileShareRead = 0x00000001;
 constexpr std::uint32_t kFileShareWrite = 0x00000002;
 constexpr std::uint32_t kFileShareDelete = 0x00000004;
 constexpr std::uint32_t kFileOpen = 0x00000001;
+constexpr std::uint32_t kFileCreate = 0x00000002;
+constexpr std::uint32_t kFileOpenIf = 0x00000003;
+constexpr std::uint32_t kFileOverwrite = 0x00000004;
+constexpr std::uint32_t kFileOverwriteIf = 0x00000005;
 constexpr std::uint32_t kFileDirectoryFile = 0x00000001;
 constexpr std::uint32_t kFileNonDirectoryFile = 0x00000040;
+constexpr std::uint32_t kDeleteAccess = 0x00010000;
+constexpr std::uint16_t kCloseFlagPostQueryAttrib = 0x0001;
+constexpr std::uint32_t kWriteFlagWriteThrough = 0x00000001;
+constexpr std::uint32_t kWriteFlagWriteUnbuffered = 0x00000002;
 constexpr std::uint8_t kFileIdBothDirectoryInformation = 0x25;
 constexpr std::uint8_t kQueryDirectoryRestartScans = 0x01;
 
@@ -306,6 +396,37 @@ ByteVector buildCreateRequest(const CreateRequestOptions &options,
 DecodeResult<CreateResponse> decodeCreateResponse(const std::uint8_t *data,
                                                   std::size_t size);
 DecodeResult<CreateResponse> decodeCreateResponse(const ByteVector &bytes);
+ByteVector buildCloseRequest(const CloseRequestOptions &options,
+                             std::uint64_t messageId,
+                             std::uint32_t treeId,
+                             std::uint64_t sessionId);
+DecodeResult<CloseResponse> decodeCloseResponse(const std::uint8_t *data,
+                                                std::size_t size);
+DecodeResult<CloseResponse> decodeCloseResponse(const ByteVector &bytes);
+ByteVector buildReadRequest(const ReadRequestOptions &options,
+                            std::uint64_t messageId,
+                            std::uint32_t treeId,
+                            std::uint64_t sessionId);
+DecodeResult<ReadResponse> decodeReadResponse(const std::uint8_t *data,
+                                              std::size_t size);
+DecodeResult<ReadResponse> decodeReadResponse(const ByteVector &bytes);
+ByteVector buildWriteRequest(const WriteRequestOptions &options,
+                             std::uint64_t messageId,
+                             std::uint32_t treeId,
+                             std::uint64_t sessionId);
+DecodeResult<WriteResponse> decodeWriteResponse(const std::uint8_t *data,
+                                                std::size_t size);
+DecodeResult<WriteResponse> decodeWriteResponse(const ByteVector &bytes);
+ByteVector buildSetInfoRequest(const SetInfoRequestOptions &options,
+                               std::uint64_t messageId,
+                               std::uint32_t treeId,
+                               std::uint64_t sessionId);
+DecodeResult<SetInfoResponse> decodeSetInfoResponse(const std::uint8_t *data,
+                                                    std::size_t size);
+DecodeResult<SetInfoResponse> decodeSetInfoResponse(const ByteVector &bytes);
+ByteVector buildFileDispositionInformation(bool deletePending);
+ByteVector buildFileRenameInformation(std::string_view newPath,
+                                      bool replaceIfExists);
 ByteVector buildQueryDirectoryRequest(
     const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
     std::uint32_t treeId, std::uint64_t sessionId);

@@ -1,6 +1,7 @@
-#include "DirectoryLister.h"
+#include "FileReader.h"
 
 #include "CloseExchanger.h"
+#include "ReadExchanger.h"
 
 namespace smb::native_smb {
 namespace {
@@ -10,14 +11,13 @@ bool isCancelled(const OperationContext &context) {
          context.cancellationToken->isCancellationRequested();
 }
 
-DecodeResult<DirectoryListResult> cancelledResult() {
-  return DecodeResult<DirectoryListResult>::failure(
-      ErrorCode::Cancelled, "SMB directory listing was cancelled.");
+DecodeResult<FileReadResult> cancelledResult() {
+  return DecodeResult<FileReadResult>::failure(ErrorCode::Cancelled,
+                                              "SMB file read was cancelled.");
 }
 
-DecodeResult<DirectoryListResult> failureFrom(const ProtocolError &error) {
-  return DecodeResult<DirectoryListResult>::failure(error.code,
-                                                   error.message);
+DecodeResult<FileReadResult> failureFrom(const ProtocolError &error) {
+  return DecodeResult<FileReadResult>::failure(error.code, error.message);
 }
 
 DecodeResult<ByteVector> exchangePayload(Transport &transport,
@@ -31,31 +31,31 @@ DecodeResult<ByteVector> exchangePayload(Transport &transport,
   return decodeDirectTcpPayload(frame.value);
 }
 
-CreateRequestOptions directoryCreateOptions(const std::string &path) {
+CreateRequestOptions fileCreateOptions(const std::string &path) {
   CreateRequestOptions options;
   options.path = path;
-  options.desiredAccess = kFileListDirectory | kFileReadEa |
-                          kFileReadAttributes;
+  options.desiredAccess = kFileReadData | kFileReadEa | kFileReadAttributes;
   options.fileAttributes = kFileAttributeNormal;
   options.shareAccess = kFileShareRead | kFileShareWrite | kFileShareDelete;
   options.createDisposition = kFileOpen;
-  options.createOptions = kFileDirectoryFile;
+  options.createOptions = kFileNonDirectoryFile;
   return options;
 }
 
 } // namespace
 
-DecodeResult<DirectoryListResult>
-DirectoryLister::list(Transport &transport, const std::string &path,
-                      std::uint64_t messageId, std::uint32_t treeId,
-                      std::uint64_t sessionId,
-                      const OperationContext &context) const {
+DecodeResult<FileReadResult>
+FileReader::readOnce(Transport &transport, const std::string &path,
+                     std::uint32_t length, std::uint64_t offset,
+                     std::uint64_t messageId, std::uint32_t treeId,
+                     std::uint64_t sessionId,
+                     const OperationContext &context) const {
   if (isCancelled(context)) {
     return cancelledResult();
   }
 
-  const auto createRequest = buildCreateRequest(
-      directoryCreateOptions(path), messageId, treeId, sessionId);
+  const auto createRequest =
+      buildCreateRequest(fileCreateOptions(path), messageId, treeId, sessionId);
   const auto createPayload = exchangePayload(transport, createRequest, context);
   if (!createPayload.ok) {
     return failureFrom(createPayload.error);
@@ -70,22 +70,16 @@ DirectoryLister::list(Transport &transport, const std::string &path,
     return failureFrom(createResponse.error);
   }
 
-  QueryDirectoryRequestOptions queryOptions;
-  queryOptions.fileId = createResponse.value.fileId;
-  const auto queryRequest = buildQueryDirectoryRequest(
-      queryOptions, messageId + 1, treeId, sessionId);
-  const auto queryPayload = exchangePayload(transport, queryRequest, context);
-  if (!queryPayload.ok) {
-    return failureFrom(queryPayload.error);
-  }
-
-  if (isCancelled(context)) {
-    return cancelledResult();
-  }
-
-  const auto queryResponse = decodeQueryDirectoryResponse(queryPayload.value);
-  if (!queryResponse.ok) {
-    return failureFrom(queryResponse.error);
+  ReadRequestOptions readOptions;
+  readOptions.fileId = createResponse.value.fileId;
+  readOptions.length = length;
+  readOptions.offset = offset;
+  const ReadExchanger reader;
+  const auto readResponse =
+      reader.read(transport, readOptions, messageId + 1, treeId, sessionId,
+                  context);
+  if (!readResponse.ok) {
+    return failureFrom(readResponse.error);
   }
 
   CloseRequestOptions closeOptions;
@@ -97,10 +91,11 @@ DirectoryLister::list(Transport &transport, const std::string &path,
     return failureFrom(closeResponse.error);
   }
 
-  DirectoryListResult result;
-  result.directoryFileId = createResponse.value.fileId;
-  result.entries = queryResponse.value.entries;
-  return DecodeResult<DirectoryListResult>::success(result);
+  FileReadResult result;
+  result.fileId = createResponse.value.fileId;
+  result.data = readResponse.value.data;
+  result.dataRemaining = readResponse.value.dataRemaining;
+  return DecodeResult<FileReadResult>::success(result);
 }
 
 } // namespace smb::native_smb

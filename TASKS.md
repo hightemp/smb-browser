@@ -1522,6 +1522,96 @@ Samba в проект запрещено.
   - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
     --output-on-failure`.
 
+### [x] T-130: Добавить CLOSE lifecycle baseline для native handles
+
+- Приоритет: Must.
+- Зависимости: T-129.
+- Описание: Добавить SMB2 CLOSE primitives и fake-transport flow, чтобы
+  directory/file handles закрывались тестируемо и не оставались скрытым
+  lifecycle debt.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 CLOSE request.
+  - `Protocol` умеет парсить SMB2 CLOSE response.
+  - Parser извлекает status, flags, timestamps, allocation size, end-of-file,
+    attributes и признак post-query attributes.
+  - Есть `CloseExchanger` поверх `Transport`.
+  - `DirectoryLister` выполняет `CREATE -> QUERY_DIRECTORY -> CLOSE` на
+    successful listing.
+  - Tests покрывают successful close, unexpected response command и
+    cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-fake-transport
+    --output-on-failure`.
+
+### [x] T-131: Добавить fake-transport file read baseline
+
+- Приоритет: Must.
+- Зависимости: T-130.
+- Описание: Добавить SMB2 READ primitives и read-once fake-transport flow,
+  чтобы будущие download/open-file операции имели тестируемую основу без
+  реального SMB-сервера.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 READ request.
+  - `Protocol` умеет парсить SMB2 READ response и извлекать data buffer,
+    data offset, data remaining и flags.
+  - `ReadExchanger` выполняет READ поверх `Transport`.
+  - `FileReader` выполняет `CREATE file -> READ -> CLOSE`.
+  - Tests покрывают successful read, unexpected response command, invalid read
+    response in composed flow и cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
+    --output-on-failure`.
+
+### [x] T-132: Добавить fake-transport file write baseline
+
+- Приоритет: Must.
+- Зависимости: T-130.
+- Описание: Добавить SMB2 WRITE primitives и write-once fake-transport flow,
+  чтобы будущие upload/open-file-save операции имели тестируемую основу без
+  реального SMB-сервера.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 WRITE request.
+  - `Protocol` умеет парсить SMB2 WRITE response и извлекать count, remaining
+    и channel info fields.
+  - `WriteExchanger` выполняет WRITE поверх `Transport`.
+  - `FileWriter` выполняет `CREATE file -> WRITE -> CLOSE`.
+  - Tests покрывают successful write, unexpected response command, invalid
+    write response in composed flow и cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
+    --output-on-failure`.
+
+### [x] T-133: Добавить fake-transport mkdir/delete/rename baseline
+
+- Приоритет: Must.
+- Зависимости: T-130.
+- Описание: Добавить SMB2 SET_INFO primitives и composed object operation flow,
+  чтобы будущие операции create folder, delete и rename имели тестируемую
+  основу без реального SMB-сервера.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 SET_INFO request.
+  - `Protocol` умеет парсить SMB2 SET_INFO response.
+  - `Protocol` умеет строить `FileDispositionInformation` для delete-on-close.
+  - `Protocol` умеет строить `FileRenameInformation for SMB2` для rename.
+  - `SetInfoExchanger` выполняет SET_INFO поверх `Transport`.
+  - `RemoteObjectOperator` выполняет `CREATE directory -> CLOSE`,
+    `CREATE object -> SET_INFO disposition -> CLOSE` и
+    `CREATE object -> SET_INFO rename -> CLOSE`.
+  - Tests покрывают successful mkdir/delete/rename, unexpected response command,
+    invalid set-info response in composed flow и cancellation before transport
+    IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
+    --output-on-failure`.
+
 ### [ ] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.

@@ -1,4 +1,4 @@
-#include "DirectoryLister.h"
+#include "FileReader.h"
 
 #include <QtTest/QtTest>
 
@@ -52,15 +52,11 @@ void appendU64Le(smb::native_smb::ByteVector &bytes, std::uint64_t value) {
   }
 }
 
-void appendZeros(smb::native_smb::ByteVector &bytes, std::size_t count) {
-  bytes.insert(bytes.end(), count, 0);
-}
-
 smb::native_smb::ByteVector createResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::Create;
   header.flags = smb::native_smb::kFlagServerToRedir;
-  header.messageId = 30;
+  header.messageId = 60;
   header.treeId = 77;
   header.sessionId = 34;
 
@@ -74,8 +70,8 @@ smb::native_smb::ByteVector createResponsePayload() {
   appendU64Le(bytes, 0);
   appendU64Le(bytes, 0);
   appendU64Le(bytes, 0);
-  appendU64Le(bytes, 0);
-  appendU32Le(bytes, smb::native_smb::kFileAttributeDirectory);
+  appendU64Le(bytes, 4);
+  appendU32Le(bytes, smb::native_smb::kFileAttributeNormal);
   appendU32Le(bytes, 0);
   appendU64Le(bytes, 0x0102030405060708ULL);
   appendU64Le(bytes, 0x1112131415161718ULL);
@@ -84,46 +80,25 @@ smb::native_smb::ByteVector createResponsePayload() {
   return bytes;
 }
 
-smb::native_smb::ByteVector fileIdBothEntry(const std::string &name,
-                                            std::uint32_t attributes,
-                                            std::uint64_t fileId) {
-  const auto encodedName = smb::native_smb::encodeUtf16Le(name);
-  smb::native_smb::ByteVector bytes;
-  appendU32Le(bytes, 0);
-  appendU32Le(bytes, 0);
-  appendU64Le(bytes, 1);
-  appendU64Le(bytes, 2);
-  appendU64Le(bytes, 3);
-  appendU64Le(bytes, 4);
-  appendU64Le(bytes, 5);
-  appendU64Le(bytes, 6);
-  appendU32Le(bytes, attributes);
-  appendU32Le(bytes, static_cast<std::uint32_t>(encodedName.size()));
-  appendU32Le(bytes, 0);
-  bytes.push_back(0);
-  bytes.push_back(0);
-  appendZeros(bytes, 24);
-  appendU16Le(bytes, 0);
-  appendU64Le(bytes, fileId);
-  bytes.insert(bytes.end(), encodedName.begin(), encodedName.end());
-  return bytes;
-}
-
-smb::native_smb::ByteVector queryDirectoryResponsePayload() {
-  auto entry = fileIdBothEntry("report.xlsx", 0, 2001);
-
+smb::native_smb::ByteVector readResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
-  header.command = smb::native_smb::Command::QueryDirectory;
+  header.command = smb::native_smb::Command::Read;
   header.flags = smb::native_smb::kFlagServerToRedir;
-  header.messageId = 31;
+  header.messageId = 61;
   header.treeId = 77;
   header.sessionId = 34;
 
   auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
-  appendU16Le(bytes, smb::native_smb::kQueryDirectoryResponseStructureSize);
-  appendU16Le(bytes, 72);
-  appendU32Le(bytes, static_cast<std::uint32_t>(entry.size()));
-  bytes.insert(bytes.end(), entry.begin(), entry.end());
+  appendU16Le(bytes, smb::native_smb::kReadResponseStructureSize);
+  bytes.push_back(80);
+  bytes.push_back(0);
+  appendU32Le(bytes, 4);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  bytes.push_back('t');
+  bytes.push_back('e');
+  bytes.push_back('x');
+  bytes.push_back('t');
   return bytes;
 }
 
@@ -131,7 +106,7 @@ smb::native_smb::ByteVector closeResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::Close;
   header.flags = smb::native_smb::kFlagServerToRedir;
-  header.messageId = 32;
+  header.messageId = 62;
   header.treeId = 77;
   header.sessionId = 34;
 
@@ -157,28 +132,28 @@ framedSuccess(const smb::native_smb::ByteVector &payload) {
 
 } // namespace
 
-class NativeSmbDirectoryListerTest final : public QObject {
+class NativeSmbFileReaderTest final : public QObject {
   Q_OBJECT
 
 private slots:
-  void listsDirectoryOverScriptedTransport() {
+  void readsFileOverScriptedTransport() {
     ScriptedTransport transport({framedSuccess(createResponsePayload()),
-                                 framedSuccess(queryDirectoryResponsePayload()),
+                                 framedSuccess(readResponsePayload()),
                                  framedSuccess(closeResponsePayload())});
 
-    const smb::native_smb::DirectoryLister lister;
-    const auto result = lister.list(transport, "folder", 30, 77, 34, {});
+    const smb::native_smb::FileReader reader;
+    const auto result = reader.readOnce(transport, "report.txt", 4, 0, 60, 77,
+                                        34, {});
 
     QVERIFY(result.ok);
     QCOMPARE(transport.requestFrames.size(), std::size_t{3});
-    QCOMPARE(result.value.directoryFileId.persistent,
+    QCOMPARE(result.value.fileId.persistent,
              std::uint64_t{0x0102030405060708ULL});
-    QCOMPARE(result.value.directoryFileId.volatileId,
-             std::uint64_t{0x1112131415161718ULL});
-    QCOMPARE(result.value.entries.size(), std::size_t{1});
-    QCOMPARE(QString::fromStdString(result.value.entries[0].name),
-             QStringLiteral("report.xlsx"));
-    QCOMPARE(result.value.entries[0].fileId, std::uint64_t{2001});
+    QCOMPARE(result.value.data.size(), std::size_t{4});
+    QCOMPARE(QString::fromUtf8(
+                 reinterpret_cast<const char *>(result.value.data.data()),
+                 static_cast<int>(result.value.data.size())),
+             QStringLiteral("text"));
 
     const auto createPayload =
         smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[0]);
@@ -189,14 +164,14 @@ private slots:
     QCOMPARE(static_cast<int>(createHeader.value.command),
              static_cast<int>(smb::native_smb::Command::Create));
 
-    const auto queryPayload =
+    const auto readPayload =
         smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[1]);
-    QVERIFY(queryPayload.ok);
-    const auto queryHeader =
-        smb::native_smb::decodeSmb2SyncHeader(queryPayload.value);
-    QVERIFY(queryHeader.ok);
-    QCOMPARE(static_cast<int>(queryHeader.value.command),
-             static_cast<int>(smb::native_smb::Command::QueryDirectory));
+    QVERIFY(readPayload.ok);
+    const auto readHeader =
+        smb::native_smb::decodeSmb2SyncHeader(readPayload.value);
+    QVERIFY(readHeader.ok);
+    QCOMPARE(static_cast<int>(readHeader.value.command),
+             static_cast<int>(smb::native_smb::Command::Read));
 
     const auto closePayload =
         smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[2]);
@@ -208,19 +183,21 @@ private slots:
              static_cast<int>(smb::native_smb::Command::Close));
   }
 
-  void stopsWhenCreateResponseIsInvalid() {
-    auto badCreate = createResponsePayload();
-    badCreate[12] = static_cast<std::uint8_t>(
-        static_cast<std::uint16_t>(smb::native_smb::Command::Read) & 0xFF);
+  void stopsWhenReadResponseIsInvalid() {
+    auto badRead = readResponsePayload();
+    badRead[12] = static_cast<std::uint8_t>(
+        static_cast<std::uint16_t>(smb::native_smb::Command::Close) & 0xFF);
 
-    ScriptedTransport transport({framedSuccess(badCreate),
-                                 framedSuccess(queryDirectoryResponsePayload())});
+    ScriptedTransport transport({framedSuccess(createResponsePayload()),
+                                 framedSuccess(badRead),
+                                 framedSuccess(closeResponsePayload())});
 
-    const smb::native_smb::DirectoryLister lister;
-    const auto result = lister.list(transport, "folder", 30, 77, 34, {});
+    const smb::native_smb::FileReader reader;
+    const auto result = reader.readOnce(transport, "report.txt", 4, 0, 60, 77,
+                                        34, {});
 
     QVERIFY(!result.ok);
-    QCOMPARE(transport.requestFrames.size(), std::size_t{1});
+    QCOMPARE(transport.requestFrames.size(), std::size_t{2});
     QCOMPARE(static_cast<int>(result.error.code),
              static_cast<int>(
                  smb::native_smb::ErrorCode::ProtocolUnsupported));
@@ -233,8 +210,9 @@ private slots:
     smb::native_smb::OperationContext context;
     context.cancellationToken = &token;
 
-    const smb::native_smb::DirectoryLister lister;
-    const auto result = lister.list(transport, "folder", 30, 77, 34, context);
+    const smb::native_smb::FileReader reader;
+    const auto result = reader.readOnce(transport, "report.txt", 4, 0, 60, 77,
+                                        34, context);
 
     QVERIFY(!result.ok);
     QCOMPARE(transport.requestFrames.size(), std::size_t{0});
@@ -243,6 +221,6 @@ private slots:
   }
 };
 
-QTEST_MAIN(NativeSmbDirectoryListerTest)
+QTEST_MAIN(NativeSmbFileReaderTest)
 
-#include "test_native_smb_directory_lister.moc"
+#include "test_native_smb_file_reader.moc"

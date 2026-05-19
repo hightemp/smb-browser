@@ -133,6 +133,28 @@ A `Must` native library feature is not complete until:
   UTF-16LE share path request, tree id extraction, DFS/share encryption flags,
   unexpected response handling and cancellation before transport IO.
 - `native_smb_directory_lister`: scripted `CREATE directory` plus
-  `QUERY_DIRECTORY` flow, directory handle FileId propagation,
+  `QUERY_DIRECTORY` plus `CLOSE` flow, directory handle FileId propagation,
   `FileIdBothDirectoryInformation` entry parsing, invalid create response
   handling and cancellation before transport IO.
+- `native_smb_close_exchanger`: scripted handle close flow, close response
+  attribute parsing, unexpected response handling and cancellation before
+  transport IO.
+- `native_smb_read_exchanger`: scripted file read flow, READ request/response
+  data parsing, unexpected response handling and cancellation before transport
+  IO.
+- `native_smb_file_reader`: scripted `CREATE file` plus `READ` plus `CLOSE`
+  flow, file handle FileId propagation, data extraction, invalid read response
+  handling and cancellation before transport IO.
+- `native_smb_write_exchanger`: scripted file write flow, WRITE request/response
+  count parsing, unexpected response handling and cancellation before transport
+  IO.
+- `native_smb_file_writer`: scripted `CREATE file` plus `WRITE` plus `CLOSE`
+  flow, file handle FileId propagation, written byte count extraction, invalid
+  write response handling and cancellation before transport IO.
+- `native_smb_set_info_exchanger`: scripted SET_INFO flow,
+  FileDispositionInformation buffer construction, response parsing, unexpected
+  response handling and cancellation before transport IO.
+- `native_smb_remote_object_operator`: scripted `CREATE -> CLOSE` directory
+  creation, `CREATE -> SET_INFO(FileDispositionInformation) -> CLOSE` delete
+  flow, `CREATE -> SET_INFO(FileRenameInformation for SMB2) -> CLOSE` rename
+  flow, invalid set-info response handling and cancellation before transport IO.

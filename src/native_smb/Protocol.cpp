@@ -649,6 +649,355 @@ DecodeResult<CreateResponse> decodeCreateResponse(const ByteVector &bytes) {
   return decodeCreateResponse(bytes.data(), bytes.size());
 }
 
+ByteVector buildCloseRequest(const CloseRequestOptions &options,
+                             std::uint64_t messageId, std::uint32_t treeId,
+                             std::uint64_t sessionId) {
+  Smb2SyncHeader header;
+  header.command = Command::Close;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kCloseRequestStructureSize);
+  appendU16Le(bytes, options.flags);
+  appendU32Le(bytes, 0);
+  appendFileId(bytes, options.fileId);
+  return bytes;
+}
+
+DecodeResult<CloseResponse> decodeCloseResponse(const std::uint8_t *data,
+                                                std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<CloseResponse>::failure(headerResult.error.code,
+                                               headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Close) {
+    return DecodeResult<CloseResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a CLOSE response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<CloseResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 CLOSE response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 60) {
+    return DecodeResult<CloseResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 CLOSE response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kCloseResponseStructureSize) {
+    return DecodeResult<CloseResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 CLOSE response structure size.");
+  }
+
+  CloseResponse response;
+  response.status = headerResult.value.status;
+  response.flags = readU16Le(body + 2);
+  response.creationTime = readU64Le(body + 8);
+  response.lastAccessTime = readU64Le(body + 16);
+  response.lastWriteTime = readU64Le(body + 24);
+  response.changeTime = readU64Le(body + 32);
+  response.allocationSize = readU64Le(body + 40);
+  response.endOfFile = readU64Le(body + 48);
+  response.fileAttributes = readU32Le(body + 56);
+  response.hasPostQueryAttributes =
+      (response.flags & kCloseFlagPostQueryAttrib) != 0;
+  return DecodeResult<CloseResponse>::success(response);
+}
+
+DecodeResult<CloseResponse> decodeCloseResponse(const ByteVector &bytes) {
+  return decodeCloseResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildReadRequest(const ReadRequestOptions &options,
+                            std::uint64_t messageId, std::uint32_t treeId,
+                            std::uint64_t sessionId) {
+  if (options.channelInfo.size() >
+      std::numeric_limits<std::uint16_t>::max()) {
+    throw std::invalid_argument("SMB2 READ channel info is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::Read;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+  if (options.length > 0) {
+    header.creditCharge =
+        static_cast<std::uint16_t>(1 + ((options.length - 1) / 65536));
+  }
+
+  constexpr std::uint16_t kChannelInfoOffset = kSmb2HeaderSize + 48;
+  const auto channelInfoOffset =
+      options.channelInfo.empty() ? 0 : kChannelInfoOffset;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kReadRequestStructureSize);
+  bytes.push_back(0);
+  bytes.push_back(options.flags);
+  appendU32Le(bytes, options.length);
+  appendU64Le(bytes, options.offset);
+  appendFileId(bytes, options.fileId);
+  appendU32Le(bytes, options.minimumCount);
+  appendU32Le(bytes, options.channel);
+  appendU32Le(bytes, options.remainingBytes);
+  appendU16Le(bytes, channelInfoOffset);
+  appendU16Le(bytes, static_cast<std::uint16_t>(options.channelInfo.size()));
+  bytes.insert(bytes.end(), options.channelInfo.begin(),
+               options.channelInfo.end());
+  return bytes;
+}
+
+DecodeResult<ReadResponse> decodeReadResponse(const std::uint8_t *data,
+                                              std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<ReadResponse>::failure(headerResult.error.code,
+                                              headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Read) {
+    return DecodeResult<ReadResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a READ response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<ReadResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 READ response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 16) {
+    return DecodeResult<ReadResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 READ response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kReadResponseStructureSize) {
+    return DecodeResult<ReadResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 READ response structure size.");
+  }
+
+  const auto dataOffset = body[2];
+  const auto dataLength = readU32Le(body + 4);
+  const auto dataEnd = static_cast<std::size_t>(dataOffset) + dataLength;
+  if (dataLength > 0 &&
+      (dataOffset < kSmb2HeaderSize || dataEnd > size ||
+       dataEnd < dataOffset)) {
+    return DecodeResult<ReadResponse>::failure(
+        ErrorCode::IoError, "SMB2 READ response data is out of bounds.");
+  }
+
+  ReadResponse response;
+  response.status = headerResult.value.status;
+  response.dataOffset = dataOffset;
+  response.dataRemaining = readU32Le(body + 8);
+  response.flags = static_cast<std::uint8_t>(readU32Le(body + 12) & 0xFF);
+  if (dataLength > 0) {
+    response.data.assign(data + dataOffset, data + dataEnd);
+  }
+  return DecodeResult<ReadResponse>::success(response);
+}
+
+DecodeResult<ReadResponse> decodeReadResponse(const ByteVector &bytes) {
+  return decodeReadResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildWriteRequest(const WriteRequestOptions &options,
+                             std::uint64_t messageId, std::uint32_t treeId,
+                             std::uint64_t sessionId) {
+  if (options.data.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 WRITE data is too large.");
+  }
+  if (options.channelInfo.size() >
+      std::numeric_limits<std::uint16_t>::max()) {
+    throw std::invalid_argument("SMB2 WRITE channel info is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::Write;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+  if (!options.data.empty()) {
+    header.creditCharge =
+        static_cast<std::uint16_t>(1 + ((options.data.size() - 1) / 65536));
+  }
+
+  constexpr std::uint16_t kDataOffset = kSmb2HeaderSize + 48;
+  const auto dataOffset = options.data.empty() ? 0 : kDataOffset;
+  const auto channelInfoOffset =
+      options.channelInfo.empty()
+          ? 0
+          : static_cast<std::uint16_t>(kDataOffset + options.data.size());
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kWriteRequestStructureSize);
+  appendU16Le(bytes, dataOffset);
+  appendU32Le(bytes, static_cast<std::uint32_t>(options.data.size()));
+  appendU64Le(bytes, options.offset);
+  appendFileId(bytes, options.fileId);
+  appendU32Le(bytes, options.channel);
+  appendU32Le(bytes, options.remainingBytes);
+  appendU16Le(bytes, channelInfoOffset);
+  appendU16Le(bytes, static_cast<std::uint16_t>(options.channelInfo.size()));
+  appendU32Le(bytes, options.flags);
+  bytes.insert(bytes.end(), options.data.begin(), options.data.end());
+  bytes.insert(bytes.end(), options.channelInfo.begin(),
+               options.channelInfo.end());
+  return bytes;
+}
+
+DecodeResult<WriteResponse> decodeWriteResponse(const std::uint8_t *data,
+                                                std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<WriteResponse>::failure(headerResult.error.code,
+                                               headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Write) {
+    return DecodeResult<WriteResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a WRITE response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<WriteResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 WRITE response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 16) {
+    return DecodeResult<WriteResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 WRITE response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kWriteResponseStructureSize) {
+    return DecodeResult<WriteResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 WRITE response structure size.");
+  }
+
+  WriteResponse response;
+  response.status = headerResult.value.status;
+  response.count = readU32Le(body + 4);
+  response.remaining = readU32Le(body + 8);
+  response.writeChannelInfoOffset = readU16Le(body + 12);
+  response.writeChannelInfoLength = readU16Le(body + 14);
+  return DecodeResult<WriteResponse>::success(response);
+}
+
+DecodeResult<WriteResponse> decodeWriteResponse(const ByteVector &bytes) {
+  return decodeWriteResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildSetInfoRequest(const SetInfoRequestOptions &options,
+                               std::uint64_t messageId,
+                               std::uint32_t treeId,
+                               std::uint64_t sessionId) {
+  if (options.buffer.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 SET_INFO buffer is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::SetInfo;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  constexpr std::uint16_t kBufferOffset = kSmb2HeaderSize + 32;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kSetInfoRequestStructureSize);
+  bytes.push_back(options.infoType);
+  bytes.push_back(options.fileInfoClass);
+  appendU32Le(bytes, static_cast<std::uint32_t>(options.buffer.size()));
+  appendU16Le(bytes, options.buffer.empty() ? 0 : kBufferOffset);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, options.additionalInformation);
+  appendFileId(bytes, options.fileId);
+  bytes.insert(bytes.end(), options.buffer.begin(), options.buffer.end());
+  return bytes;
+}
+
+DecodeResult<SetInfoResponse> decodeSetInfoResponse(const std::uint8_t *data,
+                                                    std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<SetInfoResponse>::failure(headerResult.error.code,
+                                                 headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::SetInfo) {
+    return DecodeResult<SetInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a SET_INFO response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<SetInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 SET_INFO response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 2) {
+    return DecodeResult<SetInfoResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 SET_INFO response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kSetInfoResponseStructureSize) {
+    return DecodeResult<SetInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 SET_INFO response structure size.");
+  }
+
+  SetInfoResponse response;
+  response.status = headerResult.value.status;
+  return DecodeResult<SetInfoResponse>::success(response);
+}
+
+DecodeResult<SetInfoResponse> decodeSetInfoResponse(const ByteVector &bytes) {
+  return decodeSetInfoResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildFileDispositionInformation(bool deletePending) {
+  return ByteVector{static_cast<std::uint8_t>(deletePending ? 1 : 0)};
+}
+
+ByteVector buildFileRenameInformation(std::string_view newPath,
+                                      bool replaceIfExists) {
+  const auto name = encodeUtf16Le(newPath);
+  if (name.empty()) {
+    throw std::invalid_argument("SMB2 rename target path is empty.");
+  }
+  if (name.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 rename target path is too large.");
+  }
+
+  ByteVector bytes;
+  bytes.reserve(20 + name.size());
+  bytes.push_back(static_cast<std::uint8_t>(replaceIfExists ? 1 : 0));
+  for (int i = 0; i < 7; ++i) {
+    bytes.push_back(0);
+  }
+  appendU64Le(bytes, 0);
+  appendU32Le(bytes, static_cast<std::uint32_t>(name.size()));
+  bytes.insert(bytes.end(), name.begin(), name.end());
+  while (bytes.size() < 24) {
+    bytes.push_back(0);
+  }
+  return bytes;
+}
+
 ByteVector buildQueryDirectoryRequest(
     const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
     std::uint32_t treeId, std::uint64_t sessionId) {

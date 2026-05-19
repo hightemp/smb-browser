@@ -1,10 +1,22 @@
 add_library(smb_browser_native_smb STATIC
+    CloseExchanger.cpp
+    CloseExchanger.h
     DirectoryLister.cpp
     DirectoryLister.h
+    FileReader.cpp
+    FileReader.h
+    FileWriter.cpp
+    FileWriter.h
     Negotiator.cpp
     Negotiator.h
     Protocol.cpp
     Protocol.h
+    ReadExchanger.cpp
+    ReadExchanger.h
+    RemoteObjectOperator.cpp
+    RemoteObjectOperator.h
+    SetInfoExchanger.cpp
+    SetInfoExchanger.h
     SessionSetupExchanger.cpp
     SessionSetupExchanger.h
     SmbNative.cpp
@@ -12,6 +24,8 @@ add_library(smb_browser_native_smb STATIC
     Transport.h
     TreeConnector.cpp
     TreeConnector.h
+    WriteExchanger.cpp
+    WriteExchanger.h
 )
 
 set_target_properties(smb_browser_native_smb
