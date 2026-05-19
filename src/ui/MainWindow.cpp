@@ -63,10 +63,6 @@ QWidget *MainWindow::createTopBar() {
   layout->setContentsMargins(8, 6, 8, 6);
   layout->setSpacing(6);
 
-  auto *search = new QLineEdit(bar);
-  search->setObjectName(QStringLiteral("globalSearchEdit"));
-  layout->addWidget(search, 1);
-
   const auto addButton = [this, bar, layout](const QString &objectName,
                                              const QString &text,
                                              QStyle::StandardPixmap icon) {
@@ -81,6 +77,7 @@ QWidget *MainWindow::createTopBar() {
       addButton(QStringLiteral("importButton"), QString(), QStyle::SP_ArrowDown);
   m_exportButton =
       addButton(QStringLiteral("exportButton"), QString(), QStyle::SP_ArrowUp);
+  layout->addStretch(1);
   auto *logsButton = addButton(QStringLiteral("logsButton"), QString(),
                                QStyle::SP_FileDialogDetailedView);
   connect(logsButton, &QPushButton::clicked, this, [this]() {
@@ -181,10 +178,6 @@ void MainWindow::retranslateUi() {
     }
   };
 
-  if (auto *search =
-          findChild<QLineEdit *>(QStringLiteral("globalSearchEdit"))) {
-    search->setPlaceholderText(tr("Search connections or files"));
-  }
   setButtonText(QStringLiteral("importButton"), tr("Import"));
   setButtonText(QStringLiteral("exportButton"), tr("Export"));
   setButtonText(QStringLiteral("logsButton"), tr("Logs"));

@@ -871,6 +871,7 @@ private slots:
     view->selectionModel()->select(view->model()->index(0, 0),
                                    QItemSelectionModel::ClearAndSelect |
                                        QItemSelectionModel::Rows);
+    QTRY_VERIFY(downloadButton->isEnabled());
     downloadButton->click();
     QTRY_VERIFY([&downloadedPath]() {
       QFile downloaded(downloadedPath);
@@ -897,6 +898,41 @@ private slots:
       }
     }
     QVERIFY(foundUpload);
+  }
+
+  void downloadActionIsEnabledForFilesAndSymlinksOnly() {
+    FakeRemoteBrowserUseCase useCase;
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {directory(QStringLiteral("folder"), QStringLiteral("/folder")),
+         file(QStringLiteral("file.txt"), QStringLiteral("/file.txt")),
+         symlink(QStringLiteral("file-link"), QStringLiteral("/file-link"))}));
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    auto *downloadButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserDownloadButton"));
+    QVERIFY(view != nullptr);
+    QVERIFY(downloadButton != nullptr);
+
+    view->selectionModel()->select(view->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+    QTRY_VERIFY(!downloadButton->isEnabled());
+
+    view->selectionModel()->select(view->model()->index(1, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+    QTRY_VERIFY(downloadButton->isEnabled());
+
+    view->selectionModel()->select(view->model()->index(2, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+    QTRY_VERIFY(downloadButton->isEnabled());
   }
 
   void copyAndMoveSelectedEntriesToDestination() {

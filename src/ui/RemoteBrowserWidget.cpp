@@ -67,6 +67,11 @@ QString displayLocation(QString rootText, const QString &remotePath) {
   return rootText + path;
 }
 
+bool isDownloadableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
+  return !entry.name.isEmpty() &&
+         entry.type != smb::core::RemoteFileType::Directory;
+}
+
 } // namespace
 
 RemoteBrowserWidget::RemoteBrowserWidget(
@@ -419,7 +424,7 @@ void RemoteBrowserWidget::renameSelected() {
 
 void RemoteBrowserWidget::downloadSelected() {
   const auto entry = selectedEntry();
-  if (m_connectionId.isEmpty() || !entry.isFile()) {
+  if (m_connectionId.isEmpty() || !isDownloadableRemoteEntry(entry)) {
     return;
   }
 
@@ -913,7 +918,8 @@ void RemoteBrowserWidget::updateActionState() {
   m_createFolderButton->setEnabled(hasConnection &&
                                    !m_currentRemotePath.isEmpty());
   m_uploadButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty());
-  m_downloadButton->setEnabled(hasConnection && selectedEntry().isFile());
+  m_downloadButton->setEnabled(hasConnection &&
+                               isDownloadableRemoteEntry(selectedEntry()));
   m_copyButton->setEnabled(hasConnection && hasSelection);
   m_moveButton->setEnabled(hasConnection && hasSelection);
   m_deleteButton->setEnabled(hasConnection && hasSelection);

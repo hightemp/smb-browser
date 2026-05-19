@@ -53,7 +53,7 @@ private slots:
 
     QVERIFY(window.findChild<QWidget *>(QStringLiteral("mainToolbar")) !=
             nullptr);
-    QVERIFY(window.findChild<QLineEdit *>(QStringLiteral("globalSearchEdit")) !=
+    QVERIFY(window.findChild<QLineEdit *>(QStringLiteral("globalSearchEdit")) ==
             nullptr);
     QVERIFY(window.findChild<QWidget *>(QStringLiteral("connectionsPanel")) !=
             nullptr);
