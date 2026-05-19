@@ -384,6 +384,16 @@ public:
   QVector<QString> errors;
 };
 
+class FakeLocalFileOpener final : public smb::application::LocalFileOpener {
+public:
+  smb::core::Result<bool> openLocalFile(const QString &localPath) override {
+    openedPaths.push_back(localPath);
+    return smb::core::Result<bool>::success(true);
+  }
+
+  QVector<QString> openedPaths;
+};
+
 } // namespace
 
 class RemoteBrowserWidgetTest final : public QObject {
@@ -452,6 +462,86 @@ private slots:
 
     QTRY_COMPARE(widget.currentRemotePath(), QStringLiteral("/dept"));
     QCOMPARE(widget.model()->entryAt(0).name, QStringLiteral("readme.txt"));
+  }
+
+  void doubleClickDownloadsAndOpensFile() {
+    FakeRemoteBrowserUseCase useCase;
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    FakeLocalFileOpener fileOpener;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter, nullptr,
+                                        &fileOpener);
+    widget.resize(900, 500);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {file(QStringLiteral("readme.txt"), QStringLiteral("/readme.txt"))}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QVector<smb::core::RemoteFileEntry> activated;
+    connect(&widget, &smb::ui::RemoteBrowserWidget::fileActivated, this,
+            [&activated](const smb::core::RemoteFileEntry &entry) {
+              activated.push_back(entry);
+            });
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    QVERIFY(view != nullptr);
+    const auto index =
+        view->model()->index(0, smb::ui::RemoteFileModel::NameColumn);
+    QVERIFY(index.isValid());
+    QVERIFY(QMetaObject::invokeMethod(view, "doubleClicked",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QModelIndex, index)));
+
+    QTRY_COMPARE(activated.size(), 1);
+    QCOMPARE(activated.first().remotePath, QStringLiteral("/readme.txt"));
+    QTRY_COMPARE(fileOpener.openedPaths.size(), 1);
+    QVERIFY(QFile::exists(fileOpener.openedPaths.first()));
+  }
+
+  void doubleClickFallsBackToOpenSymlinkAsFileWhenDirectoryOpenFails() {
+    FakeRemoteBrowserUseCase useCase;
+    useCase.failures.insert(
+        QStringLiteral("/file-link"),
+        smb::core::AppError::fromCode(smb::core::ErrorCode::FileNotFound,
+                                      smb::core::ErrorCategory::Smb,
+                                      QStringLiteral("Not a directory.")));
+
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    FakeLocalFileOpener fileOpener;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter, nullptr,
+                                        &fileOpener);
+    widget.resize(900, 500);
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {symlink(QStringLiteral("file-link"), QStringLiteral("/file-link"))}));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QVector<smb::core::AppError> directoryErrors;
+    connect(&widget, &smb::ui::RemoteBrowserWidget::directoryOpenFailed, this,
+            [&directoryErrors](const QString &, const QString &,
+                               const smb::core::AppError &error) {
+              directoryErrors.push_back(error);
+            });
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    QVERIFY(view != nullptr);
+    const auto index =
+        view->model()->index(0, smb::ui::RemoteFileModel::NameColumn);
+    QVERIFY(index.isValid());
+    QVERIFY(QMetaObject::invokeMethod(view, "doubleClicked",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QModelIndex, index)));
+
+    QTRY_COMPARE(fileOpener.openedPaths.size(), 1);
+    QCOMPARE(widget.currentRemotePath(), QStringLiteral("/"));
+    QVERIFY(directoryErrors.isEmpty());
   }
 
   void browserKeepsSearchUsableAndUsesRequestedColumnProportions() {

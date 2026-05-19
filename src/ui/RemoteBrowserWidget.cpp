@@ -1,5 +1,7 @@
 #include "ui/RemoteBrowserWidget.h"
 
+#include "application/DesktopServicesFileOpener.h"
+
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QDrag>
@@ -28,16 +30,12 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <memory>
 #include <utility>
 
 namespace smb::ui {
 
 namespace {
-
-bool isBrowsableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
-  return entry.type == smb::core::RemoteFileType::Directory ||
-         entry.type == smb::core::RemoteFileType::Symlink;
-}
 
 QString locationRootText(const smb::core::Connection &connection) {
   if (!connection.normalizedUri.trimmed().isEmpty()) {
@@ -76,11 +74,20 @@ RemoteBrowserWidget::RemoteBrowserWidget(
     smb::application::RemoteFileOperationUseCase &fileOperationUseCase,
     smb::application::RemoteFileTransferUseCase &fileTransferUseCase,
     smb::application::OperationQueue &operationQueue,
-    RemoteFileActionPrompter &prompter, QWidget *parent)
+    RemoteFileActionPrompter &prompter, QWidget *parent,
+    smb::application::LocalFileOpener *fileOpener)
     : QWidget(parent), m_directoryUseCase(directoryUseCase),
       m_fileOperationUseCase(fileOperationUseCase),
       m_fileTransferUseCase(fileTransferUseCase),
       m_operationQueue(operationQueue), m_prompter(prompter) {
+  if (fileOpener != nullptr) {
+    m_fileOpener = fileOpener;
+  } else {
+    m_ownedFileOpener =
+        std::make_unique<smb::application::DesktopServicesFileOpener>();
+    m_fileOpener = m_ownedFileOpener.get();
+  }
+
   qRegisterMetaType<smb::core::AppError>("smb::core::AppError");
   qRegisterMetaType<smb::core::RemoteFileEntry>("smb::core::RemoteFileEntry");
 
@@ -243,11 +250,17 @@ RemoteBrowserWidget::RemoteBrowserWidget(
             if (entry.name.isEmpty()) {
               return;
             }
-            if (isBrowsableRemoteEntry(entry)) {
+            if (entry.type == smb::core::RemoteFileType::Directory) {
               openDirectory(entry.remotePath);
               return;
             }
-            emit fileActivated(entry);
+            if (entry.type == smb::core::RemoteFileType::Symlink) {
+              m_pendingSymlinkFileFallbacks.insert(
+                  normalizeRemotePath(entry.remotePath), entry);
+              openDirectory(entry.remotePath);
+              return;
+            }
+            openRemoteFile(entry);
           });
   connect(m_tableView->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, [this]() { updateActionState(); });
@@ -263,6 +276,7 @@ void RemoteBrowserWidget::setDirectory(
   m_currentRemotePath = normalizeRemotePath(result.currentRemotePath);
   m_backStack.clear();
   m_forwardStack.clear();
+  m_pendingSymlinkFileFallbacks.clear();
   m_searchEdit->clear();
   m_model->setEntries(std::move(result.entries), m_currentRemotePath);
   updateLocationBar();
@@ -274,6 +288,7 @@ void RemoteBrowserWidget::clear() {
   m_connectionId.clear();
   m_locationRootText.clear();
   m_currentRemotePath.clear();
+  m_pendingSymlinkFileFallbacks.clear();
   m_backStack.clear();
   m_forwardStack.clear();
   m_searchEdit->clear();
@@ -761,6 +776,7 @@ void RemoteBrowserWidget::applyDirectory(
   m_connectionId = result.connection.id;
   m_locationRootText = locationRootText(result.connection);
   m_currentRemotePath = targetPath;
+  m_pendingSymlinkFileFallbacks.remove(m_currentRemotePath);
   m_searchEdit->clear();
   m_model->setEntries(std::move(result.entries), m_currentRemotePath);
   updateLocationBar();
@@ -781,6 +797,16 @@ void RemoteBrowserWidget::deliverFailure(const QString &connectionId,
       this,
       [self, connectionId, remotePath, error]() {
         if (!self) {
+          return;
+        }
+        const auto normalizedPath =
+            RemoteBrowserWidget::normalizeRemotePath(remotePath);
+        const auto fallback =
+            self->m_pendingSymlinkFileFallbacks.take(normalizedPath);
+        if (!fallback.name.isEmpty()) {
+          self->showDirectoryState();
+          self->updateActionState();
+          self->openRemoteFile(fallback);
           return;
         }
         self->showError(error);
@@ -1139,6 +1165,39 @@ void RemoteBrowserWidget::uploadLocalFiles(QVector<QString> localPaths) {
 
         return smb::core::Result<bool>::success(true);
       });
+}
+
+void RemoteBrowserWidget::openRemoteFile(
+    const smb::core::RemoteFileEntry &entry) {
+  if (m_connectionId.isEmpty() || entry.remotePath.trimmed().isEmpty() ||
+      m_fileOpener == nullptr) {
+    return;
+  }
+
+  emit fileActivated(entry);
+
+  const auto connectionId = m_connectionId;
+  runFileOperation(
+      QStringLiteral("open"),
+      [this, connectionId,
+       remotePath = entry.remotePath](const smb::core::OperationContext
+                                          &context) {
+        const auto localPath =
+            m_tempFileCache.localPathFor(connectionId, remotePath);
+        if (!localPath.ok()) {
+          return smb::core::Result<bool>::failure(localPath.error());
+        }
+
+        auto downloaded = m_fileTransferUseCase.downloadFile(
+            connectionId, remotePath, localPath.value(), context);
+        if (!downloaded.ok()) {
+          return downloaded;
+        }
+
+        m_tempFileCache.protectPath(localPath.value());
+        return m_fileOpener->openLocalFile(localPath.value());
+      },
+      false);
 }
 
 void RemoteBrowserWidget::startExternalDragFromMouse() {

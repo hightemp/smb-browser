@@ -1,15 +1,18 @@
 #pragma once
 
 #include "application/ConnectionOpenService.h"
+#include "application/LocalFileOpener.h"
 #include "application/OperationQueue.h"
 #include "application/TempFileCache.h"
 #include "ui/RemoteFileActionPrompter.h"
 #include "ui/RemoteFileModel.h"
 
+#include <QHash>
 #include <QPoint>
 #include <QUrl>
 #include <QWidget>
 #include <functional>
+#include <memory>
 
 class QLabel;
 class QHBoxLayout;
@@ -33,7 +36,8 @@ public:
       smb::application::RemoteFileOperationUseCase &fileOperationUseCase,
       smb::application::RemoteFileTransferUseCase &fileTransferUseCase,
       smb::application::OperationQueue &operationQueue,
-      RemoteFileActionPrompter &prompter, QWidget *parent = nullptr);
+      RemoteFileActionPrompter &prompter, QWidget *parent = nullptr,
+      smb::application::LocalFileOpener *fileOpener = nullptr);
 
   void setDirectory(smb::application::OpenConnectionResult result);
   void clear();
@@ -110,6 +114,7 @@ private:
                     const RemoteDestination &destination,
                     const smb::core::OperationContext &context);
   void uploadLocalFiles(QVector<QString> localPaths);
+  void openRemoteFile(const smb::core::RemoteFileEntry &entry);
   void startExternalDragFromMouse();
   void startExternalDragWithUrls(const QVector<QUrl> &urls);
 
@@ -126,6 +131,8 @@ private:
   smb::application::OperationQueue &m_operationQueue;
   smb::application::TempFileCache m_tempFileCache;
   RemoteFileActionPrompter &m_prompter;
+  std::unique_ptr<smb::application::LocalFileOpener> m_ownedFileOpener;
+  smb::application::LocalFileOpener *m_fileOpener = nullptr;
   RemoteFileModel *m_model = nullptr;
   RemoteFileFilterProxyModel *m_filterModel = nullptr;
   QTableView *m_tableView = nullptr;
@@ -148,6 +155,7 @@ private:
   QString m_connectionId;
   QString m_locationRootText;
   QString m_currentRemotePath;
+  QHash<QString, smb::core::RemoteFileEntry> m_pendingSymlinkFileFallbacks;
   QVector<QString> m_backStack;
   QVector<QString> m_forwardStack;
   QPoint m_dragStartPosition;

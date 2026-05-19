@@ -1,7 +1,10 @@
 #include "application/DesktopServicesFileOpener.h"
 
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QFileInfo>
+#include <QMetaObject>
+#include <QThread>
 #include <QUrl>
 
 namespace smb::application {
@@ -14,7 +17,16 @@ DesktopServicesFileOpener::openLocalFile(const QString &localPath) {
         QStringLiteral("Local cached file was not found.")));
   }
 
-  const auto opened = QDesktopServices::openUrl(QUrl::fromLocalFile(localPath));
+  const auto url = QUrl::fromLocalFile(localPath);
+  bool opened = false;
+  auto *app = QCoreApplication::instance();
+  if (app != nullptr && QThread::currentThread() != app->thread()) {
+    QMetaObject::invokeMethod(
+        app, [&opened, url]() { opened = QDesktopServices::openUrl(url); },
+        Qt::BlockingQueuedConnection);
+  } else {
+    opened = QDesktopServices::openUrl(url);
+  }
   if (!opened) {
     return smb::core::Result<bool>::failure(smb::core::AppError::fromCode(
         smb::core::ErrorCode::LocalIoError, smb::core::ErrorCategory::Transfer,
