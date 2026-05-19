@@ -184,8 +184,31 @@ Initial `Libsmb2SmbClient` implementation should:
 - Never log SMB URLs containing credentials.
 - Set credentials through `smb2_set_user`, `smb2_set_password`, and `smb2_set_domain`, not by embedding passwords into SMB URLs.
 
+## DFS Namespace Finding
+
+Corporate paths can be DFS namespaces rather than direct shares. One observed
+case was `smb://v-tell.com/ru`: `smbclient` successfully followed the referral
+to a concrete target, while `libsmb2` `smb2_connect_share()` failed at tree
+connect with `STATUS_BAD_NETWORK_NAME`.
+
+Project handling:
+
+- `STATUS_BAD_NETWORK_NAME` during connection is mapped to `ShareUnavailable`,
+  not `DnsError`.
+- `DfsResolvingSmbClient` wraps the primary `libsmb2` client.
+- `SmbclientDfsReferralResolver` optionally runs `smbclient -c showconnect`
+  without putting passwords on the command line, parses the concrete
+  `//server/share` target, and retries the same operation through `libsmb2`.
+- Resolved targets are cached in memory per connection identity to avoid
+  repeating the failed DFS-root tree connect on every folder navigation.
+- If `smbclient` is absent, behavior falls back to the actionable
+  `ShareUnavailable` error and hint.
+
 ## Open Follow-Ups
 
 - Validate Windows and macOS build packaging for `libsmb2`.
 - Add Docker Samba integration tests before implementing production write operations.
 - Investigate Kerberos/current-user support separately.
+- Investigate native DFS referral support in `libsmb2` or a maintained library
+  alternative so the `smbclient` resolver can remain an optional compatibility
+  path rather than a long-term dependency.

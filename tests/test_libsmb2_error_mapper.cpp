@@ -65,12 +65,19 @@ private slots:
     using smb::infrastructure::Libsmb2ErrorContext;
     using smb::infrastructure::mapLibsmb2Error;
 
-    QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("SMB dialect negotiation failed"),
+    QVERIFY(mapLibsmb2Error(-EIO,
+                            QStringLiteral("SMB dialect negotiation failed"),
                             Libsmb2ErrorContext::Connection) ==
             smb::core::ErrorCode::ProtocolUnsupported);
     QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("NT_STATUS_BAD_NETWORK_NAME"),
                             Libsmb2ErrorContext::Directory) ==
             smb::core::ErrorCode::ShareUnavailable);
+    QVERIFY(
+        mapLibsmb2Error(
+            -EIO,
+            QStringLiteral("Tree Connect failed with STATUS_BAD_NETWORK_NAME"),
+            Libsmb2ErrorContext::Connection) ==
+        smb::core::ErrorCode::ShareUnavailable);
     QVERIFY(mapLibsmb2Error(-EIO, QStringLiteral("NT_STATUS_LOGON_FAILURE"),
                             Libsmb2ErrorContext::Connection) ==
             smb::core::ErrorCode::AuthenticationFailed);
@@ -84,8 +91,7 @@ private slots:
     sanitizer.addSecretValue(QStringLiteral("plain-secret"));
 
     const auto error = makeLibsmb2Error(
-        -EACCES,
-        QStringLiteral("libsmb2 connect failed password=plain-secret"),
+        -EACCES, QStringLiteral("libsmb2 connect failed password=plain-secret"),
         Libsmb2ErrorContext::Connection, sanitizer);
 
     QVERIFY(error.code == smb::core::ErrorCode::AuthenticationFailed);
@@ -94,6 +100,22 @@ private slots:
     QVERIFY(error.sanitizedTechnicalDetails.contains(QStringLiteral("hint=")));
     QVERIFY(!error.sanitizedTechnicalDetails.contains(
         QStringLiteral("plain-secret")));
+  }
+
+  void shareUnavailableHintMentionsDfsForConnectionErrors() {
+    using smb::infrastructure::Libsmb2ErrorContext;
+    using smb::infrastructure::makeLibsmb2Error;
+
+    smb::core::LogSanitizer sanitizer;
+    const auto error = makeLibsmb2Error(
+        -EIO,
+        QStringLiteral("Tree Connect failed with STATUS_BAD_NETWORK_NAME"),
+        Libsmb2ErrorContext::Connection, sanitizer);
+
+    QVERIFY(error.code == smb::core::ErrorCode::ShareUnavailable);
+    QVERIFY(error.userMessage.contains(QStringLiteral("DFS namespace")));
+    QVERIFY(error.sanitizedTechnicalDetails.contains(
+        QStringLiteral("DFS resolver")));
   }
 };
 

@@ -15,6 +15,13 @@ smb::core::ErrorCode mapConnectionError(int status, const QString &details) {
       lower.contains(QStringLiteral("bad password"))) {
     return smb::core::ErrorCode::AuthenticationFailed;
   }
+  if (lower.contains(QStringLiteral("bad network name")) ||
+      lower.contains(QStringLiteral("bad_network_name")) ||
+      lower.contains(QStringLiteral("status_bad_network_name")) ||
+      lower.contains(QStringLiteral("tree connect")) ||
+      lower.contains(QStringLiteral("share"))) {
+    return smb::core::ErrorCode::ShareUnavailable;
+  }
   if (lower.contains(QStringLiteral("name")) ||
       lower.contains(QStringLiteral("resolve")) ||
       lower.contains(QStringLiteral("dns"))) {
@@ -134,8 +141,7 @@ bool isRetryable(smb::core::ErrorCode code) {
          code == smb::core::ErrorCode::NetworkError;
 }
 
-QString diagnosticHint(smb::core::ErrorCode code,
-                       Libsmb2ErrorContext context) {
+QString diagnosticHint(smb::core::ErrorCode code, Libsmb2ErrorContext context) {
   switch (code) {
   case smb::core::ErrorCode::DnsError:
     return QStringLiteral("Check the server name and DNS resolution.");
@@ -144,8 +150,16 @@ QString diagnosticHint(smb::core::ErrorCode code,
         "Check network connectivity, firewall rules, and whether the SMB "
         "server is reachable.");
   case smb::core::ErrorCode::ShareUnavailable:
-    return QStringLiteral(
-        "Check that the share name exists and is exported by the server.");
+    return context == Libsmb2ErrorContext::Connection
+               ? QStringLiteral(
+                     "Check that the share name exists and is exported by the "
+                     "server. If this path is a DFS namespace, use the "
+                     "resolved "
+                     "target or install smbclient so the DFS resolver can find "
+                     "it.")
+               : QStringLiteral(
+                     "Check that the share name exists and is exported by the "
+                     "server.");
   case smb::core::ErrorCode::AuthenticationFailed:
     return QStringLiteral(
         "Check username, domain or workgroup, password, and guest access "
@@ -168,7 +182,8 @@ QString diagnosticHint(smb::core::ErrorCode code,
   case smb::core::ErrorCode::FileNotFound:
     return QStringLiteral("Check that the remote path still exists.");
   case smb::core::ErrorCode::AlreadyExists:
-    return QStringLiteral("Choose another target name or overwrite explicitly.");
+    return QStringLiteral(
+        "Choose another target name or overwrite explicitly.");
   case smb::core::ErrorCode::DirectoryNotEmpty:
     return QStringLiteral("Delete directory contents before removing it.");
   default:
@@ -192,9 +207,9 @@ smb::core::ErrorCode mapLibsmb2Error(int status, const QString &details,
   return smb::core::ErrorCode::NetworkError;
 }
 
-smb::core::AppError makeLibsmb2Error(
-    int status, const QString &details, Libsmb2ErrorContext context,
-    const smb::core::LogSanitizer &sanitizer) {
+smb::core::AppError makeLibsmb2Error(int status, const QString &details,
+                                     Libsmb2ErrorContext context,
+                                     const smb::core::LogSanitizer &sanitizer) {
   const auto code = mapLibsmb2Error(status, details, context);
   const auto hint = diagnosticHint(code, context);
   auto sanitizedDetails = sanitizer.sanitize(details);

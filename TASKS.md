@@ -1107,3 +1107,26 @@
 - Заметки по тестам:
   - Unit tests cleanup policy.
   - Manual tests open file while cleanup pending.
+
+### [x] T-078: Добавить fallback для DFS SMB namespaces
+
+- Приоритет: Should.
+- Зависимости: T-027, T-030.
+- Описание: Поддержать корпоративные DFS namespace пути, где `libsmb2`
+  падает на `smb2_connect_share()` с `STATUS_BAD_NETWORK_NAME`, а Samba
+  `smbclient` умеет получить реальный target server/share.
+- Acceptance criteria:
+  - `STATUS_BAD_NETWORK_NAME` при Tree Connect мапится в `ShareUnavailable`, а
+    не в `DnsError`.
+  - Есть backend-agnostic `DfsReferralResolver` interface.
+  - Есть `smbclient`-based resolver, который не передает пароль через argv и
+    удаляет временный credentials file.
+  - Есть `DfsResolvingSmbClient`, который кэширует resolved target и повторяет
+    операции через основной `libsmb2` backend.
+  - Если `smbclient` отсутствует, пользователь получает actionable error с
+    DFS hint.
+- Заметки по тестам:
+  - Unit tests error mapping для `STATUS_BAD_NETWORK_NAME`.
+  - Unit tests parser для `smbclient -c showconnect`.
+  - Unit tests fallback/retry/cache wrapper.
+  - Manual safe check на `tmp/mylist.json` без вывода пароля.

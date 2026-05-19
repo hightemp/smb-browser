@@ -5,6 +5,10 @@ set(SMB_BROWSER_INFRASTRUCTURE_SOURCES
     credentials/QtKeychainCredentialStore.h
     logging/FileLogger.cpp
     logging/FileLogger.h
+    smb/DfsResolvingSmbClient.cpp
+    smb/DfsResolvingSmbClient.h
+    smb/SmbclientDfsReferralResolver.cpp
+    smb/SmbclientDfsReferralResolver.h
     storage/ConnectionGroupRepository.cpp
     storage/ConnectionGroupRepository.h
     storage/ConnectionRepository.cpp

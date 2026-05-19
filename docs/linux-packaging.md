@@ -20,6 +20,7 @@ the project.
 ```bash
 cmake -S . -B tmp/package-linux -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DSMB_BROWSER_WITH_LIBSMB2=ON \
   -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 cmake --build tmp/package-linux
 ctest --test-dir tmp/package-linux --output-on-failure
@@ -40,11 +41,16 @@ The DEB profile declares the baseline runtime packages:
 - `libqt5sql5-sqlite`
 - `libqt5keychain1`
 - `libsodium23`
+- `smbclient`
 
 `libsmb2` is bundled by default through the CMake FetchContent path. For
 experiments with an external pkg-config installation, run
 `scripts/build-libsmb2.sh` and configure with
 `SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON`.
+
+`smbclient` is used as the optional DFS namespace resolver. It is declared as a
+runtime dependency in the Linux package so corporate DFS paths can be resolved
+before retrying the operation through `libsmb2`.
 
 ## Installed files
 

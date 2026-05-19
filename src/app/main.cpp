@@ -7,9 +7,11 @@
 #include "application/TempFileCache.h"
 #include "core/SmbClient.h"
 #include "credentials/QtKeychainCredentialStore.h"
+#include "smb/DfsResolvingSmbClient.h"
 #ifdef SMB_BROWSER_WITH_LIBSMB2
 #include "smb/Libsmb2SmbClient.h"
 #endif
+#include "smb/SmbclientDfsReferralResolver.h"
 #include "storage/ConnectionRepository.h"
 #include "storage/ConnectionGroupRepository.h"
 #include "storage/SettingsRepository.h"
@@ -202,8 +204,12 @@ int main(int argc, char *argv[]) {
   smb::ui::DialogImportExportActionPrompter importExportPrompter(&window);
   window.attachImportExport(importExportService, importExportPrompter);
 #ifdef SMB_BROWSER_WITH_LIBSMB2
-  smb::infrastructure::Libsmb2SmbClient smbClient(
+  smb::infrastructure::Libsmb2SmbClient libsmb2Client(
       qMax(1, settings.operationTimeoutMs / 1000));
+  smb::infrastructure::SmbclientDfsReferralResolver dfsReferralResolver(
+      qMax(1, settings.operationTimeoutMs / 1000));
+  smb::infrastructure::DfsResolvingSmbClient smbClient(libsmb2Client,
+                                                       dfsReferralResolver);
 #else
   UnavailableSmbClient smbClient;
 #endif

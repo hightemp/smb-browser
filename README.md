@@ -18,7 +18,8 @@ sudo apt-get install -y --no-install-recommends \
   qtbase5-dev \
   qttools5-dev-tools \
   qtkeychain-qt5-dev \
-  libsodium-dev
+  libsodium-dev \
+  smbclient
 ```
 
 Configure, build and test:
@@ -32,6 +33,11 @@ make test
 By default CMake builds the SMB backend. If `libsmb2` is not available through
 `pkg-config`, CMake clones the pinned upstream source into `tmp/libsmb2-src` and
 builds it as part of the project.
+
+`smbclient` is used only as an optional DFS referral resolver. File browsing and
+file operations still go through the `libsmb2` backend, but corporate DFS
+namespaces such as `smb://domain/share` may need `smbclient` available on
+`PATH` so the app can discover the real target server/share first.
 
 Run the app:
 

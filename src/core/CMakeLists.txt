@@ -6,6 +6,7 @@ add_library(smb_browser_core STATIC
     ConnectionGroup.cpp
     ConnectionGroup.h
     CredentialStore.h
+    DfsReferralResolver.h
     Error.cpp
     Error.h
     LogSanitizer.cpp

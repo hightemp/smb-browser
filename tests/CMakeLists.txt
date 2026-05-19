@@ -169,6 +169,31 @@ target_link_libraries(test_file_logger
 
 add_test(NAME file_logger COMMAND test_file_logger)
 
+add_executable(test_smbclient_dfs_referral_resolver
+    test_smbclient_dfs_referral_resolver.cpp
+)
+
+target_link_libraries(test_smbclient_dfs_referral_resolver
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME smbclient_dfs_referral_resolver
+         COMMAND test_smbclient_dfs_referral_resolver)
+
+add_executable(test_dfs_resolving_smb_client
+    test_dfs_resolving_smb_client.cpp
+)
+
+target_link_libraries(test_dfs_resolving_smb_client
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME dfs_resolving_smb_client COMMAND test_dfs_resolving_smb_client)
+
 if(SMB_BROWSER_WITH_LIBSMB2)
     add_executable(test_libsmb2_error_mapper
         test_libsmb2_error_mapper.cpp

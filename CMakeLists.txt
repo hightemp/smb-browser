@@ -125,7 +125,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5keychain1, libsodium23"
+        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5keychain1, libsodium23, smbclient"
     )
 elseif(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")

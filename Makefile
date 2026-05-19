@@ -52,7 +52,8 @@ setup:
 		qtbase5-dev \
 		qttools5-dev-tools \
 		qtkeychain-qt5-dev \
-		libsodium-dev
+		libsodium-dev \
+		smbclient
 
 .PHONY: configure
 configure:
@@ -83,6 +84,7 @@ run-offscreen: build
 package-linux:
 	cmake -S . -B $(PACKAGE_BUILD_DIR) -G "$(GENERATOR)" \
 		-DCMAKE_BUILD_TYPE=$(PACKAGE_BUILD_TYPE) \
+		-DSMB_BROWSER_WITH_LIBSMB2=ON \
 		-DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 	cmake --build $(PACKAGE_BUILD_DIR) --target package $(JOBS)
 
