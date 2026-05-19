@@ -73,11 +73,12 @@ private slots:
     MainWindow window;
 
     const QStringList requiredButtons = {
-        QStringLiteral("addConnectionButton"),
-        QStringLiteral("editConnectionButton"),
-        QStringLiteral("deleteConnectionButton"),
-        QStringLiteral("checkConnectionButton"),
-        QStringLiteral("connectButton"),
+        QStringLiteral("panelAddConnectionButton"),
+        QStringLiteral("panelEditConnectionButton"),
+        QStringLiteral("panelDeleteConnectionButton"),
+        QStringLiteral("panelCheckConnectionButton"),
+        QStringLiteral("panelConnectButton"),
+        QStringLiteral("panelCopyPathButton"),
         QStringLiteral("importButton"),
         QStringLiteral("exportButton"),
         QStringLiteral("logsButton"),
@@ -95,58 +96,22 @@ private slots:
     }
   }
 
-  void topAddButtonForwardsToConnectionsPanel() {
+  void connectionActionsAreOnlyInConnectionsPanel() {
     MainWindow window;
     QVERIFY(window.connectionsPanel() != nullptr);
 
-    QSignalSpy spy(window.connectionsPanel(),
-                   &smb::ui::ConnectionsPanel::addRequested);
-    auto *button =
-        window.findChild<QPushButton *>(QStringLiteral("addConnectionButton"));
-    QVERIFY(button != nullptr);
-
-    button->click();
-    QCOMPARE(spy.count(), 1);
-  }
-
-  void topCheckAndConnectButtonsForwardSelectedConnection() {
-    MainWindow window;
-    QVERIFY(window.connectionsPanel() != nullptr);
-
-    auto connection = smb::core::Connection::createEmpty();
-    connection.id = QStringLiteral("conn-1");
-    connection.name = QStringLiteral("Finance");
-    connection.normalizedUri = QStringLiteral("smb://server/share");
-    connection.server = QStringLiteral("server");
-    connection.share = QStringLiteral("share");
-    window.connectionsPanel()->setConnections({connection});
-
-    auto *list =
-        window.findChild<QListView *>(QStringLiteral("connectionsList"));
-    QVERIFY(list != nullptr);
-    list->selectionModel()->select(list->model()->index(0, 0),
-                                   QItemSelectionModel::ClearAndSelect |
-                                       QItemSelectionModel::Rows);
-
-    QSignalSpy checkSpy(window.connectionsPanel(),
-                        &smb::ui::ConnectionsPanel::checkRequested);
-    QSignalSpy connectSpy(window.connectionsPanel(),
-                          &smb::ui::ConnectionsPanel::connectRequested);
-
-    auto *checkButton =
-        window.findChild<QPushButton *>(QStringLiteral("checkConnectionButton"));
-    auto *connectButton =
-        window.findChild<QPushButton *>(QStringLiteral("connectButton"));
-    QVERIFY(checkButton != nullptr);
-    QVERIFY(connectButton != nullptr);
-
-    checkButton->click();
-    connectButton->click();
-
-    QCOMPARE(checkSpy.count(), 1);
-    QCOMPARE(checkSpy.takeFirst().at(0).toString(), QStringLiteral("conn-1"));
-    QCOMPARE(connectSpy.count(), 1);
-    QCOMPARE(connectSpy.takeFirst().at(0).toString(), QStringLiteral("conn-1"));
+    QVERIFY(window.findChild<QPushButton *>(
+                QStringLiteral("addConnectionButton")) == nullptr);
+    QVERIFY(window.findChild<QPushButton *>(
+                QStringLiteral("checkConnectionButton")) == nullptr);
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("connectButton")) ==
+            nullptr);
+    QVERIFY(window.findChild<QPushButton *>(
+                QStringLiteral("panelAddConnectionButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(
+                QStringLiteral("panelCheckConnectionButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(
+                QStringLiteral("panelConnectButton")) != nullptr);
   }
 
   void remoteBrowserCanReplacePlaceholderShell() {
@@ -222,7 +187,7 @@ private slots:
     QCoreApplication::sendEvent(&window, &languageChange);
 
     QCOMPARE(window.findChild<QPushButton *>(
-                         QStringLiteral("addConnectionButton"))
+                         QStringLiteral("panelAddConnectionButton"))
                  ->text(),
              QStringLiteral("Добавить"));
     QCOMPARE(window.findChild<QLabel *>(QStringLiteral("connectionsTitle"))
@@ -234,7 +199,7 @@ private slots:
     QCoreApplication::sendEvent(&window, &languageChange);
 
     QCOMPARE(window.findChild<QPushButton *>(
-                         QStringLiteral("addConnectionButton"))
+                         QStringLiteral("panelAddConnectionButton"))
                  ->text(),
              QStringLiteral("Add"));
 #endif

@@ -42,24 +42,20 @@ public:
   smb::ui::ConnectionsPanel *connectionsPanel() const;
   smb::ui::StatusPanel *statusPanel() const;
 
+signals:
+  void connectionsImported();
+
 private:
   void changeEvent(QEvent *event) override;
   QWidget *createTopBar();
   QWidget *createConnectionsPanel();
   QWidget *createBrowserArea();
   QWidget *createStatusPanel();
-  void wireConnectionActions();
   void retranslateUi();
-  void setTopConnectionActionsEnabled(bool enabled);
 
   smb::ui::ConnectionsPanel *m_connectionsPanel = nullptr;
   QFrame *m_browserArea = nullptr;
   smb::ui::StatusPanel *m_statusPanel = nullptr;
-  QPushButton *m_addConnectionButton = nullptr;
-  QPushButton *m_editConnectionButton = nullptr;
-  QPushButton *m_deleteConnectionButton = nullptr;
-  QPushButton *m_checkConnectionButton = nullptr;
-  QPushButton *m_connectButton = nullptr;
   QPushButton *m_importButton = nullptr;
   QPushButton *m_exportButton = nullptr;
   smb::application::SettingsUseCase *m_settingsUseCase = nullptr;

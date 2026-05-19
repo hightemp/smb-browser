@@ -31,6 +31,22 @@ private slots:
     QVERIFY(panel.lastErrorText().contains(QStringLiteral("token=***")));
   }
 
+  void longErrorsDoNotForceHugeStatusPanel() {
+    smb::ui::StatusPanel panel;
+    const auto initialWidth = panel.sizeHint().width();
+
+    auto error = smb::core::AppError::fromCode(
+        smb::core::ErrorCode::NetworkError, smb::core::ErrorCategory::Smb,
+        QString(4000, QLatin1Char('x')), false);
+    panel.setLastError(error);
+
+    QVERIFY(panel.lastErrorText().size() < 220);
+    QVERIFY(panel.sizeHint().width() < initialWidth + 300);
+    auto *label = panel.findChild<QLabel *>(QStringLiteral("lastErrorLabel"));
+    QVERIFY(label != nullptr);
+    QVERIFY(label->toolTip().size() > panel.lastErrorText().size());
+  }
+
   void followsOperationProgressAndCancellation() {
     smb::application::OperationQueue queue(1);
     smb::ui::StatusPanel panel;

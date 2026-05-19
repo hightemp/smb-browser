@@ -47,7 +47,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   rootLayout->addWidget(createStatusPanel());
 
   setCentralWidget(root);
-  wireConnectionActions();
   retranslateUi();
 
   statusBar()->showMessage(tr("Ready"));
@@ -78,21 +77,6 @@ QWidget *MainWindow::createTopBar() {
     return button;
   };
 
-  m_addConnectionButton =
-      addButton(QStringLiteral("addConnectionButton"), QString(),
-                QStyle::SP_FileDialogNewFolder);
-  m_editConnectionButton =
-      addButton(QStringLiteral("editConnectionButton"), QString(),
-                QStyle::SP_FileIcon);
-  m_deleteConnectionButton =
-      addButton(QStringLiteral("deleteConnectionButton"), QString(),
-                QStyle::SP_TrashIcon);
-  m_checkConnectionButton =
-      addButton(QStringLiteral("checkConnectionButton"), QString(),
-                QStyle::SP_BrowserReload);
-  m_connectButton =
-      addButton(QStringLiteral("connectButton"), QString(),
-                QStyle::SP_DialogOpenButton);
   m_importButton =
       addButton(QStringLiteral("importButton"), QString(), QStyle::SP_ArrowDown);
   m_exportButton =
@@ -142,6 +126,11 @@ void MainWindow::attachImportExport(
 
   m_importExportController = std::make_unique<smb::ui::ImportExportController>(
       *m_importButton, *m_exportButton, useCase, prompter, this);
+  connect(m_importExportController.get(),
+          &smb::ui::ImportExportController::importCompleted, this,
+          [this](const smb::application::ImportResult &) {
+            emit connectionsImported();
+          });
 }
 
 void MainWindow::attachSettings(
@@ -182,54 +171,6 @@ void MainWindow::attachRemoteBrowser(QWidget &browserWidget) {
   layout->addWidget(&browserWidget, 1);
 }
 
-void MainWindow::wireConnectionActions() {
-  if (m_connectionsPanel == nullptr) {
-    return;
-  }
-
-  if (m_addConnectionButton != nullptr) {
-    connect(m_addConnectionButton, &QPushButton::clicked, m_connectionsPanel,
-            &smb::ui::ConnectionsPanel::addRequested);
-  }
-  if (m_editConnectionButton != nullptr) {
-    connect(m_editConnectionButton, &QPushButton::clicked, this, [this]() {
-      const auto id = m_connectionsPanel->selectedConnectionId();
-      if (!id.isEmpty()) {
-        emit m_connectionsPanel->editRequested(id);
-      }
-    });
-  }
-  if (m_deleteConnectionButton != nullptr) {
-    connect(m_deleteConnectionButton, &QPushButton::clicked, this, [this]() {
-      const auto id = m_connectionsPanel->selectedConnectionId();
-      if (!id.isEmpty()) {
-        emit m_connectionsPanel->deleteRequested(id);
-      }
-    });
-  }
-  if (m_checkConnectionButton != nullptr) {
-    connect(m_checkConnectionButton, &QPushButton::clicked, this, [this]() {
-      const auto id = m_connectionsPanel->selectedConnectionId();
-      if (!id.isEmpty()) {
-        emit m_connectionsPanel->checkRequested(id);
-      }
-    });
-  }
-  if (m_connectButton != nullptr) {
-    connect(m_connectButton, &QPushButton::clicked, this, [this]() {
-      const auto id = m_connectionsPanel->selectedConnectionId();
-      if (!id.isEmpty()) {
-        emit m_connectionsPanel->connectRequested(id);
-      }
-    });
-  }
-
-  connect(m_connectionsPanel,
-          &smb::ui::ConnectionsPanel::selectionAvailabilityChanged, this,
-          &MainWindow::setTopConnectionActionsEnabled);
-  setTopConnectionActionsEnabled(false);
-}
-
 void MainWindow::retranslateUi() {
   setWindowTitle(smb::core::applicationName());
 
@@ -244,11 +185,6 @@ void MainWindow::retranslateUi() {
           findChild<QLineEdit *>(QStringLiteral("globalSearchEdit"))) {
     search->setPlaceholderText(tr("Search connections or files"));
   }
-  setButtonText(QStringLiteral("addConnectionButton"), tr("Add"));
-  setButtonText(QStringLiteral("editConnectionButton"), tr("Edit"));
-  setButtonText(QStringLiteral("deleteConnectionButton"), tr("Delete"));
-  setButtonText(QStringLiteral("checkConnectionButton"), tr("Check"));
-  setButtonText(QStringLiteral("connectButton"), tr("Connect"));
   setButtonText(QStringLiteral("importButton"), tr("Import"));
   setButtonText(QStringLiteral("exportButton"), tr("Export"));
   setButtonText(QStringLiteral("logsButton"), tr("Logs"));
@@ -270,21 +206,6 @@ void MainWindow::retranslateUi() {
     m_connectionsPanel->retranslateUi();
   }
   statusBar()->showMessage(tr("Ready"));
-}
-
-void MainWindow::setTopConnectionActionsEnabled(bool enabled) {
-  if (m_editConnectionButton != nullptr) {
-    m_editConnectionButton->setEnabled(enabled);
-  }
-  if (m_deleteConnectionButton != nullptr) {
-    m_deleteConnectionButton->setEnabled(enabled);
-  }
-  if (m_checkConnectionButton != nullptr) {
-    m_checkConnectionButton->setEnabled(enabled);
-  }
-  if (m_connectButton != nullptr) {
-    m_connectButton->setEnabled(enabled);
-  }
 }
 
 QWidget *MainWindow::createBrowserArea() {

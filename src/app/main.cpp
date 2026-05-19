@@ -1,5 +1,6 @@
 #include "application/ConnectionService.h"
 #include "application/ConnectionOpenService.h"
+#include "application/ConnectionImportExportService.h"
 #include "application/ConnectivityCheckService.h"
 #include "application/OperationQueue.h"
 #include "application/SettingsService.h"
@@ -10,6 +11,7 @@
 #include "smb/Libsmb2SmbClient.h"
 #endif
 #include "storage/ConnectionRepository.h"
+#include "storage/ConnectionGroupRepository.h"
 #include "storage/SettingsRepository.h"
 #include "storage/SqliteStorage.h"
 #include "ui/ConnectionManagementController.h"
@@ -17,6 +19,7 @@
 #include "ui/ConnectionClipboardController.h"
 #include "ui/ConnectionsPanel.h"
 #include "ui/ConnectivityCheckController.h"
+#include "ui/DialogImportExportActionPrompter.h"
 #include "ui/DialogRemoteFileActionPrompter.h"
 #include "ui/MainWindow.h"
 #include "ui/LocalizationManager.h"
@@ -189,9 +192,15 @@ int main(int argc, char *argv[]) {
 
   smb::infrastructure::ConnectionRepository connectionRepository(
       storage.database());
+  smb::infrastructure::ConnectionGroupRepository groupRepository(
+      storage.database());
   smb::infrastructure::QtKeychainCredentialStore credentialStore;
   smb::application::ConnectionService connectionService(connectionRepository,
                                                        credentialStore);
+  smb::application::ConnectionImportExportService importExportService(
+      connectionRepository, groupRepository, credentialStore);
+  smb::ui::DialogImportExportActionPrompter importExportPrompter(&window);
+  window.attachImportExport(importExportService, importExportPrompter);
 #ifdef SMB_BROWSER_WITH_LIBSMB2
   smb::infrastructure::Libsmb2SmbClient smbClient(
       qMax(1, settings.operationTimeoutMs / 1000));
@@ -209,6 +218,9 @@ int main(int argc, char *argv[]) {
   smb::ui::ConnectionManagementController connectionManagementController(
       *window.connectionsPanel(), connectionService, connectionPrompter);
   connectionManagementController.refreshConnections();
+  QObject::connect(&window, &MainWindow::connectionsImported,
+                   &connectionManagementController,
+                   &smb::ui::ConnectionManagementController::refreshConnections);
   smb::ui::ConnectivityCheckController connectivityCheckController(
       *window.connectionsPanel(), connectivityCheckService, operationQueue,
       connectionPrompter);

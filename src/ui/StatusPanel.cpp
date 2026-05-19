@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSizePolicy>
 
 namespace smb::ui {
 
@@ -32,6 +33,13 @@ QString stateLabel(smb::application::OperationState state) {
   return QObject::tr("Queued");
 }
 
+QString compactText(const QString &text, int maxLength = 160) {
+  if (text.size() <= maxLength) {
+    return text;
+  }
+  return text.left(maxLength - 1) + QStringLiteral("...");
+}
+
 } // namespace
 
 StatusPanel::StatusPanel(QWidget *parent) : QFrame(parent) {
@@ -44,14 +52,22 @@ StatusPanel::StatusPanel(QWidget *parent) : QFrame(parent) {
 
   m_connectionStatus = new QLabel(tr("Connection: Not connected"), this);
   m_connectionStatus->setObjectName(QStringLiteral("connectionStatusLabel"));
+  m_connectionStatus->setMinimumWidth(0);
+  m_connectionStatus->setSizePolicy(QSizePolicy::Ignored,
+                                    QSizePolicy::Preferred);
   layout->addWidget(m_connectionStatus);
 
   m_lastError = new QLabel(tr("Last error: None"), this);
   m_lastError->setObjectName(QStringLiteral("lastErrorLabel"));
+  m_lastError->setMinimumWidth(0);
+  m_lastError->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   layout->addWidget(m_lastError, 1);
 
   m_activeOperation = new QLabel(tr("Operation: Idle"), this);
   m_activeOperation->setObjectName(QStringLiteral("activeOperationLabel"));
+  m_activeOperation->setMinimumWidth(0);
+  m_activeOperation->setSizePolicy(QSizePolicy::Ignored,
+                                   QSizePolicy::Preferred);
   layout->addWidget(m_activeOperation);
 
   m_progress = new QProgressBar(this);
@@ -91,9 +107,10 @@ void StatusPanel::bindOperationQueue(
 }
 
 void StatusPanel::setConnectionStatus(const QString &status) {
-  m_connectionStatus->setText(status.trimmed().isEmpty()
-                                  ? tr("Connection: Not connected")
-                                  : status.trimmed());
+  const auto text = status.trimmed().isEmpty() ? tr("Connection: Not connected")
+                                               : status.trimmed();
+  m_connectionStatus->setText(compactText(text));
+  m_connectionStatus->setToolTip(text);
 }
 
 void StatusPanel::setLastError(const smb::core::AppError &error) {
@@ -106,14 +123,21 @@ void StatusPanel::setLastError(const smb::core::AppError &error) {
                            ? smb::core::defaultUserMessage(error.code)
                            : error.userMessage;
   const auto details = m_sanitizer.sanitize(error.sanitizedTechnicalDetails);
+  QString text;
   if (details.isEmpty()) {
-    m_lastError->setText(tr("Last error: %1").arg(message));
+    text = tr("Last error: %1").arg(message);
   } else {
-    m_lastError->setText(tr("Last error: %1 (%2)").arg(message, details));
+    text = tr("Last error: %1 (%2)").arg(message, details);
   }
+  m_lastError->setText(compactText(text));
+  m_lastError->setToolTip(text);
 }
 
-void StatusPanel::clearLastError() { m_lastError->setText(tr("Last error: None")); }
+void StatusPanel::clearLastError() {
+  const auto text = tr("Last error: None");
+  m_lastError->setText(text);
+  m_lastError->setToolTip(text);
+}
 
 QString StatusPanel::connectionStatusText() const {
   return m_connectionStatus->text();
@@ -131,8 +155,10 @@ void StatusPanel::handleOperationChanged(
     const smb::application::OperationSnapshot &snapshot) {
   updateProgress(snapshot);
 
-  m_activeOperation->setText(
-      tr("Operation: %1 (%2)").arg(snapshot.name, stateLabel(snapshot.state)));
+  const auto operationText =
+      tr("Operation: %1 (%2)").arg(snapshot.name, stateLabel(snapshot.state));
+  m_activeOperation->setText(compactText(operationText));
+  m_activeOperation->setToolTip(operationText);
 
   if (isTerminal(snapshot.state)) {
     updateTerminalOperation(snapshot);
