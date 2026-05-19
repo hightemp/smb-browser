@@ -1190,3 +1190,783 @@
   - `make no-smb`.
   - `make run-offscreen`.
   - Linux package smoke.
+
+## Этап 15. Native SMB library: discovery, license и scope gate
+
+Цель этапа: подготовить миграцию с `libsmb2`/external `smbclient` на
+внутреннюю SMB-библиотеку, которая в runtime не требует `libsmb2` и не
+запускает `smbclient`. Важное ограничение: Samba `source3/client/client.c` и
+`source3/include/libsmbclient.h` в проверенном master snapshot имеют GPL-3-or-
+later notice, поэтому любое копирование/статическое связывание Samba code path
+требует отдельного license/compliance решения до реализации.
+
+Предварительный анализ выполнен 2026-05-19 в `tmp/samba-src` на Samba commit
+`66fec3d`. Файл `source3/client/client.c` содержит 6823 строки и command table
+`commands[]`; `source3/wscript_build` собирает `client/smbclient` из
+`client/client.c`, `client/clitar.c`, `client/dnsbrowse.c` с зависимостями
+`talloc`, `CMDLINE_S3`, `smbconf`, `ndr-standard`, `SMBREADLINE`, `libsmb`,
+`msrpc3`, `RPC_NDR_SRVSVC`, `cli_smb_common`, `archive`.
+
+Архитектурное решение: выбран путь `clean-room only`. Samba можно использовать
+только как reference для поведения и совместимости в `tmp`; копировать код,
+структуры, таблицы команд, комментарии или переносить внутренние реализации
+Samba в проект запрещено.
+
+Продуктовые решения для native SMB migration:
+
+- Проект переводится в open-source/GPL-compatible модель распространения.
+- Требование portable binary означает: SMB engine должен быть внутри бинарника
+  приложения; Qt/runtime зависимости могут оставаться в portable package или
+  platform bundle.
+- Поддерживаются только SMB2/SMB3. SMB1 и NetBIOS browsing не реализуются.
+- Password/domain/guest/anonymous обязательны; current user/Kerberos/SSO нужен
+  для проверки на Windows Server и должен быть спроектирован отдельно.
+- DFS namespace support обязателен полностью: referrals, nested DFS,
+  multiple targets, failover и TTL cache.
+- SMB signing и SMB encryption обязательны.
+- ACL, EA, chmod, chown, symlink, hardlink и notify являются Must на уровне
+  библиотеки; UI может открывать эти возможности поэтапно.
+- Реализация идет staged: сначала Must parity текущего приложения, затем
+  расширенные library capabilities.
+- Тестирование включает Docker Samba fixtures, synthetic credentials и manual
+  validation на корпоративном Windows SMB/DFS server без сохранения реальных
+  credentials в репозитории.
+
+### [ ] T-082: Зафиксировать результаты анализа Samba source в TASKS/notes
+
+- Приоритет: Must.
+- Зависимости: нет.
+- Описание: Использовать локальный checkout `tmp/samba-src` для фиксации
+  технической картины по `smbclient`: commit, лицензия, command surface,
+  build dependencies, reusable internal APIs.
+- Acceptance criteria:
+  - Зафиксирован проверенный Samba commit и дата анализа.
+  - Отдельно отмечено, что `source3/client/client.c` содержит command table
+    `commands[]` и не является готовой embeddable library.
+  - Зафиксировано, что `smbclient` в Samba build зависит минимум от `talloc`,
+    `CMDLINE_S3`, `smbconf`, `ndr-standard`, `SMBREADLINE`, `libsmb`,
+    `msrpc3`, `RPC_NDR_SRVSVC`, `cli_smb_common`, `archive`.
+  - Зафиксировано, что текущий `smbclient` flow использует global state и CLI
+    stdout/stderr, которые нельзя напрямую переносить в Qt service layer.
+  - Сформирован список feature groups: session/auth, DFS, directory, file IO,
+    metadata, copy/move, POSIX extensions, ACL/EA, notify, share browsing.
+- Заметки по тестам:
+  - Тестов кода нет; это documentation/research task.
+  - Проверить, что notes не содержат credentials из `tmp/mylist.json`.
+
+### [x] T-083: Принять license/compliance решение для Samba-derived code
+
+- Приоритет: Must.
+- Зависимости: T-082.
+- Описание: До любого переноса Samba кода определить допустимую юридическую
+  модель: GPL-compatible application distribution, commercial/legal exception
+  отсутствует, либо clean-room implementation без копирования Samba code.
+- Acceptance criteria:
+  - Решение принято: `clean-room only`.
+  - Samba-derived путь не используется; GPL-3-or-later code из Samba не
+    переносится в проект и не линкуется с приложением.
+  - Samba используется только как behavioral reference в `tmp`, без
+    копирования кода, структур, таблиц команд, комментариев или внутренних
+    реализаций.
+  - Qt static linking obligations для one-binary build остаются отдельным
+    packaging/license вопросом в T-084/T-111.
+  - Release checklist по source offer для Samba-derived code не нужен, пока
+    clean-room boundary соблюдается.
+- Заметки по тестам:
+  - Manual legal/compliance review gate.
+  - CI может проверять наличие license files, notices и source bundle metadata.
+
+### [ ] T-084: Уточнить определение “один portable binary”
+
+- Приоритет: Must.
+- Зависимости: T-083.
+- Описание: Зафиксировать, что именно означает one-binary для Windows, Linux и
+  macOS: только SMB-библиотека статически внутри приложения или весь Qt/runtime
+  тоже статически связан.
+- Acceptance criteria:
+  - Решение зафиксировано: SMB engine находится внутри бинарника приложения.
+  - Qt/runtime зависимости допустимы в portable folder/app bundle/installer и
+    не считаются нарушением требования.
+  - Явно перечислены допустимые runtime dependencies: Qt runtime, OS
+    networking, system keychain APIs, system CA/crypto facilities, platform
+    plugins.
+  - Полностью статический Qt не является обязательной целью этого этапа.
+  - macOS app bundle считается допустимым форматом поставки.
+  - Определены dependency audit commands: `ldd`, `otool -L`, `dumpbin` или
+    аналогичные platform tools.
+- Заметки по тестам:
+  - Packaging smoke должен проверять отсутствие `libsmb2` и `smbclient`.
+  - Dependency audit добавляется в CI для release profiles.
+
+### [ ] T-085: Составить feature parity matrix для внутренней SMB-библиотеки
+
+- Приоритет: Must.
+- Зависимости: T-082.
+- Описание: Сопоставить текущие возможности приложения, команды `smbclient`
+  и API `libsmbclient`/Samba client stack с будущим `SmbNative` API.
+- Acceptance criteria:
+  - Для каждой возможности указан статус: Must, Should, Could, Not planned.
+  - Must покрывает текущие product features: check, list, stat, open folder,
+    download, upload, mkdir, delete, rename, copy, move, DFS, symlink/reparse,
+    progress, cancellation, signing, encryption.
+  - Отдельно классифицированы расширенные возможности `smbclient`: ACL, EA,
+    chmod/chown, hardlink/symlink, notify, server-side copy, share browsing,
+    POSIX extensions, print queue, tar, message, shell command.
+  - ACL, EA, chmod/chown, hardlink/symlink и notify помечены как Must для
+    library API.
+  - Print, tar, local shell command и message либо исключены из GUI product
+    scope, либо требуют отдельного обоснования.
+  - Matrix фиксирует, какие функции реализуются в library, а какие получают
+    UI позже.
+- Заметки по тестам:
+  - Matrix становится источником test coverage checklist.
+  - Для каждого Must feature должен быть запланирован unit/integration test.
+
+## Этап 16. Native SMB library architecture и build integration
+
+### [ ] T-086: Спроектировать модуль `SmbNative` как internal library
+
+- Приоритет: Must.
+- Зависимости: T-083, T-085.
+- Описание: Ввести архитектуру внутренней SMB-библиотеки, которая не зависит
+  от Qt Widgets и реализует stable API для application layer.
+- Acceptance criteria:
+  - `SmbNative` имеет четкий public API: connection config, credentials,
+    session, file handle, directory iterator, transfer callbacks, errors.
+  - API не использует глобальное состояние `smbclient` и не пишет в stdout/stderr.
+  - API поддерживает progress, cancellation, timeout и structured logging hooks.
+  - API безопасен для использования из worker threads и явно описывает
+    ownership/lifetime объектов.
+  - Секреты передаются через short-lived buffers и не попадают в QString/logs.
+- Заметки по тестам:
+  - Compile tests на header/API.
+  - Unit tests на lifecycle без реального network через fake transport layer,
+    если выбран clean-room/адаптерный дизайн.
+
+### [ ] T-087: Спроектировать clean-room implementation path
+
+- Приоритет: Must.
+- Зависимости: T-083, T-086.
+- Описание: На основе принятого решения `clean-room only` описать технический
+  путь реализации внутренней библиотеки без переноса Samba code.
+- Acceptance criteria:
+  - Реализация проектируется как clean-room SMB2/3 client по открытым
+    спецификациям и собственному дизайну.
+  - SMB1 и NetBIOS browsing явно исключены.
+  - Samba используется только как behavioral reference; копирование Samba кода,
+    структур, таблиц команд, комментариев и internal implementation details
+    запрещено.
+  - Для выбранного варианта описаны риски: SMB dialects, DFS, auth, signing,
+    encryption, Kerberos, cross-platform sockets, maintenance.
+  - Зафиксирован fallback plan, если clean-room путь блокируется на Windows,
+    macOS или по срокам.
+  - Решение отражено в README/architecture docs до начала реализации.
+- Заметки по тестам:
+  - No runtime tests.
+  - Review gate: нельзя начинать T-088/T-091 без утвержденного path.
+
+### [ ] T-088: Настроить reproducible source acquisition для SMB engine
+
+- Приоритет: Must.
+- Зависимости: T-087.
+- Описание: Сделать воспроизводимый способ получения source для внутреннего
+  SMB engine без runtime dependencies.
+- Acceptance criteria:
+  - Source pin не указывает на плавающий `master`; используется commit/tag +
+    checksum.
+  - CMake не требует установленного `libsmb2` или `smbclient`.
+  - Build может работать из clean clone: либо vendored source, либо скачивание
+    в `tmp/`/build cache с проверкой checksum.
+  - Offline build path описан для release.
+  - Никакие временные checkout-ы из `tmp/` не коммитятся.
+- Заметки по тестам:
+  - CI clean-clone configure test.
+  - Test, что build не обращается к system `libsmb2`/`smbclient`.
+
+### [ ] T-089: Собрать минимальный static SMB client core
+
+- Приоритет: Must.
+- Зависимости: T-087, T-088.
+- Описание: Сформировать минимальный static build внутреннего SMB engine,
+  исключив CLI-only части `smbclient`.
+- Acceptance criteria:
+  - Не используется `source3/client/client.c` как CLI entry point в runtime.
+  - Исключены readline/history/shell command/stdin processing.
+  - В build входят только нужные client/session/file/DFS/auth components.
+  - Static library собирается на Linux в отдельном CMake target.
+  - Build artifact может линковаться в `smb-browser` без `libsmb2` и external
+    `smbclient`.
+- Заметки по тестам:
+  - Linux build target smoke.
+  - Link test проверяет отсутствие `-lsmb2`.
+  - Dependency audit проверяет отсутствие `smbclient` process dependency.
+
+### [ ] T-090: Спроектировать C/C++ facade поверх native SMB core
+
+- Приоритет: Must.
+- Зависимости: T-086, T-089.
+- Описание: Изолировать Samba/C/protocol details за small C++ facade, чтобы
+  application layer не зависел от внутренних заголовков SMB engine.
+- Acceptance criteria:
+  - Есть `NativeSmbSession`, `NativeSmbDirectory`, `NativeSmbFile` или
+    эквивалентные RAII wrappers.
+  - Все errors конвертируются в internal `NativeSmbError`, затем в `AppError`.
+  - Facade не экспортирует Samba structs, NTSTATUS или raw C pointers в UI.
+  - Facade имеет injectable logging/progress/cancellation callbacks.
+  - Memory ownership покрыт tests/review.
+- Заметки по тестам:
+  - Unit tests RAII close/free on success and failure.
+  - Sanitizer tests, если доступны ASan/UBSan profile.
+
+### [ ] T-091: Поддержать event loop, cancellation и timeouts в native core
+
+- Приоритет: Must.
+- Зависимости: T-090.
+- Описание: Все сетевые операции должны оставаться async для UI и корректно
+  отменяться, несмотря на blocking/tevent/Samba internals.
+- Acceptance criteria:
+  - Каждая long-running operation принимает `OperationContext`.
+  - Cancellation прерывает transfer/list/connect настолько быстро, насколько
+    позволяет backend.
+  - Timeout применяется на connect, list, read, write, metadata operations.
+  - Нет busy waiting в worker threads.
+  - UI thread не блокируется.
+- Заметки по тестам:
+  - Fake/loopback tests на cancellation.
+  - Integration tests на timeout against unreachable host.
+
+### [ ] T-092: Обновить typed error mapping для native SMB engine
+
+- Приоритет: Must.
+- Зависимости: T-090.
+- Описание: Заменить libsmb2-specific mapping на backend-neutral mapping из
+  native SMB statuses/system errors в `SmbErrorCode`/`AppError`.
+- Acceptance criteria:
+  - Wrong credentials, no rights, DNS, timeout, share unavailable, DFS errors,
+    protocol unsupported и local IO различаются.
+  - Raw technical details sanitized.
+  - Error mapping не зависит от локализованных строк Samba.
+  - Все existing UI error flows продолжают работать.
+- Заметки по тестам:
+  - Unit tests mapping для NTSTATUS/system errors.
+  - Regression tests на отсутствие secret values в error details/logs.
+
+## Этап 17. Native SMB sessions, auth и DFS
+
+### [ ] T-093: Реализовать session lifecycle и connection pooling
+
+- Приоритет: Must.
+- Зависимости: T-090, T-091, T-092.
+- Описание: Реализовать подключение к server/share, reuse session и
+  корректное закрытие соединений.
+- Acceptance criteria:
+  - Connect/check/open share работают без `libsmb2`.
+  - Negotiation поддерживает только SMB2/SMB3 dialects; SMB1 не предлагается.
+  - Session закрывается при disconnect, error или destruction.
+  - Есть bounded cache/pool, если reuse нужен для performance.
+  - Multi-share и cross-share operations не смешивают credentials.
+  - Thread ownership session описан и соблюдается.
+- Заметки по тестам:
+  - Unit tests lifecycle with fake core.
+  - Docker Samba integration: connect/list/disconnect/reconnect.
+
+### [ ] T-094: Реализовать password, domain, guest и anonymous auth
+
+- Приоритет: Must.
+- Зависимости: T-093.
+- Описание: Поддержать текущие auth modes приложения через native backend.
+- Acceptance criteria:
+  - `DOMAIN\user`, `user@domain`, plain user, guest и anonymous работают через
+    normalized connection model.
+  - Пароль не попадает в URI, logs, SQLite или command line.
+  - Wrong password мапится в `AuthenticationFailed`.
+  - Guest/anonymous failures показываются как actionable errors.
+  - Existing CredentialStore flow не меняется.
+- Заметки по тестам:
+  - Unit tests credential conversion without real secrets.
+  - Docker Samba tests для password и guest/anonymous fixtures.
+
+### [ ] T-095: Спроектировать current user / Kerberos support
+
+- Приоритет: Must.
+- Зависимости: T-083, T-093.
+- Описание: Спроектировать current user/Kerberos/SSO для Windows Server
+  validation и определить платформенные ограничения.
+- Acceptance criteria:
+  - Для Windows, Linux, macOS описаны механизмы и зависимости.
+  - Если Kerberos/GSSAPI требует system libraries, это отражено в one-binary
+    decision.
+  - UI не обещает current user там, где backend не поддерживает режим.
+  - Есть feature flag/diagnostic message.
+- Заметки по тестам:
+  - Manual domain environment tests.
+  - Unit tests на availability reporting.
+
+### [ ] T-096: Реализовать native DFS referral resolution
+
+- Приоритет: Must.
+- Зависимости: T-093, T-094, T-122.
+- Описание: Убрать external `smbclient` DFS fallback и резолвить DFS
+  namespace внутри native SMB engine.
+- Acceptance criteria:
+  - `STATUS_PATH_NOT_COVERED`/DFS referral обрабатывается без запуска
+    `smbclient`.
+  - Resolved target кэшируется с TTL и credential isolation.
+  - Поддержаны nested DFS referrals, multiple targets и failover strategy.
+  - Navigation внутри DFS symlink/namespace не ломает original namespace path.
+  - Если DFS не поддержан сервером или backend-ом, пользователь получает
+    actionable error.
+  - Старый `SmbclientDfsReferralResolver` удален или отключен.
+- Заметки по тестам:
+  - Unit tests referral cache/rebase logic.
+  - Integration tests с Samba DFS fixture или dedicated test server.
+  - Regression check на корпоративный пример из `tmp/mylist.json` без логов
+    credentials.
+
+### [ ] T-122: Реализовать SMB signing и encryption
+
+- Приоритет: Must.
+- Зависимости: T-093, T-094.
+- Описание: Реализовать обязательные для корпоративных Windows Server
+  окружений механизмы SMB signing и SMB encryption для SMB2/SMB3.
+- Acceptance criteria:
+  - Dialect negotiation определяет requirements/capabilities signing и
+    encryption.
+  - Signing поддержан для SMB2/SMB3 sessions and messages.
+  - Encryption поддержан для SMB3 там, где сервер требует или разрешает его.
+  - Политики `required`, `preferred`, `disabled` описаны на уровне backend
+    config, но небезопасное отключение не используется по умолчанию.
+  - Ошибки policy mismatch отображаются как actionable `ProtocolUnsupported`
+    или security policy error без утечки credentials.
+- Заметки по тестам:
+  - Unit tests для crypto/signature state machine на synthetic vectors.
+  - Docker Samba fixtures с required signing/encryption, если поддерживаются.
+  - Manual Windows Server validation с signing/encryption policy.
+
+### [ ] T-097: Реализовать share browsing и capability probing
+
+- Приоритет: Should.
+- Зависимости: T-093.
+- Описание: Поддержать получение списка share на server и диагностику
+  capabilities/dialects, где это возможно без SMB1/NetBIOS fallback.
+- Acceptance criteria:
+  - IPC$/RPC-based share enumeration работает для доступных серверов.
+  - SMB1/NetBIOS browsing отсутствует и не используется как fallback.
+  - Capability report включает dialect, signing/encryption support,
+    DFS support, server/share availability.
+  - Ошибки не раскрывают credentials.
+- Заметки по тестам:
+  - Docker Samba integration для share list.
+  - Unit tests capability formatting/sanitization.
+
+## Этап 18. Native SMB file operation parity
+
+### [ ] T-098: Реализовать directory listing, stat и metadata mapping
+
+- Приоритет: Must.
+- Зависимости: T-093, T-096.
+- Описание: Реализовать list/stat для remote entries с типами, timestamps,
+  size, attributes, permissions и reparse/symlink indicators.
+- Acceptance criteria:
+  - `RemoteFileEntry` заполняется без `libsmb2`.
+  - Folder, file, symlink/reparse и unknown types различаются.
+  - Dates/sizes/attributes корректны для Windows SMB и Samba.
+  - Большие директории не блокируют UI и поддерживают cancellation.
+  - Existing browser model tests проходят без изменений public behavior.
+- Заметки по тестам:
+  - Unit tests metadata conversion.
+  - Docker Samba tests: files, folders, symlinks/reparse if fixture supports.
+
+### [ ] T-099: Реализовать download/read с progress, resume и temp cache
+
+- Приоритет: Must.
+- Зависимости: T-098.
+- Описание: Реализовать чтение файлов, скачивание локально и open-via-cache
+  через native backend.
+- Acceptance criteria:
+  - Download поддерживает progress и cancellation.
+  - Partial download cleanup/retry policy определена.
+  - `reget`/resume capability реализована в library, даже если UI включает ее
+    позже.
+  - Open file + local edit sync flow продолжает работать.
+  - Local cache paths не содержат secrets.
+- Заметки по тестам:
+  - Fake/native unit tests stream read.
+  - Docker Samba download large file/cancel/resume tests.
+  - Regression test open/edit/upload remains green.
+
+### [ ] T-100: Реализовать upload/write с progress, resume и overwrite policy
+
+- Приоритет: Must.
+- Зависимости: T-098.
+- Описание: Реализовать запись файлов на SMB, включая создание, перезапись и
+  возобновление upload.
+- Acceptance criteria:
+  - Upload поддерживает progress и cancellation.
+  - Existing overwrite/rename conflict behavior не ломается.
+  - `reput`/resume capability реализована в library.
+  - Local file lock errors мапятся в `LocalIoError`.
+  - Secret values не попадают в operation names/logs.
+- Заметки по тестам:
+  - Docker Samba upload/overwrite/cancel/resume tests.
+  - Unit tests progress monotonicity.
+
+### [ ] T-101: Реализовать mkdir, rmdir, delete, deltree и wildcard delete
+
+- Приоритет: Must.
+- Зависимости: T-098.
+- Описание: Поддержать удаление и создание remote objects в native backend.
+- Acceptance criteria:
+  - Create folder, remove empty folder, delete file работают.
+  - Recursive delete (`deltree`) реализован в library с confirmation handled
+    above service layer.
+  - Wildcard delete/list capability реализована в library, UI может использовать
+    ее позже.
+  - Permission denied, not found, directory not empty различаются.
+  - Cancellation работает для recursive operations.
+- Заметки по тестам:
+  - Fake/native unit tests recursive delete.
+  - Docker Samba permission denied/not found/dir not empty tests.
+
+### [ ] T-102: Реализовать rename, move и cross-share move
+
+- Приоритет: Must.
+- Зависимости: T-098, T-100, T-101.
+- Описание: Реализовать rename/move внутри share и между share/connection.
+- Acceptance criteria:
+  - Same-share rename использует native rename.
+  - Cross-share move выполняет copy + verified delete only after success.
+  - Partial failure возвращает structured result.
+  - Replace/no-replace policy описана и покрыта tests.
+- Заметки по тестам:
+  - Unit tests partial failure.
+  - Docker Samba same-share and cross-share scenarios.
+
+### [ ] T-103: Реализовать copy и server-side copy fallback strategy
+
+- Приоритет: Must.
+- Зависимости: T-099, T-100.
+- Описание: Поддержать copy inside SMB, включая server-side copy там, где
+  backend/server позволяют, и stream-copy fallback.
+- Acceptance criteria:
+  - Same-server/share copy пытается использовать server-side mechanism.
+  - Fallback stream copy работает между разными share/server.
+  - Progress отражает фактический copy mode.
+  - Cancellation не оставляет поврежденный destination без понятного статуса.
+- Заметки по тестам:
+  - Docker Samba copy large file.
+  - Unit tests fallback decision matrix.
+
+### [ ] T-104: Реализовать symlink, hardlink и reparse handling
+
+- Приоритет: Must.
+- Зависимости: T-098.
+- Описание: Поддержать переход в symlink directories, открытие symlink files,
+  чтение target там, где server/backend позволяют, и создание symlink/hardlink
+  как library capabilities.
+- Acceptance criteria:
+  - Existing symlink navigation regression не ломается.
+  - File symlink open/download работает.
+  - Reparse point/DFS link не путается с обычным file symlink.
+  - Create symlink/hardlink available через library API, UI exposure отдельная.
+- Заметки по тестам:
+  - Unit tests type mapping.
+  - Integration tests с Samba UNIX extensions/reparse fixture, если возможно.
+
+### [ ] T-105: Реализовать file attributes, timestamps, ACL и EA operations
+
+- Приоритет: Must.
+- Зависимости: T-098.
+- Описание: Реализовать advanced metadata capabilities из `smbclient`
+  (`allinfo`, `stat`, `chmod`, `chown`, `getfacl`, `geteas`, `setea`,
+  `setmode`, `utimes`) на уровне library.
+- Acceptance criteria:
+  - Library может читать all-info/stat-like metadata.
+  - Timestamps can be set where server supports it.
+  - EAs can be listed/read/set/remove where supported.
+  - ACL/POSIX operations gated by capability detection.
+  - UI не показывает недоступные операции как гарантированные.
+- Заметки по тестам:
+  - Unit tests capability gating.
+  - Optional integration tests on Samba with UNIX extensions/ACL support.
+
+### [ ] T-106: Реализовать change notify/watch capability
+
+- Приоритет: Must.
+- Зависимости: T-093, T-098.
+- Описание: Поддержать native SMB notify для будущего auto-refresh текущей
+  remote folder.
+- Acceptance criteria:
+  - Library exposes watch/notify API with cancellation.
+  - UI integration can remain disabled by default.
+  - Network noise and server support limitations documented.
+  - Notify failures degrade to manual refresh.
+- Заметки по тестам:
+  - Unit tests callback lifecycle.
+  - Optional Samba integration if reliable in CI.
+
+## Этап 19. Замена текущих SMB backend-ов в приложении
+
+### [ ] T-107: Реализовать `NativeSmbClient` для существующего `SmbClient` interface
+
+- Приоритет: Must.
+- Зависимости: T-093, T-098, T-099, T-100, T-101, T-102.
+- Описание: Подключить новую внутреннюю библиотеку к текущему application
+  layer без переписывания UI.
+- Acceptance criteria:
+  - `NativeSmbClient` покрывает все методы текущего `SmbClient`.
+  - Existing `RemoteBrowserWidget`, services и operation queue не знают о
+    Samba/native internals.
+  - `FakeSmbClient` остается основным unit-test backend.
+  - Feature flags позволяют сравнить old/new backend в transition period.
+- Заметки по тестам:
+  - Existing FakeSmbClient tests unchanged.
+  - New native integration tests cover each `SmbClient` method.
+
+### [ ] T-108: Удалить runtime-зависимости от `libsmb2` и external `smbclient`
+
+- Приоритет: Must.
+- Зависимости: T-096, T-107.
+- Описание: Убрать `Libsmb2SmbClient`, `SmbclientDfsReferralResolver` и
+  packaging/install references на внешние SMB tools.
+- Acceptance criteria:
+  - CMake default build не ищет и не линкует `libsmb2`.
+  - Приложение не запускает `smbclient` process ни для DFS, ни для diagnostics.
+  - README/setup/package docs не требуют `libsmb2-dev` или `smbclient` для
+    runtime.
+  - Old code удален или оставлен только за явно выключенным legacy flag.
+  - CI проверяет отсутствие символических/строковых references на старые
+    runtime dependencies в package.
+- Заметки по тестам:
+  - Clean build on machine without `libsmb2-dev` and without `smbclient`.
+  - Package smoke dependency audit.
+
+### [ ] T-109: Обновить CMake, scripts и Makefile для native backend
+
+- Приоритет: Must.
+- Зависимости: T-088, T-089, T-108.
+- Описание: Перестроить build profiles под native SMB backend и one-binary
+  packaging.
+- Acceptance criteria:
+  - `make build`, `make test`, `make run`, `make package-linux` работают из
+    clean clone.
+  - Старые цели `libsmb2` либо удалены, либо переименованы в legacy notes.
+  - CMake option names отражают новый backend (`SMB_BROWSER_WITH_NATIVE_SMB`).
+  - Build artifacts остаются в `tmp/` или build directories.
+  - Нет generated source churn в repo.
+- Заметки по тестам:
+  - Clean-clone CI script.
+  - Configure/build with network disabled after source cache prepared.
+
+### [ ] T-110: Обновить UI/service capabilities под native feature set
+
+- Приоритет: Should.
+- Зависимости: T-105, T-106, T-107.
+- Описание: Добавить UI hooks для новых library capabilities без перегрузки
+  основного браузера.
+- Acceptance criteria:
+  - Capabilities влияют на enabled/disabled state операций.
+  - Metadata/attributes can be shown in properties/details dialog.
+  - Unsupported advanced operations скрыты или показывают понятную причину.
+  - Основной browser workflow остается простым.
+- Заметки по тестам:
+  - UI smoke tests for capabilities state.
+  - Unit tests view-model mapping.
+
+## Этап 20. One-binary packaging и dependency audit
+
+### [ ] T-111: Подготовить static/portable dependency strategy
+
+- Приоритет: Must.
+- Зависимости: T-084, T-089.
+- Описание: Определить и реализовать стратегию поставки одного portable
+  binary/package без `libsmb2` и `smbclient`.
+- Acceptance criteria:
+  - Linux, Windows, macOS имеют отдельный build plan.
+  - Qt, SQLite driver, QtKeychain/vault, crypto, native SMB engine accounted.
+  - Native SMB engine linked into app binary; Qt/runtime libraries may be
+    shipped рядом в portable package/app bundle.
+  - Dependency audit fails build if `libsmb2` or `smbclient` are required.
+- Заметки по тестам:
+  - `ldd`/`otool -L`/`dumpbin` outputs archived in package smoke logs.
+  - Package smoke runs on clean VM/container.
+
+### [ ] T-112: Реализовать Linux portable build profile
+
+- Приоритет: Must.
+- Зависимости: T-111.
+- Описание: Сделать Linux build/package без внешних SMB runtime dependencies.
+- Acceptance criteria:
+  - DEB/AppImage/portable artifact не зависит от `libsmb2` или `smbclient`.
+  - Native SMB engine linked into app.
+  - System dependencies documented honestly.
+  - Package smoke confirms app starts and can list a test SMB share.
+- Заметки по тестам:
+  - Linux package smoke.
+  - Docker Samba integration in packaged app, если возможно.
+
+### [ ] T-113: Реализовать Windows portable build profile
+
+- Приоритет: Must.
+- Зависимости: T-111.
+- Описание: Сделать Windows portable/installer build без `libsmb2.dll` и
+  `smbclient.exe`.
+- Acceptance criteria:
+  - `smb-browser.exe`/portable package does not require `libsmb2.dll`.
+  - No `smbclient.exe` bundled or invoked.
+  - Credential store works via Windows Credential Manager or approved fallback.
+  - Native SMB engine passes basic integration against Windows/Samba test share.
+- Заметки по тестам:
+  - Windows package smoke script.
+  - Dependency audit via `dumpbin` or equivalent.
+
+### [ ] T-114: Реализовать macOS portable/app bundle profile
+
+- Приоритет: Must.
+- Зависимости: T-111.
+- Описание: Сделать macOS app bundle/dmg без `libsmb2` и `smbclient`.
+- Acceptance criteria:
+  - App bundle contains native SMB engine inside app binary/static objects.
+  - No external `smbclient` helper is required for DFS.
+  - Keychain prompts remain understandable.
+  - Translation files and cache/log paths still work in app bundle.
+- Заметки по тестам:
+  - macOS package smoke script.
+  - Dependency audit via `otool -L`.
+
+### [ ] T-115: Добавить security hardening для static native SMB engine
+
+- Приоритет: Must.
+- Зависимости: T-089, T-111.
+- Описание: Включить security-relevant compiler/linker options и обработать
+  supply-chain risks vendored/native SMB code.
+- Acceptance criteria:
+  - Release builds use hardened flags where supported.
+  - Vendored source checksum/signature verified.
+  - SBOM/dependency manifest generated for release.
+  - Known CVE tracking process documented for Samba-derived/native SMB code.
+  - Secrets are not included in crash/log diagnostics.
+- Заметки по тестам:
+  - CI checks hardening flags where practical.
+  - Static analysis/sanitizer profile added for native SMB code.
+
+## Этап 21. Test matrix для native SMB migration
+
+### [ ] T-116: Расширить FakeSmbClient/native contract tests
+
+- Приоритет: Must.
+- Зависимости: T-107.
+- Описание: Сделать общий contract test suite, который проходит и на fake, и
+  на native backend там, где есть integration fixture.
+- Acceptance criteria:
+  - Covered: check, list, stat, upload, download, mkdir, delete, rename,
+    copy/move, symlink handling, DFS, timeout, cancellation.
+  - Test credentials synthetic only.
+  - Contract tests document feature differences.
+  - Existing UI tests остаются быстрыми и не требуют network.
+- Заметки по тестам:
+  - Default unit run uses fake only.
+  - Native integration tests opt-in by label/profile.
+
+### [ ] T-117: Обновить Docker Samba integration fixtures
+
+- Приоритет: Must.
+- Зависимости: T-096, T-116.
+- Описание: Расширить Docker Samba профиль под native backend и DFS/metadata
+  сценарии.
+- Acceptance criteria:
+  - Fixtures include multiple shares, nested dirs, files, permissions,
+    symlink/reparse where possible, ACL/EA metadata, large file,
+    guest/password auth.
+  - DFS fixture covers nested referrals, multiple targets, failover and TTL
+    cache behavior, or documents exact external manual coverage if Docker
+    cannot support all cases.
+  - Tests disabled by default in local unit run.
+  - CI Linux can run the profile.
+- Заметки по тестам:
+  - `ctest -L docker-samba`.
+  - No real passwords; generated synthetic credentials only.
+
+### [ ] T-118: Добавить cross-platform manual/automated smoke tests
+
+- Приоритет: Must.
+- Зависимости: T-112, T-113, T-114.
+- Описание: Обновить package smoke для Windows/Linux/macOS под native SMB
+  engine and no external SMB tools.
+- Acceptance criteria:
+  - Каждый smoke проверяет отсутствие `libsmb2`/`smbclient` dependency.
+  - Проверяется start, add/edit connection, credential save/load, connect/list,
+    upload/download/open file.
+  - Manual Windows Server smoke проверяет DFS, signing/encryption policy,
+    current user/Kerberos/SSO where available, ACL/EA/symlink/hardlink/notify.
+  - Проверяется закрытие окна без hanging process.
+  - Smoke results documented in release checklist.
+- Заметки по тестам:
+  - Linux automated.
+  - Windows/macOS manual or runner-backed before release.
+
+### [ ] T-119: Добавить performance и stress tests для native backend
+
+- Приоритет: Should.
+- Зависимости: T-099, T-100, T-103.
+- Описание: Проверить native backend на больших директориях, больших файлах и
+  длительных операциях.
+- Acceptance criteria:
+  - Large directory list has bounded memory growth.
+  - Upload/download throughput measured and not worse than acceptable baseline.
+  - Cancellation during large transfer is reliable.
+  - UI remains responsive.
+- Заметки по тестам:
+  - Optional perf profile, not default unit suite.
+  - Store metrics as CI artifacts where possible.
+
+### [ ] T-120: Провести security regression suite после удаления старых backend-ов
+
+- Приоритет: Must.
+- Зависимости: T-108, T-116.
+- Описание: Перепроверить секреты, логи, export/import и error messages после
+  перехода на native backend.
+- Acceptance criteria:
+  - Пароли не попадают в logs, SQLite, export без паролей, operation names,
+    crash/error details.
+  - Native backend не пишет credentials в stdout/stderr.
+  - Plain-text password export behavior не изменился.
+  - CredentialStore contract tests remain green.
+- Заметки по тестам:
+  - LogSanitizer regression cases from native errors.
+  - Security suite part of default CI.
+
+### [ ] T-121: Обновить документацию и release checklist под native SMB engine
+
+- Приоритет: Must.
+- Зависимости: T-108, T-111, T-118, T-120, T-123.
+- Описание: Обновить README, PRD/TASKS references, packaging docs,
+  release checklist и developer setup.
+- Acceptance criteria:
+  - README больше не просит устанавливать `libsmb2-dev` или `smbclient`.
+  - Описан native SMB backend, supported capabilities и known limitations.
+  - License/compliance section соответствует решению T-083.
+  - Build instructions work from clean clone.
+  - Release checklist включает dependency audit и source/license obligations.
+- Заметки по тестам:
+  - Manual clean-clone doc test.
+  - CI validates key commands from README if practical.
+
+### [ ] T-123: Перевести проектные документы и release metadata в open-source/GPL model
+
+- Приоритет: Must.
+- Зависимости: T-083, T-084, T-087.
+- Описание: Зафиксировать open-source/GPL-compatible распространение проекта
+  без Samba-derived code и привести документы, metadata и release process к
+  выбранной модели.
+- Acceptance criteria:
+  - Выбрана конкретная лицензия проекта, совместимая с clean-room native SMB
+    implementation и Qt usage.
+  - `LICENSE`, copyright notices, README и package metadata обновлены.
+  - Отдельно указано, что Samba не входит в source/binary distribution и
+    используется только как reference в `tmp`.
+  - Для Qt/runtime dependencies описаны соответствующие notices и obligations.
+  - Release checklist содержит license review gate.
+- Заметки по тестам:
+  - CI/package smoke проверяет наличие `LICENSE` и notices.
+  - Manual release review перед публикацией.
