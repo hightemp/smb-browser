@@ -3,8 +3,11 @@
 #include "core/LogSanitizer.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileDevice>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -71,6 +74,37 @@ QString sanitizedOutput(const QByteArray &output,
   return sanitizer.sanitize(QString::fromUtf8(output));
 }
 
+QString findSmbclientExecutable() {
+#ifdef Q_OS_WIN
+  const auto executableName = QStringLiteral("smbclient.exe");
+#else
+  const auto executableName = QStringLiteral("smbclient");
+#endif
+
+  const auto fromPath = QStandardPaths::findExecutable(executableName);
+  if (!fromPath.isEmpty()) {
+    return fromPath;
+  }
+
+  const QDir appDir(QCoreApplication::applicationDirPath());
+  const QStringList candidates{
+      appDir.filePath(executableName),
+      appDir.filePath(QStringLiteral("bin/%1").arg(executableName)),
+      appDir.filePath(QStringLiteral("../bin/%1").arg(executableName)),
+      appDir.filePath(
+          QStringLiteral("../Resources/bin/%1").arg(executableName)),
+  };
+
+  for (const auto &candidate : candidates) {
+    const QFileInfo info(candidate);
+    if (info.exists() && info.isFile() && info.isExecutable()) {
+      return info.absoluteFilePath();
+    }
+  }
+
+  return {};
+}
+
 } // namespace
 
 std::optional<SmbclientDfsTarget>
@@ -112,8 +146,7 @@ SmbclientDfsReferralResolver::resolve(
                       false));
   }
 
-  const auto smbclient =
-      QStandardPaths::findExecutable(QStringLiteral("smbclient"));
+  const auto smbclient = findSmbclientExecutable();
   if (smbclient.isEmpty()) {
     return smb::core::Result<std::optional<smb::core::Connection>>::success(
         std::nullopt);

@@ -35,10 +35,24 @@ bundle must include:
 - QtKeychain runtime dependency.
 - libsodium runtime dependency.
 - libsmb2 runtime dependency when the backend is enabled.
+- Optional Samba `smbclient` helper for DFS namespace resolution.
 - Russian translation file under `Contents/Resources/i18n`.
 
 `LocalizationManager` searches `../Resources/i18n` relative to the app bundle
 executable, so packaged language switching can load the `.qm` file.
+
+## DFS namespace support
+
+Direct SMB shares work through `libsmb2`. Corporate DFS namespace paths may need
+the optional `smbclient` helper because `libsmb2` can fail Tree Connect with
+`STATUS_BAD_NETWORK_NAME` before the real target share is known.
+
+The resolver looks for `smbclient` in `PATH`, next to the app executable, and
+under relative `bin` paths including `Contents/Resources/bin/smbclient`. Finder
+launches usually have a limited `PATH`, so a release DMG that claims DFS
+namespace support should bundle the helper in the app resources. If the helper
+is absent, direct shares still work, but DFS namespace paths fall back to a
+`ShareUnavailable` error with a DFS hint.
 
 ## Smoke test
 
@@ -50,8 +64,10 @@ Before marking macOS packaging complete:
 4. Add/edit/delete a synthetic SMB connection.
 5. Save a synthetic password and verify it persists after restart.
 6. Connect to a test SMB server and list files.
-7. Download, upload, rename, delete, and open a test file through the system
+7. If `smbclient` is packaged, connect to a DFS namespace path and confirm it
+   resolves to a target share.
+8. Download, upload, rename, delete, and open a test file through the system
    application.
-8. Confirm tray/menu behavior.
-9. Confirm logs and SQLite database are created under macOS application support
+9. Confirm tray/menu behavior.
+10. Confirm logs and SQLite database are created under macOS application support
    locations and do not contain secrets.

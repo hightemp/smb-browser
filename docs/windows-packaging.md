@@ -35,9 +35,21 @@ publishing the package. The package must include:
 - QtKeychain runtime DLLs.
 - libsodium runtime DLL.
 - libsmb2 runtime DLL when the backend is enabled.
+- Optional Samba `smbclient.exe` helper for DFS namespace resolution.
 - SQLite Qt SQL driver.
 - Russian translation file under an installed `i18n` or `share/smb-browser/i18n`
   directory.
+
+## DFS namespace support
+
+Direct SMB shares work through `libsmb2`. Corporate DFS namespace paths may need
+the optional `smbclient.exe` helper because `libsmb2` can fail Tree Connect with
+`STATUS_BAD_NETWORK_NAME` before the real target share is known.
+
+The resolver looks for `smbclient.exe` in `PATH`, next to `smb-browser.exe`, and
+under `bin` directories relative to the executable. If the helper is not
+packaged, direct shares still work, but DFS namespace paths fall back to a
+`ShareUnavailable` error with a DFS hint.
 
 ## Smoke test
 
@@ -49,7 +61,9 @@ Before marking Windows packaging complete:
 4. Add/edit/delete a synthetic SMB connection.
 5. Save a synthetic password and verify it persists after restart.
 6. Connect to a test SMB server and list files.
-7. Download, upload, rename, delete, and open a test file.
-8. Confirm tray show/exit behavior.
-9. Confirm logs and SQLite database are created under Windows application data
+7. If `smbclient.exe` is packaged, connect to a DFS namespace path and confirm
+   it resolves to a target share.
+8. Download, upload, rename, delete, and open a test file.
+9. Confirm tray show/exit behavior.
+10. Confirm logs and SQLite database are created under Windows application data
    locations and do not contain secrets.
