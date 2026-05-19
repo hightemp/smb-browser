@@ -50,6 +50,14 @@ bool CancellationToken::isCancellationRequested() const {
   return m_cancelled.load();
 }
 
+bool isCancellationRequested(const OperationContext &context) {
+  if (context.cancellationToken != nullptr &&
+      context.cancellationToken->isCancellationRequested()) {
+    return true;
+  }
+  return context.cancellationCallback && context.cancellationCallback();
+}
+
 const BuildPolicy &buildPolicy() {
   static const BuildPolicy policy;
   return policy;

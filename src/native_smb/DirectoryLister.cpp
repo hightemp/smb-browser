@@ -2,12 +2,13 @@
 
 #include "CloseExchanger.h"
 
+#include <utility>
+
 namespace smb::native_smb {
 namespace {
 
 bool isCancelled(const OperationContext &context) {
-  return context.cancellationToken != nullptr &&
-         context.cancellationToken->isCancellationRequested();
+  return isCancellationRequested(context);
 }
 
 DecodeResult<DirectoryListResult> cancelledResult() {
@@ -54,8 +55,10 @@ DirectoryLister::list(Transport &transport, const std::string &path,
     return cancelledResult();
   }
 
+  std::uint64_t messagesUsed = 0;
   const auto createRequest = buildCreateRequest(
-      directoryCreateOptions(path), messageId, treeId, sessionId);
+      directoryCreateOptions(path), messageId + messagesUsed++, treeId,
+      sessionId);
   const auto createPayload = exchangePayload(transport, createRequest, context);
   if (!createPayload.ok) {
     return failureFrom(createPayload.error);
@@ -72,34 +75,51 @@ DirectoryLister::list(Transport &transport, const std::string &path,
 
   QueryDirectoryRequestOptions queryOptions;
   queryOptions.fileId = createResponse.value.fileId;
-  const auto queryRequest = buildQueryDirectoryRequest(
-      queryOptions, messageId + 1, treeId, sessionId);
-  const auto queryPayload = exchangePayload(transport, queryRequest, context);
-  if (!queryPayload.ok) {
-    return failureFrom(queryPayload.error);
-  }
+  std::vector<DirectoryEntry> entries;
+  bool firstQuery = true;
+  while (true) {
+    queryOptions.flags = firstQuery ? kQueryDirectoryRestartScans : 0;
+    const auto queryRequest = buildQueryDirectoryRequest(
+        queryOptions, messageId + messagesUsed++, treeId, sessionId);
+    const auto queryPayload = exchangePayload(transport, queryRequest, context);
+    if (!queryPayload.ok) {
+      return failureFrom(queryPayload.error);
+    }
 
-  if (isCancelled(context)) {
-    return cancelledResult();
-  }
+    if (isCancelled(context)) {
+      return cancelledResult();
+    }
 
-  const auto queryResponse = decodeQueryDirectoryResponse(queryPayload.value);
-  if (!queryResponse.ok) {
-    return failureFrom(queryResponse.error);
+    const auto queryResponse = decodeQueryDirectoryResponse(queryPayload.value);
+    if (!queryResponse.ok) {
+      return failureFrom(queryResponse.error);
+    }
+    if (queryResponse.value.status == kStatusNoMoreFiles) {
+      break;
+    }
+
+    entries.insert(entries.end(), queryResponse.value.entries.begin(),
+                   queryResponse.value.entries.end());
+    if (queryResponse.value.entries.empty()) {
+      break;
+    }
+    firstQuery = false;
   }
 
   CloseRequestOptions closeOptions;
   closeOptions.fileId = createResponse.value.fileId;
   const CloseExchanger closer;
-  const auto closeResponse = closer.close(transport, closeOptions, messageId + 2,
-                                         treeId, sessionId, context);
+  const auto closeResponse =
+      closer.close(transport, closeOptions, messageId + messagesUsed++, treeId,
+                   sessionId, context);
   if (!closeResponse.ok) {
     return failureFrom(closeResponse.error);
   }
 
   DirectoryListResult result;
   result.directoryFileId = createResponse.value.fileId;
-  result.entries = queryResponse.value.entries;
+  result.entries = std::move(entries);
+  result.messagesUsed = messagesUsed;
   return DecodeResult<DirectoryListResult>::success(result);
 }
 

@@ -270,6 +270,32 @@ smb::native_smb::ByteVector buildQueryInfoResponse(
   return bytes;
 }
 
+smb::native_smb::ByteVector buildStatusOnlyResponse(
+    smb::native_smb::Command command, std::uint32_t status) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = command;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = status;
+  header.messageId = 99;
+  header.treeId = 77;
+  header.sessionId = 34;
+  return smb::native_smb::encodeSmb2SyncHeader(header);
+}
+
+smb::native_smb::ByteVector buildEmptyStructureResponse(
+    smb::native_smb::Command command, std::uint16_t structureSize) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = command;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 99;
+  header.treeId = 77;
+  header.sessionId = 34;
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, structureSize);
+  appendU16Le(bytes, 0);
+  return bytes;
+}
+
 smb::native_smb::ByteVector fileIdBothEntry(
     const std::string &name, std::uint32_t nextEntryOffset,
     std::uint32_t attributes, std::uint64_t size, std::uint64_t fileId) {
@@ -450,6 +476,70 @@ private slots:
     QCOMPARE(static_cast<int>(decoded.error.code),
              static_cast<int>(
                  smb::native_smb::ErrorCode::ProtocolUnsupported));
+  }
+
+  void mapsNtStatusToTypedNativeErrors() {
+    QCOMPARE(static_cast<int>(smb::native_smb::errorCodeForNtStatus(
+                 smb::native_smb::kStatusLogonFailure)),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::AuthenticationFailed));
+    QCOMPARE(static_cast<int>(smb::native_smb::errorCodeForNtStatus(
+                 smb::native_smb::kStatusAccessDenied)),
+             static_cast<int>(smb::native_smb::ErrorCode::PermissionDenied));
+    QCOMPARE(static_cast<int>(smb::native_smb::errorCodeForNtStatus(
+                 smb::native_smb::kStatusBadNetworkName)),
+             static_cast<int>(smb::native_smb::ErrorCode::ShareUnavailable));
+    QCOMPARE(static_cast<int>(smb::native_smb::errorCodeForNtStatus(
+                 smb::native_smb::kStatusObjectNameNotFound)),
+             static_cast<int>(smb::native_smb::ErrorCode::FileNotFound));
+    QCOMPARE(static_cast<int>(smb::native_smb::errorCodeForNtStatus(
+                 smb::native_smb::kStatusDirectoryNotEmpty)),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::DirectoryNotEmpty));
+    QCOMPARE(QString::fromStdString(smb::native_smb::ntStatusName(
+                 smb::native_smb::kStatusPathNotCovered)),
+             QStringLiteral("STATUS_PATH_NOT_COVERED"));
+  }
+
+  void responseDecodersReturnNtStatusFailuresBeforeParsingBodies() {
+    const auto session = smb::native_smb::decodeSessionSetupResponse(
+        buildStatusOnlyResponse(smb::native_smb::Command::SessionSetup,
+                                smb::native_smb::kStatusLogonFailure));
+    QVERIFY(!session.ok);
+    QCOMPARE(static_cast<int>(session.error.code),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::AuthenticationFailed));
+
+    const auto tree = smb::native_smb::decodeTreeConnectResponse(
+        buildStatusOnlyResponse(smb::native_smb::Command::TreeConnect,
+                                smb::native_smb::kStatusBadNetworkName));
+    QVERIFY(!tree.ok);
+    QCOMPARE(static_cast<int>(tree.error.code),
+             static_cast<int>(smb::native_smb::ErrorCode::ShareUnavailable));
+
+    const auto create = smb::native_smb::decodeCreateResponse(
+        buildStatusOnlyResponse(smb::native_smb::Command::Create,
+                                smb::native_smb::kStatusAccessDenied));
+    QVERIFY(!create.ok);
+    QCOMPARE(static_cast<int>(create.error.code),
+             static_cast<int>(smb::native_smb::ErrorCode::PermissionDenied));
+
+    const auto read = smb::native_smb::decodeReadResponse(
+        buildStatusOnlyResponse(smb::native_smb::Command::Read,
+                                smb::native_smb::kStatusObjectNameNotFound));
+    QVERIFY(!read.ok);
+    QCOMPARE(static_cast<int>(read.error.code),
+             static_cast<int>(smb::native_smb::ErrorCode::FileNotFound));
+  }
+
+  void queryDirectoryNoMoreFilesReturnsEmptySuccess() {
+    const auto response = smb::native_smb::decodeQueryDirectoryResponse(
+        buildStatusOnlyResponse(smb::native_smb::Command::QueryDirectory,
+                                smb::native_smb::kStatusNoMoreFiles));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.status, smb::native_smb::kStatusNoMoreFiles);
+    QCOMPARE(response.value.entries.size(), std::size_t{0});
   }
 
   void buildsSessionSetupRequest() {
@@ -876,6 +966,51 @@ private slots:
     QCOMPARE(standard.value.numberOfLinks, std::uint32_t{2});
     QVERIFY(standard.value.deletePending);
     QVERIFY(!standard.value.directory);
+  }
+
+  void buildsAndDecodesTreeDisconnect() {
+    const auto request =
+        smb::native_smb::buildTreeDisconnectRequest(21, 77, 34);
+
+    QCOMPARE(readU16Le(request, 64),
+             smb::native_smb::kTreeDisconnectRequestStructureSize);
+    QCOMPARE(readU16Le(request, 66), std::uint16_t{0});
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(request);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::TreeDisconnect));
+    QCOMPARE(header.value.messageId, std::uint64_t{21});
+    QCOMPARE(header.value.treeId, std::uint32_t{77});
+    QCOMPARE(header.value.sessionId, std::uint64_t{34});
+
+    const auto response = smb::native_smb::decodeTreeDisconnectResponse(
+        buildEmptyStructureResponse(
+            smb::native_smb::Command::TreeDisconnect,
+            smb::native_smb::kTreeDisconnectResponseStructureSize));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.status, smb::native_smb::kStatusSuccess);
+  }
+
+  void buildsAndDecodesLogoff() {
+    const auto request = smb::native_smb::buildLogoffRequest(22, 34);
+
+    QCOMPARE(readU16Le(request, 64),
+             smb::native_smb::kLogoffRequestStructureSize);
+    QCOMPARE(readU16Le(request, 66), std::uint16_t{0});
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(request);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::Logoff));
+    QCOMPARE(header.value.messageId, std::uint64_t{22});
+    QCOMPARE(header.value.sessionId, std::uint64_t{34});
+
+    const auto response = smb::native_smb::decodeLogoffResponse(
+        buildEmptyStructureResponse(smb::native_smb::Command::Logoff,
+                                    smb::native_smb::kLogoffResponseStructureSize));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.status, smb::native_smb::kStatusSuccess);
   }
 
   void buildsQueryDirectoryRequest() {

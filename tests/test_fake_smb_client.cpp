@@ -151,6 +151,38 @@ private slots:
     QVERIFY(timeout.error().code == smb::core::ErrorCode::Timeout);
   }
 
+  void sameShareMoveUsesRenameSemantics() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    smb::tests::FakeSmbClient client;
+    client.addFile(QStringLiteral("/source.txt"), QByteArrayLiteral("content"));
+    client.failOperation(smb::tests::FakeSmbOperation::Copy,
+                         smb::core::ErrorCode::PermissionDenied);
+    client.failOperation(smb::tests::FakeSmbOperation::Remove,
+                         smb::core::ErrorCode::PermissionDenied);
+
+    QVERIFY(client
+                .move(connection(), nullptr, QStringLiteral("/source.txt"),
+                      connection(), nullptr, QStringLiteral("/moved.txt"), {})
+                .ok());
+
+    const auto oldPath = tempDir.filePath(QStringLiteral("old.txt"));
+    QVERIFY(!client
+                 .downloadFile(connection(), nullptr,
+                               QStringLiteral("/source.txt"), oldPath, {})
+                 .ok());
+
+    const auto movedPath = tempDir.filePath(QStringLiteral("moved.txt"));
+    QVERIFY(client
+                .downloadFile(connection(), nullptr,
+                              QStringLiteral("/moved.txt"), movedPath, {})
+                .ok());
+    QFile moved(movedPath);
+    QVERIFY(moved.open(QIODevice::ReadOnly));
+    QCOMPARE(moved.readAll(), QByteArrayLiteral("content"));
+  }
+
   void cancellationIsReported() {
     smb::tests::FakeSmbClient client;
     smb::core::CancellationToken token;

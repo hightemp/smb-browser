@@ -37,6 +37,10 @@ enum class ErrorCode {
   AuthenticationFailed,
   PermissionDenied,
   ProtocolUnsupported,
+  FileNotFound,
+  AlreadyExists,
+  DirectoryNotEmpty,
+  InvalidPath,
   NetworkError,
   IoError,
   UnsupportedCapability,
@@ -93,9 +97,12 @@ struct TransferProgress {
 struct OperationContext {
   std::chrono::milliseconds timeout{30000};
   CancellationToken *cancellationToken = nullptr;
+  std::function<bool()> cancellationCallback;
   std::function<void(const TransferProgress &)> progressCallback;
   std::function<void(const std::string &)> sanitizedLogCallback;
 };
+
+bool isCancellationRequested(const OperationContext &context);
 
 struct BuildPolicy {
   bool cleanRoomOnly = true;

@@ -37,6 +37,32 @@ QString fileName(const QString &path) {
   return path.mid(index + 1);
 }
 
+bool equalsCaseInsensitive(const QString &left, const QString &right) {
+  return left.compare(right, Qt::CaseInsensitive) == 0;
+}
+
+bool sameRemoteTree(const smb::core::Connection &left,
+                    const smb::core::Connection &right) {
+  if (!left.id.isEmpty() && left.id == right.id) {
+    return true;
+  }
+
+  const auto sameAddress =
+      !left.server.isEmpty() && !left.share.isEmpty() &&
+      equalsCaseInsensitive(left.server, right.server) &&
+      equalsCaseInsensitive(left.share, right.share);
+  const auto sameUri =
+      !left.normalizedUri.isEmpty() &&
+      equalsCaseInsensitive(left.normalizedUri, right.normalizedUri);
+  if (!sameAddress && !sameUri) {
+    return false;
+  }
+
+  return equalsCaseInsensitive(left.domain, right.domain) &&
+         equalsCaseInsensitive(left.username, right.username) &&
+         left.authType == right.authType;
+}
+
 } // namespace
 
 void FakeSmbClient::setRequirePassword(bool requirePassword) {
@@ -310,6 +336,12 @@ FakeSmbClient::move(const smb::core::Connection &sourceConnection,
   if (error.hasError()) {
     return smb::core::Result<bool>::failure(error);
   }
+
+  if (sameRemoteTree(sourceConnection, targetConnection)) {
+    return rename(sourceConnection, sourceSecret, sourceRemotePath,
+                  targetRemotePath, context);
+  }
+
   const auto targetError =
       preflight(FakeSmbOperation::Move, targetSecret, context);
   if (targetError.hasError()) {

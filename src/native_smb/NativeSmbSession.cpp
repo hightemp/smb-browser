@@ -1,5 +1,7 @@
 #include "NativeSmbSession.h"
 
+#include <cctype>
+#include <string_view>
 #include <utility>
 
 namespace smb::native_smb {
@@ -29,6 +31,69 @@ DecodeResult<NativeObjectMutationResult> mutationFailureFrom(
                                                            error.message);
 }
 
+DecodeResult<NativeObjectMutationResult> mutationFailure(
+    ErrorCode code, std::string message) {
+  return DecodeResult<NativeObjectMutationResult>::failure(code,
+                                                           std::move(message));
+}
+
+bool isCancelled(const OperationContext &context) {
+  return isCancellationRequested(context);
+}
+
+bool isDotEntry(std::string_view name) {
+  return name == "." || name == "..";
+}
+
+std::string joinRemotePath(const std::string &parent,
+                           const std::string &child) {
+  if (parent.empty()) {
+    return child;
+  }
+  if (parent.back() == '\\' || parent.back() == '/') {
+    return parent + child;
+  }
+  return parent + "\\" + child;
+}
+
+char lowerAscii(char ch) {
+  return static_cast<char>(
+      std::tolower(static_cast<unsigned char>(ch)));
+}
+
+bool wildcardMatches(std::string_view pattern, std::string_view text) {
+  std::size_t patternIndex = 0;
+  std::size_t textIndex = 0;
+  std::size_t starIndex = std::string_view::npos;
+  std::size_t retryTextIndex = 0;
+
+  while (textIndex < text.size()) {
+    if (patternIndex < pattern.size() &&
+        (pattern[patternIndex] == '?' ||
+         lowerAscii(pattern[patternIndex]) == lowerAscii(text[textIndex]))) {
+      ++patternIndex;
+      ++textIndex;
+      continue;
+    }
+    if (patternIndex < pattern.size() && pattern[patternIndex] == '*') {
+      starIndex = patternIndex++;
+      retryTextIndex = textIndex;
+      continue;
+    }
+    if (starIndex != std::string_view::npos) {
+      patternIndex = starIndex + 1;
+      textIndex = ++retryTextIndex;
+      continue;
+    }
+    return false;
+  }
+
+  while (patternIndex < pattern.size() && pattern[patternIndex] == '*') {
+    ++patternIndex;
+  }
+  return patternIndex == pattern.size();
+}
+
 NativeRemoteEntry toNativeEntry(const DirectoryEntry &entry) {
   NativeRemoteEntry result;
   result.name = entry.name;
@@ -56,14 +121,16 @@ NativeSmbSession::NativeSmbSession(Transport &transport,
 DecodeResult<NativeDirectoryListing>
 NativeSmbSession::listDirectory(const std::string &path,
                                 const OperationContext &context) {
-  const auto messageId = allocateMessageIds(3);
+  const auto messageId = m_nextMessageId;
   const DirectoryLister lister;
   const auto result =
       lister.list(m_transport, path, messageId, m_treeId, m_sessionId,
                   context);
   if (!result.ok) {
+    m_nextMessageId += 3;
     return listingFailureFrom(result.error);
   }
+  m_nextMessageId += result.value.messagesUsed;
 
   NativeDirectoryListing listing;
   listing.entries.reserve(result.value.entries.size());
@@ -171,6 +238,53 @@ NativeSmbSession::deleteObject(const std::string &path, bool directory,
   return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
 }
 
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::deleteTree(const std::string &path,
+                             const OperationContext &context) {
+  return deleteTreeInternal(path, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::deleteWildcard(const std::string &parentPath,
+                                 const std::string &pattern,
+                                 const OperationContext &context) {
+  if (pattern.empty()) {
+    return mutationFailure(ErrorCode::InvalidPath,
+                           "SMB wildcard delete pattern is empty.");
+  }
+  if (isCancelled(context)) {
+    return mutationFailure(ErrorCode::Cancelled,
+                           "SMB wildcard delete was cancelled.");
+  }
+
+  const auto listing = listDirectory(parentPath, context);
+  if (!listing.ok) {
+    return mutationFailureFrom(listing.error);
+  }
+
+  for (const auto &entry : listing.value.entries) {
+    if (isDotEntry(entry.name) || !wildcardMatches(pattern, entry.name)) {
+      continue;
+    }
+    if (isCancelled(context)) {
+      return mutationFailure(ErrorCode::Cancelled,
+                             "SMB wildcard delete was cancelled.");
+    }
+
+    const auto child = joinRemotePath(parentPath, entry.name);
+    const auto result = entry.directory && !entry.reparsePoint
+                            ? deleteTreeInternal(child, context)
+                            : deleteObject(child, entry.directory, context);
+    if (!result.ok) {
+      return result;
+    }
+  }
+
+  NativeObjectMutationResult mutation;
+  mutation.path = joinRemotePath(parentPath, pattern);
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
 DecodeResult<NativeObjectMutationResult> NativeSmbSession::renameObject(
     const std::string &fromPath, const std::string &toPath,
     bool replaceIfExists, const OperationContext &context) {
@@ -188,9 +302,59 @@ DecodeResult<NativeObjectMutationResult> NativeSmbSession::renameObject(
   return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
 }
 
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::deleteTreeInternal(const std::string &path,
+                                     const OperationContext &context) {
+  if (path.empty()) {
+    return mutationFailure(ErrorCode::InvalidPath,
+                           "Refusing to delete the SMB share root.");
+  }
+  if (isCancelled(context)) {
+    return mutationFailure(ErrorCode::Cancelled,
+                           "SMB recursive delete was cancelled.");
+  }
+
+  const auto stat = statObject(path, context);
+  if (!stat.ok) {
+    return mutationFailureFrom(stat.error);
+  }
+  if (!stat.value.directory || stat.value.reparsePoint) {
+    return deleteObject(path, stat.value.directory, context);
+  }
+
+  const auto listing = listDirectory(path, context);
+  if (!listing.ok) {
+    return mutationFailureFrom(listing.error);
+  }
+
+  for (const auto &entry : listing.value.entries) {
+    if (isDotEntry(entry.name)) {
+      continue;
+    }
+    if (isCancelled(context)) {
+      return mutationFailure(ErrorCode::Cancelled,
+                             "SMB recursive delete was cancelled.");
+    }
+
+    const auto child = joinRemotePath(path, entry.name);
+    const auto result = entry.directory && !entry.reparsePoint
+                            ? deleteTreeInternal(child, context)
+                            : deleteObject(child, entry.directory, context);
+    if (!result.ok) {
+      return result;
+    }
+  }
+
+  return deleteObject(path, true, context);
+}
+
 std::uint64_t NativeSmbSession::nextMessageIdForTests() const {
   return m_nextMessageId;
 }
+
+std::uint32_t NativeSmbSession::treeId() const { return m_treeId; }
+
+std::uint64_t NativeSmbSession::sessionId() const { return m_sessionId; }
 
 std::uint64_t NativeSmbSession::allocateMessageIds(std::uint64_t count) {
   const auto messageId = m_nextMessageId;

@@ -28,10 +28,25 @@ test -f "$ROOTFS/usr/share/applications/smb-browser.desktop"
 test -f "$ROOTFS/usr/share/metainfo/io.github.smb_browser.SmbBrowser.metainfo.xml"
 test -f "$ROOTFS/usr/share/icons/hicolor/scalable/apps/smb-browser.svg"
 
-if find "$ROOTFS/usr/lib" -name 'libsmb2.so*' -print -quit 2>/dev/null | grep -q .; then
-  echo "Bundled libsmb2 found in package."
-else
-  echo "Warning: bundled libsmb2 was not found; package relies on system libsmb2." >&2
+if find "$ROOTFS" \( -name 'libsmb2.so*' -o -name 'smbclient' -o -name 'samba*' \) \
+  -print -quit 2>/dev/null | grep -q .; then
+  echo "Unexpected legacy SMB runtime found in package." >&2
+  find "$ROOTFS" \( -name 'libsmb2.so*' -o -name 'smbclient' -o -name 'samba*' \) >&2
+  exit 1
+fi
+
+if dpkg-deb -f "$PACKAGE_PATH" Depends | grep -Eiq 'libsmb2|smbclient|samba'; then
+  echo "Package metadata contains legacy SMB runtime dependency:" >&2
+  dpkg-deb -f "$PACKAGE_PATH" Depends >&2
+  exit 1
+fi
+
+if LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
+  ldd "$ROOTFS/usr/bin/smb-browser" | grep -Eiq 'libsmb2|smbclient|samba'; then
+  echo "Executable links a legacy SMB runtime dependency:" >&2
+  LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
+    ldd "$ROOTFS/usr/bin/smb-browser" >&2
+  exit 1
 fi
 
 if LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \

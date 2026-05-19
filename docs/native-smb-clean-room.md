@@ -124,9 +124,42 @@ engine создаются и ревьюятся внутри этого репо
 `src/native_smb`. Локальные checkout-ы в `tmp/` используются только для
 исследования и не являются build input.
 
-Текущий стартовый target: `smb_browser_native_smb`. Он собирает только
-clean-room scaffold и build policy; protocol implementation добавляется
-последующими задачами.
+Текущий target: `smb_browser_native_smb`. Он собирает clean-room protocol
+engine без Samba/libsmb2 source input.
+
+Текущий implementation status:
+
+- Direct TCP transport, SMB2 framing and baseline request/response codecs are
+  implemented.
+- Native connection lifecycle covers `NEGOTIATE -> SESSION_SETUP ->
+  TREE_CONNECT`.
+- NTLMv2 password/domain auth is implemented with SPNEGO wrapping.
+- Guest and anonymous auth modes are handled explicitly in the NTLM token
+  provider. Current-user/Kerberos auth is reported as unsupported until T-095
+  defines the platform strategy.
+- SMB2.0.2/2.1 signing is implemented with HMAC-SHA256. SMB3.0/3.0.2 signing
+  is implemented with AES-CMAC and SMB3 signing-key derivation. SMB3
+  encryption and SMB3.1.1 preauth-integrity signing remain open work.
+- Application default build uses `NativeSmbClient`; legacy libsmb2 can be
+  enabled only with explicit CMake flags.
+- `OperationQueue` cancellation is bridged into the native `OperationContext`,
+  and Direct TCP/protocol operations check cancellation and timeouts.
+- Native SMB errors are mapped through a backend-neutral mapper into
+  `AppError`, with technical details sanitized before they reach application
+  error flows.
+- Directory listing now reads paged `QUERY_DIRECTORY` responses until
+  `STATUS_NO_MORE_FILES` instead of assuming a single response buffer.
+- Native file-object operations include create-directory, delete, recursive
+  delete and wildcard delete at library level. Recursive delete avoids walking
+  into reparse/symlink directories and checks cancellation between steps.
+- Move semantics use native rename when source and target are on the same
+  authenticated SMB tree. Cross-share move remains copy followed by source
+  delete only after the copy succeeds.
+- Connection lifecycle includes explicit SMB2 `TREE_DISCONNECT` and `LOGOFF`
+  primitives; `NativeSmbConnection::disconnect()` sends them with the session
+  message id sequence.
+- DFS referral handling is not yet native and remains a Must task before the
+  old DFS/smbclient path can be fully deleted.
 
 Правила:
 

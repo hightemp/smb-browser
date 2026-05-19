@@ -19,8 +19,7 @@ sudo apt-get install -y --no-install-recommends \
   libqt5svg5-dev \
   qttools5-dev-tools \
   qtkeychain-qt5-dev \
-  libsodium-dev \
-  smbclient
+  libsodium-dev
 ```
 
 Configure, build and test:
@@ -31,14 +30,23 @@ make build
 make test
 ```
 
-By default CMake builds the SMB backend. If `libsmb2` is not available through
-`pkg-config`, CMake clones the pinned upstream source into `tmp/libsmb2-src` and
-builds it as part of the project.
+By default CMake builds the clean-room native SMB backend
+(`SMB_BROWSER_WITH_NATIVE_SMB=ON`, `SMB_BROWSER_WITH_LIBSMB2=OFF`). The default
+build does not require `libsmb2-dev`, a checked-out `libsmb2` source tree,
+`smbclient`, or Samba CLI tools.
 
-`smbclient` is used only as an optional DFS referral resolver. File browsing and
-file operations still go through the `libsmb2` backend, but corporate DFS
-namespaces such as `smb://domain/share` may need `smbclient` available on
-`PATH` so the app can discover the real target server/share first.
+Current native backend status:
+
+- SMB2 Direct TCP transport is built into the application.
+- NTLMv2 password/domain auth, guest/anonymous auth handling, SPNEGO token
+  wrapping, SMB2.0.2/2.1 HMAC-SHA256 signing and SMB3.0/3.0.2 AES-CMAC signing
+  are implemented in the clean-room engine.
+- Basic app operations are wired through `NativeSmbClient`: check, list,
+  create folder, delete, rename, download, upload, copy and move.
+- SMB3 encryption, native DFS referrals, Kerberos/current-user auth and
+  advanced metadata APIs are still tracked in `TASKS.md`; current-user auth is
+  reported as unsupported by the native backend instead of falling through to
+  password auth.
 
 Run the app:
 
@@ -54,11 +62,10 @@ Use this only for fast UI/core development when real SMB access is not needed:
 make no-smb
 ```
 
-## Manual libsmb2 prefix
+## Legacy libsmb2 prefix
 
-The default build does not require this, but the helper script can build
-`libsmb2` into `tmp/libsmb2-prefix` for experiments with a pkg-config based
-setup:
+The default build does not require this. The helper script is kept only for
+legacy experiments with the old libsmb2 backend:
 
 ```bash
 scripts/build-libsmb2.sh
@@ -66,8 +73,9 @@ scripts/build-libsmb2.sh
 make libsmb2
 ```
 
-Then configure with `SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON` and `PKG_CONFIG_PATH`
-pointing to `tmp/libsmb2-prefix/lib/pkgconfig`.
+Then configure explicitly with `SMB_BROWSER_WITH_LIBSMB2=ON`,
+`SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON` and `PKG_CONFIG_PATH` pointing to
+`tmp/libsmb2-prefix/lib/pkgconfig`.
 
 ## Linux package smoke
 
@@ -106,6 +114,8 @@ make samba-down
 - `PRD.md` - product requirements.
 - `TASKS.md` - implementation backlog with completion checkboxes.
 - `docs/libsmb2-spike.md` - libsmb2 integration notes.
+- `docs/native-smb-clean-room.md` - clean-room native SMB migration plan.
+- `docs/native-smb-test-matrix.md` - native SMB capability test matrix.
 - `docs/linux-packaging.md` - Linux packaging profile.
 - `docs/windows-packaging.md` - Windows packaging plan.
 - `docs/macos-packaging.md` - macOS packaging plan.

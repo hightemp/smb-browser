@@ -4,8 +4,7 @@ namespace smb::native_smb {
 namespace {
 
 bool isCancelled(const OperationContext &context) {
-  return context.cancellationToken != nullptr &&
-         context.cancellationToken->isCancellationRequested();
+  return isCancellationRequested(context);
 }
 
 DecodeResult<ReadResponse> cancelledResult() {

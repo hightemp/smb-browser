@@ -1,7 +1,9 @@
 #include "Protocol.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -88,6 +90,22 @@ void appendUtf8CodePoint(std::string &text, std::uint32_t codePoint) {
   }
 }
 
+std::string ntStatusFailureMessage(std::uint32_t status,
+                                   const char *operation) {
+  std::ostringstream stream;
+  stream << operation << " failed with " << ntStatusName(status) << " (0x"
+         << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+         << status << ").";
+  return stream.str();
+}
+
+template <typename T>
+DecodeResult<T> failureFromNtStatus(std::uint32_t status,
+                                    const char *operation) {
+  return DecodeResult<T>::failure(errorCodeForNtStatus(status),
+                                  ntStatusFailureMessage(status, operation));
+}
+
 } // namespace
 
 std::uint32_t capabilityMask(std::initializer_list<GlobalCapability> values) {
@@ -108,6 +126,103 @@ std::uint16_t securityModeForPolicy(SecurityPolicy policy) {
     return 0;
   }
   return kSigningEnabled | kSigningRequired;
+}
+
+ErrorCode errorCodeForNtStatus(std::uint32_t status) {
+  switch (status) {
+  case kStatusSuccess:
+    return ErrorCode::None;
+  case kStatusLogonFailure:
+  case kStatusAccountRestriction:
+  case kStatusInvalidLogonHours:
+  case kStatusInvalidWorkstation:
+  case kStatusPasswordExpired:
+  case kStatusAccountDisabled:
+    return ErrorCode::AuthenticationFailed;
+  case kStatusAccessDenied:
+  case kStatusNetworkAccessDenied:
+  case kStatusSharingViolation:
+    return ErrorCode::PermissionDenied;
+  case kStatusBadNetworkName:
+  case kStatusNetworkNameDeleted:
+  case kStatusPathNotCovered:
+    return ErrorCode::ShareUnavailable;
+  case kStatusNoSuchFile:
+  case kStatusObjectNameNotFound:
+  case kStatusObjectPathNotFound:
+    return ErrorCode::FileNotFound;
+  case kStatusObjectNameCollision:
+    return ErrorCode::AlreadyExists;
+  case kStatusDirectoryNotEmpty:
+    return ErrorCode::DirectoryNotEmpty;
+  case kStatusObjectPathSyntaxBad:
+  case kStatusNotADirectory:
+  case kStatusFileIsADirectory:
+    return ErrorCode::InvalidPath;
+  case kStatusIoTimeout:
+    return ErrorCode::Timeout;
+  case kStatusNotSupported:
+    return ErrorCode::ProtocolUnsupported;
+  default:
+    return ErrorCode::NetworkError;
+  }
+}
+
+std::string ntStatusName(std::uint32_t status) {
+  switch (status) {
+  case kStatusSuccess:
+    return "STATUS_SUCCESS";
+  case kStatusNoSuchFile:
+    return "STATUS_NO_SUCH_FILE";
+  case kStatusAccessDenied:
+    return "STATUS_ACCESS_DENIED";
+  case kStatusObjectNameNotFound:
+    return "STATUS_OBJECT_NAME_NOT_FOUND";
+  case kStatusObjectNameCollision:
+    return "STATUS_OBJECT_NAME_COLLISION";
+  case kStatusObjectPathNotFound:
+    return "STATUS_OBJECT_PATH_NOT_FOUND";
+  case kStatusObjectPathSyntaxBad:
+    return "STATUS_OBJECT_PATH_SYNTAX_BAD";
+  case kStatusMoreProcessingRequired:
+    return "STATUS_MORE_PROCESSING_REQUIRED";
+  case kStatusSharingViolation:
+    return "STATUS_SHARING_VIOLATION";
+  case kStatusLogonFailure:
+    return "STATUS_LOGON_FAILURE";
+  case kStatusAccountRestriction:
+    return "STATUS_ACCOUNT_RESTRICTION";
+  case kStatusInvalidLogonHours:
+    return "STATUS_INVALID_LOGON_HOURS";
+  case kStatusInvalidWorkstation:
+    return "STATUS_INVALID_WORKSTATION";
+  case kStatusPasswordExpired:
+    return "STATUS_PASSWORD_EXPIRED";
+  case kStatusAccountDisabled:
+    return "STATUS_ACCOUNT_DISABLED";
+  case kStatusIoTimeout:
+    return "STATUS_IO_TIMEOUT";
+  case kStatusFileIsADirectory:
+    return "STATUS_FILE_IS_A_DIRECTORY";
+  case kStatusNotSupported:
+    return "STATUS_NOT_SUPPORTED";
+  case kStatusNetworkNameDeleted:
+    return "STATUS_NETWORK_NAME_DELETED";
+  case kStatusNetworkAccessDenied:
+    return "STATUS_NETWORK_ACCESS_DENIED";
+  case kStatusBadNetworkName:
+    return "STATUS_BAD_NETWORK_NAME";
+  case kStatusDirectoryNotEmpty:
+    return "STATUS_DIRECTORY_NOT_EMPTY";
+  case kStatusNotADirectory:
+    return "STATUS_NOT_A_DIRECTORY";
+  case kStatusPathNotCovered:
+    return "STATUS_PATH_NOT_COVERED";
+  case kStatusNoMoreFiles:
+    return "STATUS_NO_MORE_FILES";
+  default:
+    return "STATUS_UNMAPPED";
+  }
 }
 
 std::vector<Dialect> defaultInitialDialects() {
@@ -321,6 +436,10 @@ decodeNegotiateResponse(const std::uint8_t *data, std::size_t size,
         ErrorCode::ProtocolUnsupported,
         "SMB2 NEGOTIATE response is missing server-to-redirector flag.");
   }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<NegotiateResponse>(headerResult.value.status,
+                                                  "SMB2 NEGOTIATE");
+  }
   if (size < kSmb2HeaderSize + 64) {
     return DecodeResult<NegotiateResponse>::failure(
         ErrorCode::IoError,
@@ -428,6 +547,11 @@ decodeSessionSetupResponse(const std::uint8_t *data, std::size_t size) {
         ErrorCode::ProtocolUnsupported,
         "SMB2 SESSION_SETUP response is missing server-to-redirector flag.");
   }
+  if (headerResult.value.status != kStatusSuccess &&
+      headerResult.value.status != kStatusMoreProcessingRequired) {
+    return failureFromNtStatus<SessionSetupResponse>(
+        headerResult.value.status, "SMB2 SESSION_SETUP");
+  }
   if (size < kSmb2HeaderSize + 8) {
     return DecodeResult<SessionSetupResponse>::failure(
         ErrorCode::IoError,
@@ -518,6 +642,10 @@ decodeTreeConnectResponse(const std::uint8_t *data, std::size_t size) {
         ErrorCode::ProtocolUnsupported,
         "SMB2 TREE_CONNECT response is missing server-to-redirector flag.");
   }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<TreeConnectResponse>(headerResult.value.status,
+                                                    "SMB2 TREE_CONNECT");
+  }
   if (size < kSmb2HeaderSize + 16) {
     return DecodeResult<TreeConnectResponse>::failure(
         ErrorCode::IoError,
@@ -547,6 +675,123 @@ decodeTreeConnectResponse(const std::uint8_t *data, std::size_t size) {
 DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const ByteVector &bytes) {
   return decodeTreeConnectResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildTreeDisconnectRequest(std::uint64_t messageId,
+                                      std::uint32_t treeId,
+                                      std::uint64_t sessionId) {
+  Smb2SyncHeader header;
+  header.command = Command::TreeDisconnect;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kTreeDisconnectRequestStructureSize);
+  appendU16Le(bytes, 0);
+  return bytes;
+}
+
+DecodeResult<TreeDisconnectResponse>
+decodeTreeDisconnectResponse(const std::uint8_t *data, std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<TreeDisconnectResponse>::failure(
+        headerResult.error.code, headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::TreeDisconnect) {
+    return DecodeResult<TreeDisconnectResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a TREE_DISCONNECT response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<TreeDisconnectResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 TREE_DISCONNECT response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<TreeDisconnectResponse>(
+        headerResult.value.status, "SMB2 TREE_DISCONNECT");
+  }
+  if (size < kSmb2HeaderSize + 4) {
+    return DecodeResult<TreeDisconnectResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 TREE_DISCONNECT response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kTreeDisconnectResponseStructureSize) {
+    return DecodeResult<TreeDisconnectResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 TREE_DISCONNECT response structure size.");
+  }
+
+  TreeDisconnectResponse response;
+  response.status = headerResult.value.status;
+  return DecodeResult<TreeDisconnectResponse>::success(response);
+}
+
+DecodeResult<TreeDisconnectResponse>
+decodeTreeDisconnectResponse(const ByteVector &bytes) {
+  return decodeTreeDisconnectResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildLogoffRequest(std::uint64_t messageId,
+                              std::uint64_t sessionId) {
+  Smb2SyncHeader header;
+  header.command = Command::Logoff;
+  header.messageId = messageId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kLogoffRequestStructureSize);
+  appendU16Le(bytes, 0);
+  return bytes;
+}
+
+DecodeResult<LogoffResponse>
+decodeLogoffResponse(const std::uint8_t *data, std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<LogoffResponse>::failure(headerResult.error.code,
+                                                headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Logoff) {
+    return DecodeResult<LogoffResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a LOGOFF response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<LogoffResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 LOGOFF response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<LogoffResponse>(headerResult.value.status,
+                                               "SMB2 LOGOFF");
+  }
+  if (size < kSmb2HeaderSize + 4) {
+    return DecodeResult<LogoffResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 LOGOFF response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kLogoffResponseStructureSize) {
+    return DecodeResult<LogoffResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 LOGOFF response structure size.");
+  }
+
+  LogoffResponse response;
+  response.status = headerResult.value.status;
+  return DecodeResult<LogoffResponse>::success(response);
+}
+
+DecodeResult<LogoffResponse> decodeLogoffResponse(const ByteVector &bytes) {
+  return decodeLogoffResponse(bytes.data(), bytes.size());
 }
 
 ByteVector buildCreateRequest(const CreateRequestOptions &options,
@@ -612,6 +857,10 @@ DecodeResult<CreateResponse> decodeCreateResponse(const std::uint8_t *data,
     return DecodeResult<CreateResponse>::failure(
         ErrorCode::ProtocolUnsupported,
         "SMB2 CREATE response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<CreateResponse>(headerResult.value.status,
+                                               "SMB2 CREATE");
   }
   if (size < kSmb2HeaderSize + 88) {
     return DecodeResult<CreateResponse>::failure(
@@ -683,6 +932,10 @@ DecodeResult<CloseResponse> decodeCloseResponse(const std::uint8_t *data,
     return DecodeResult<CloseResponse>::failure(
         ErrorCode::ProtocolUnsupported,
         "SMB2 CLOSE response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<CloseResponse>(headerResult.value.status,
+                                              "SMB2 CLOSE");
   }
   if (size < kSmb2HeaderSize + 60) {
     return DecodeResult<CloseResponse>::failure(
@@ -772,6 +1025,10 @@ DecodeResult<ReadResponse> decodeReadResponse(const std::uint8_t *data,
     return DecodeResult<ReadResponse>::failure(
         ErrorCode::ProtocolUnsupported,
         "SMB2 READ response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<ReadResponse>(headerResult.value.status,
+                                             "SMB2 READ");
   }
   if (size < kSmb2HeaderSize + 16) {
     return DecodeResult<ReadResponse>::failure(
@@ -874,6 +1131,10 @@ DecodeResult<WriteResponse> decodeWriteResponse(const std::uint8_t *data,
         ErrorCode::ProtocolUnsupported,
         "SMB2 WRITE response is missing server-to-redirector flag.");
   }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<WriteResponse>(headerResult.value.status,
+                                              "SMB2 WRITE");
+  }
   if (size < kSmb2HeaderSize + 16) {
     return DecodeResult<WriteResponse>::failure(
         ErrorCode::IoError,
@@ -947,6 +1208,10 @@ DecodeResult<SetInfoResponse> decodeSetInfoResponse(const std::uint8_t *data,
         ErrorCode::ProtocolUnsupported,
         "SMB2 SET_INFO response is missing server-to-redirector flag.");
   }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<SetInfoResponse>(headerResult.value.status,
+                                                "SMB2 SET_INFO");
+  }
   if (size < kSmb2HeaderSize + 2) {
     return DecodeResult<SetInfoResponse>::failure(
         ErrorCode::IoError,
@@ -1019,6 +1284,10 @@ DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const std::uint8_t *data
     return DecodeResult<QueryInfoResponse>::failure(
         ErrorCode::ProtocolUnsupported,
         "SMB2 QUERY_INFO response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<QueryInfoResponse>(headerResult.value.status,
+                                                  "SMB2 QUERY_INFO");
   }
   if (size < kSmb2HeaderSize + 8) {
     return DecodeResult<QueryInfoResponse>::failure(
@@ -1168,6 +1437,15 @@ decodeQueryDirectoryResponse(const std::uint8_t *data, std::size_t size) {
     return DecodeResult<QueryDirectoryResponse>::failure(
         ErrorCode::ProtocolUnsupported,
         "SMB2 QUERY_DIRECTORY response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status == kStatusNoMoreFiles) {
+    QueryDirectoryResponse response;
+    response.status = headerResult.value.status;
+    return DecodeResult<QueryDirectoryResponse>::success(response);
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<QueryDirectoryResponse>(
+        headerResult.value.status, "SMB2 QUERY_DIRECTORY");
   }
   if (size < kSmb2HeaderSize + 8) {
     return DecodeResult<QueryDirectoryResponse>::failure(

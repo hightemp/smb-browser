@@ -10,6 +10,7 @@ This checklist is the release gate for the first usable desktop build.
   - SMB-to-desktop drag-and-drop remains a platform-specific follow-up.
   - Recursive SMB search remains optional/experimental.
   - Docker Samba integration tests are opt-in and not part of default local test runs.
+  - Native DFS/current-user/Kerberos/encryption limitations are documented if still open.
   - Platform packaging smoke must be completed on each target OS before publishing packages.
 
 ## Build gate
@@ -26,13 +27,19 @@ cmake -S . -B tmp/build
 cmake --build tmp/build
 ```
 
-- [ ] Default configure cloned/found libsmb2 and built the SMB backend:
+- [ ] Native SMB backend is enabled and legacy libsmb2 backend is disabled:
 
 ```bash
-test -d tmp/libsmb2-src
+cmake -LA -N tmp/build | grep -E 'SMB_BROWSER_WITH_(NATIVE_SMB|LIBSMB2)'
 ```
 
 - [ ] No generated files outside `tmp/` or intended build output directories are committed.
+- [ ] Release build uses hardening flags where supported:
+
+```bash
+cmake -S . -B tmp/package-linux -DCMAKE_BUILD_TYPE=Release
+cmake --build tmp/package-linux --target package
+```
 
 ## Default test gate
 
@@ -62,6 +69,12 @@ ctest --test-dir tmp/build --output-on-failure
   - `log_viewer`
   - `import_export_controller`
   - `ui_smoke`
+
+- [ ] Native SMB unit/protocol suite passes without `libsmb2`:
+
+```bash
+make native-test
+```
 
 ## Optional Docker Samba profile
 
@@ -115,6 +128,16 @@ docker compose -f tests/integration/samba/docker-compose.yml down -v
 
 - [ ] Test data uses synthetic credentials only.
 
+- [ ] Package dependency audit rejects legacy SMB runtime dependencies:
+  - no `libsmb2`;
+  - no `smbclient`;
+  - no Samba client helper binaries.
+
+- [ ] Native SMB backend does not write credentials to stdout/stderr.
+
+- [ ] License/compliance review confirms Samba is not copied, linked or
+  distributed; local Samba checkouts under `tmp/` are reference-only.
+
 ## Localization gate
 
 - [ ] English is the primary source language for user-facing UI strings.
@@ -131,7 +154,8 @@ Run on each target platform before publishing binaries.
   - package smoke script passes:
     `powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1`;
   - app starts;
-  - Qt runtime, QtKeychain, SQLite, translations, and libsmb2 are packaged;
+  - Qt runtime, QtKeychain, SQLite and translations are packaged;
+  - package contains no `libsmb2.dll`, `smbclient.exe` or Samba client runtime;
   - add/edit/delete connection works;
   - credential save/load works;
   - connect/list/upload/download/rename/delete works against a test SMB server;
@@ -143,6 +167,7 @@ Run on each target platform before publishing binaries.
   - app starts on the target distribution;
   - Secret Service/KWallet behavior is understood and documented;
   - translations are packaged and load correctly;
+  - DEB metadata and `ldd` contain no `libsmb2`, `smbclient` or Samba client runtime;
   - Docker Samba integration profile can run in CI or on a prepared host.
 
 - [ ] macOS:
@@ -151,6 +176,7 @@ Run on each target platform before publishing binaries.
   - app bundle starts;
   - Keychain prompts are expected and understandable;
   - translations are packaged and load correctly;
+  - bundle and `otool -L` contain no `libsmb2`, `smbclient` or Samba client runtime;
   - opening a downloaded file through the system application works;
   - closing the main window exits the application process.
 

@@ -80,7 +80,7 @@ template <typename T> struct DecodeResult {
   static DecodeResult success(T parsedValue) {
     DecodeResult result;
     result.ok = true;
-    result.value = parsedValue;
+    result.value = std::move(parsedValue);
     return result;
   }
 
@@ -160,6 +160,14 @@ struct TreeConnectResponse {
   bool isDfs = false;
   bool isDfsRoot = false;
   bool requiresEncryption = false;
+};
+
+struct TreeDisconnectResponse {
+  std::uint32_t status = 0;
+};
+
+struct LogoffResponse {
+  std::uint32_t status = 0;
 };
 
 struct CreateRequestOptions {
@@ -326,8 +334,12 @@ constexpr std::uint16_t kNegotiateRequestStructureSize = 36;
 constexpr std::uint16_t kNegotiateResponseStructureSize = 65;
 constexpr std::uint16_t kSessionSetupRequestStructureSize = 25;
 constexpr std::uint16_t kSessionSetupResponseStructureSize = 9;
+constexpr std::uint16_t kLogoffRequestStructureSize = 4;
+constexpr std::uint16_t kLogoffResponseStructureSize = 4;
 constexpr std::uint16_t kTreeConnectRequestStructureSize = 9;
 constexpr std::uint16_t kTreeConnectResponseStructureSize = 16;
+constexpr std::uint16_t kTreeDisconnectRequestStructureSize = 4;
+constexpr std::uint16_t kTreeDisconnectResponseStructureSize = 4;
 constexpr std::uint16_t kCreateRequestStructureSize = 57;
 constexpr std::uint16_t kCreateResponseStructureSize = 89;
 constexpr std::uint16_t kCloseRequestStructureSize = 24;
@@ -343,7 +355,30 @@ constexpr std::uint16_t kQueryInfoResponseStructureSize = 9;
 constexpr std::uint16_t kQueryDirectoryRequestStructureSize = 33;
 constexpr std::uint16_t kQueryDirectoryResponseStructureSize = 9;
 constexpr std::uint32_t kStatusSuccess = 0x00000000;
+constexpr std::uint32_t kStatusNoSuchFile = 0xC000000F;
+constexpr std::uint32_t kStatusAccessDenied = 0xC0000022;
+constexpr std::uint32_t kStatusObjectNameNotFound = 0xC0000034;
+constexpr std::uint32_t kStatusObjectNameCollision = 0xC0000035;
+constexpr std::uint32_t kStatusObjectPathNotFound = 0xC000003A;
+constexpr std::uint32_t kStatusObjectPathSyntaxBad = 0xC000003B;
 constexpr std::uint32_t kStatusMoreProcessingRequired = 0xC0000016;
+constexpr std::uint32_t kStatusSharingViolation = 0xC0000043;
+constexpr std::uint32_t kStatusLogonFailure = 0xC000006D;
+constexpr std::uint32_t kStatusAccountRestriction = 0xC000006E;
+constexpr std::uint32_t kStatusInvalidLogonHours = 0xC000006F;
+constexpr std::uint32_t kStatusInvalidWorkstation = 0xC0000070;
+constexpr std::uint32_t kStatusPasswordExpired = 0xC0000071;
+constexpr std::uint32_t kStatusAccountDisabled = 0xC0000072;
+constexpr std::uint32_t kStatusIoTimeout = 0xC00000B5;
+constexpr std::uint32_t kStatusFileIsADirectory = 0xC00000BA;
+constexpr std::uint32_t kStatusNotSupported = 0xC00000BB;
+constexpr std::uint32_t kStatusNetworkNameDeleted = 0xC00000C9;
+constexpr std::uint32_t kStatusNetworkAccessDenied = 0xC00000CA;
+constexpr std::uint32_t kStatusBadNetworkName = 0xC00000CC;
+constexpr std::uint32_t kStatusDirectoryNotEmpty = 0xC0000101;
+constexpr std::uint32_t kStatusNotADirectory = 0xC0000103;
+constexpr std::uint32_t kStatusPathNotCovered = 0xC0000257;
+constexpr std::uint32_t kStatusNoMoreFiles = 0x80000006;
 constexpr std::uint32_t kFlagServerToRedir = 0x00000001;
 constexpr std::uint32_t kFlagAsyncCommand = 0x00000002;
 constexpr std::uint32_t kFlagSigned = 0x00000008;
@@ -390,6 +425,8 @@ constexpr std::uint8_t kQueryDirectoryRestartScans = 0x01;
 
 std::uint32_t capabilityMask(std::initializer_list<GlobalCapability> values);
 std::uint16_t securityModeForPolicy(SecurityPolicy policy);
+ErrorCode errorCodeForNtStatus(std::uint32_t status);
+std::string ntStatusName(std::uint32_t status);
 
 std::vector<Dialect> defaultInitialDialects();
 ByteVector encodeUtf16Le(std::string_view text);
@@ -425,6 +462,18 @@ DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const std::uint8_t *data, std::size_t size);
 DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const ByteVector &bytes);
+ByteVector buildTreeDisconnectRequest(std::uint64_t messageId,
+                                      std::uint32_t treeId,
+                                      std::uint64_t sessionId);
+DecodeResult<TreeDisconnectResponse>
+decodeTreeDisconnectResponse(const std::uint8_t *data, std::size_t size);
+DecodeResult<TreeDisconnectResponse>
+decodeTreeDisconnectResponse(const ByteVector &bytes);
+ByteVector buildLogoffRequest(std::uint64_t messageId,
+                              std::uint64_t sessionId);
+DecodeResult<LogoffResponse>
+decodeLogoffResponse(const std::uint8_t *data, std::size_t size);
+DecodeResult<LogoffResponse> decodeLogoffResponse(const ByteVector &bytes);
 ByteVector buildCreateRequest(const CreateRequestOptions &options,
                               std::uint64_t messageId,
                               std::uint32_t treeId,

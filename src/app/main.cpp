@@ -7,11 +7,13 @@
 #include "application/TempFileCache.h"
 #include "core/SmbClient.h"
 #include "credentials/QtKeychainCredentialStore.h"
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+#include "smb/NativeSmbClient.h"
+#elif defined(SMB_BROWSER_WITH_LIBSMB2)
 #include "smb/DfsResolvingSmbClient.h"
-#ifdef SMB_BROWSER_WITH_LIBSMB2
 #include "smb/Libsmb2SmbClient.h"
-#endif
 #include "smb/SmbclientDfsReferralResolver.h"
+#endif
 #include "storage/ConnectionRepository.h"
 #include "storage/ConnectionGroupRepository.h"
 #include "storage/SettingsRepository.h"
@@ -59,7 +61,7 @@ bool showStartupErrorIfNeeded(const smb::core::AppError &error,
   return true;
 }
 
-#ifndef SMB_BROWSER_WITH_LIBSMB2
+#if !defined(SMB_BROWSER_WITH_LIBSMB2) && !defined(SMB_BROWSER_WITH_NATIVE_SMB)
 class UnavailableSmbClient final : public smb::core::SmbClient {
 public:
   smb::core::Result<bool>
@@ -203,7 +205,10 @@ int main(int argc, char *argv[]) {
       connectionRepository, groupRepository, credentialStore);
   smb::ui::DialogImportExportActionPrompter importExportPrompter(&window);
   window.attachImportExport(importExportService, importExportPrompter);
-#ifdef SMB_BROWSER_WITH_LIBSMB2
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+  smb::infrastructure::NativeSmbClient smbClient(
+      qMax(1, settings.operationTimeoutMs / 1000));
+#elif defined(SMB_BROWSER_WITH_LIBSMB2)
   smb::infrastructure::Libsmb2SmbClient libsmb2Client(
       qMax(1, settings.operationTimeoutMs / 1000));
   smb::infrastructure::SmbclientDfsReferralResolver dfsReferralResolver(

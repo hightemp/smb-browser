@@ -8,24 +8,17 @@ This document describes the first Linux packaging profile for SMB Browser.
 - Baseline distro for the current profile: Ubuntu 22.04.
 - UI runtime: Qt5 Widgets.
 - Secret storage runtime: QtKeychain with the platform keychain backend.
-- SMB backend: `libsmb2` when available at build time.
+- SMB backend: built-in clean-room native SMB2/SMB3 engine.
 
 ## Build package
 
-Default CI/package smoke profile builds the SMB backend. Because Ubuntu 22.04
-does not provide `libsmb2-dev` in the standard repositories, CMake fetches the
-pinned upstream `libsmb2` source into `tmp/libsmb2-src` and builds it as part of
-the project.
+Default CI/package smoke profile builds the native SMB backend and does not
+download or link `libsmb2`.
 
 ```bash
-cmake -S . -B tmp/package-linux -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DSMB_BROWSER_WITH_LIBSMB2=ON \
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
-cmake --build tmp/package-linux
+make package-linux
 ctest --test-dir tmp/package-linux --output-on-failure
-cmake --build tmp/package-linux --target package
-scripts/package-smoke-linux.sh
+make smoke-linux
 ```
 
 The generated `.deb` is written to `tmp/package-linux/packages`.
@@ -42,16 +35,11 @@ The DEB profile declares the baseline runtime packages:
 - `libqt5svg5`
 - `libqt5keychain1`
 - `libsodium23`
-- `smbclient`
 
-`libsmb2` is bundled by default through the CMake FetchContent path. For
-experiments with an external pkg-config installation, run
-`scripts/build-libsmb2.sh` and configure with
-`SMB_BROWSER_USE_SYSTEM_LIBSMB2=ON`.
-
-`smbclient` is used as the optional DFS namespace resolver. It is declared as a
-runtime dependency in the Linux package so corporate DFS paths can be resolved
-before retrying the operation through `libsmb2`.
+The Linux package smoke script rejects `libsmb2`, `smbclient` and Samba CLI
+runtime dependencies in both package metadata and executable linkage. The legacy
+`libsmb2` backend can be enabled only through explicit development CMake flags
+and is not part of the default package profile.
 
 ## Installed files
 
@@ -89,5 +77,6 @@ Before publishing a Linux package:
 3. Switch language to Russian and confirm translated UI text loads.
 4. Add/edit/delete a connection.
 5. Save and reload a synthetic credential.
-6. Connect to a test Samba server and list a directory when libsmb2 is enabled.
+6. Connect to a test Samba server and list a directory through the native
+   backend.
 7. Run the optional Docker Samba integration profile on a prepared Linux host.

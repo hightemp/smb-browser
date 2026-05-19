@@ -5,10 +5,6 @@ set(SMB_BROWSER_INFRASTRUCTURE_SOURCES
     credentials/QtKeychainCredentialStore.h
     logging/FileLogger.cpp
     logging/FileLogger.h
-    smb/DfsResolvingSmbClient.cpp
-    smb/DfsResolvingSmbClient.h
-    smb/SmbclientDfsReferralResolver.cpp
-    smb/SmbclientDfsReferralResolver.h
     storage/ConnectionGroupRepository.cpp
     storage/ConnectionGroupRepository.h
     storage/ConnectionRepository.cpp
@@ -21,10 +17,23 @@ set(SMB_BROWSER_INFRASTRUCTURE_SOURCES
 
 if(SMB_BROWSER_WITH_LIBSMB2)
     list(APPEND SMB_BROWSER_INFRASTRUCTURE_SOURCES
+        smb/DfsResolvingSmbClient.cpp
+        smb/DfsResolvingSmbClient.h
         smb/Libsmb2ErrorMapper.cpp
         smb/Libsmb2ErrorMapper.h
         smb/Libsmb2SmbClient.cpp
         smb/Libsmb2SmbClient.h
+        smb/SmbclientDfsReferralResolver.cpp
+        smb/SmbclientDfsReferralResolver.h
+    )
+endif()
+
+if(SMB_BROWSER_WITH_NATIVE_SMB)
+    list(APPEND SMB_BROWSER_INFRASTRUCTURE_SOURCES
+        smb/NativeSmbClient.cpp
+        smb/NativeSmbClient.h
+        smb/NativeSmbErrorMapper.cpp
+        smb/NativeSmbErrorMapper.h
     )
 endif()
 
@@ -54,5 +63,16 @@ if(SMB_BROWSER_WITH_LIBSMB2)
     target_compile_definitions(smb_browser_infrastructure
         PUBLIC
             SMB_BROWSER_WITH_LIBSMB2=1
+    )
+endif()
+
+if(SMB_BROWSER_WITH_NATIVE_SMB)
+    target_link_libraries(smb_browser_infrastructure
+        PUBLIC
+            smb_browser_native_smb
+    )
+    target_compile_definitions(smb_browser_infrastructure
+        PUBLIC
+            SMB_BROWSER_WITH_NATIVE_SMB=1
     )
 endif()

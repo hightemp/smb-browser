@@ -44,8 +44,17 @@ fi
 test -x "$APP_PATH/Contents/MacOS/smb-browser"
 test -f "$APP_PATH/Contents/Resources/i18n/smb-browser_ru.qm"
 
-if ! find "$APP_PATH/Contents" -name 'libsmb2*.dylib' -print -quit | grep -q .; then
-  echo "Warning: bundled libsmb2 dylib was not found; verify runtime deployment manually." >&2
+if find "$APP_PATH/Contents" \( -name 'libsmb2*.dylib' -o -name 'smbclient' \) \
+  -print -quit | grep -q .; then
+  echo "Unexpected legacy SMB runtime found in app bundle." >&2
+  find "$APP_PATH/Contents" \( -name 'libsmb2*.dylib' -o -name 'smbclient' \) >&2
+  exit 1
+fi
+
+if otool -L "$APP_PATH/Contents/MacOS/smb-browser" | grep -Eiq 'libsmb2|smbclient|samba'; then
+  echo "Executable links a legacy SMB runtime dependency:" >&2
+  otool -L "$APP_PATH/Contents/MacOS/smb-browser" >&2
+  exit 1
 fi
 
 "$APP_PATH/Contents/MacOS/smb-browser" &

@@ -8,6 +8,7 @@ namespace smb::native_smb {
 struct DirectoryListResult {
   FileId directoryFileId;
   std::vector<DirectoryEntry> entries;
+  std::uint64_t messagesUsed = 0;
 };
 
 class DirectoryLister {

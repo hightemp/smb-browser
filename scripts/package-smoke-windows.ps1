@@ -35,10 +35,25 @@ if ([string]::IsNullOrWhiteSpace($Translation)) {
     throw "Russian translation file not found in package"
 }
 
-$Libsmb2 = Get-ChildItem -Path $RootFs -Recurse -File -Include "libsmb2.dll","smb2.dll" |
-    Select-Object -First 1 -ExpandProperty FullName
-if ([string]::IsNullOrWhiteSpace($Libsmb2)) {
-    Write-Warning "libsmb2 DLL not found in package; verify runtime deployment manually."
+$LegacySmb = Get-ChildItem -Path $RootFs -Recurse -File -Include `
+    "libsmb2.dll","smb2.dll","smbclient.exe","samba*.dll" |
+    Select-Object -ExpandProperty FullName
+if ($LegacySmb.Count -gt 0) {
+    throw "Unexpected legacy SMB runtime found in package: $($LegacySmb -join ', ')"
+}
+
+$DependencyText = ""
+$Dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+if ($Dumpbin) {
+    $DependencyText = (& $Dumpbin.Source /DEPENDENTS $Exe) -join "`n"
+} else {
+    $Objdump = Get-Command llvm-objdump.exe -ErrorAction SilentlyContinue
+    if ($Objdump) {
+        $DependencyText = (& $Objdump.Source -p $Exe) -join "`n"
+    }
+}
+if ($DependencyText -match "(?i)(libsmb2|smbclient|samba)") {
+    throw "Executable links a legacy SMB runtime dependency: $DependencyText"
 }
 
 $Process = Start-Process -FilePath $Exe -PassThru

@@ -1,6 +1,8 @@
 add_library(smb_browser_native_smb STATIC
     CloseExchanger.cpp
     CloseExchanger.h
+    DirectTcpTransport.cpp
+    DirectTcpTransport.h
     DirectoryLister.cpp
     DirectoryLister.h
     FileReader.cpp
@@ -9,8 +11,18 @@ add_library(smb_browser_native_smb STATIC
     FileWriter.h
     Negotiator.cpp
     Negotiator.h
+    NativeSmbConnection.cpp
+    NativeSmbConnection.h
+    NativeSmbConnector.cpp
+    NativeSmbConnector.h
     NativeSmbSession.cpp
     NativeSmbSession.h
+    NtlmCrypto.cpp
+    NtlmCrypto.h
+    NtlmMessages.cpp
+    NtlmMessages.h
+    NtlmV2TokenProvider.cpp
+    NtlmV2TokenProvider.h
     Protocol.cpp
     Protocol.h
     QueryInfoExchanger.cpp
@@ -25,8 +37,12 @@ add_library(smb_browser_native_smb STATIC
     SetInfoExchanger.h
     SessionSetupExchanger.cpp
     SessionSetupExchanger.h
+    Smb2Signing.cpp
+    Smb2Signing.h
     SmbNative.cpp
     SmbNative.h
+    SpnegoToken.cpp
+    SpnegoToken.h
     Transport.h
     TreeConnector.cpp
     TreeConnector.h
@@ -55,3 +71,10 @@ target_compile_definitions(smb_browser_native_smb
     PUBLIC
         SMB_BROWSER_NATIVE_SMB_CLEAN_ROOM=1
 )
+
+if(WIN32)
+    target_link_libraries(smb_browser_native_smb
+        PUBLIC
+            ws2_32
+    )
+endif()

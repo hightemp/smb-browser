@@ -122,7 +122,34 @@ A `Must` native library feature is not complete until:
   move-only secret buffer and cancellation token.
 - `native_smb_protocol`: SMB2 SYNC header, SMB2 NEGOTIATE request, Direct TCP
   framing, SMB2 NEGOTIATE response, SMB2 SESSION_SETUP request, signing
-  security mode mapping and no-SMB1 initial dialect policy.
+  security mode mapping, NTSTATUS typed error mapping, response early-failure
+  behavior and no-SMB1 initial dialect policy.
+- `native_smb_direct_tcp_transport`: loopback Direct TCP transport exchange,
+  split response frame handling, timeout/cancellation-aware socket path and
+  cancellation before socket open.
+- `native_smb_ntlm_messages`: NTLMSSP negotiate/challenge/authenticate
+  message encode/decode, security buffer offsets and invalid token rejection.
+- `native_smb_ntlm_crypto`: clean-room MD4, MD5, HMAC-MD5, NT hash, NTOWFv2,
+  NTLMv2 proof/session key and LMv2 response vectors.
+- `native_smb_spnego_token`: GSS-SPNEGO NegTokenInit/NegTokenResp wrapping,
+  raw NTLM passthrough and malformed DER rejection.
+- `native_smb_signing`: clean-room SHA-256, HMAC-SHA256, AES-128,
+  AES-128-CMAC, SMB2.0.2/2.1 HMAC signing, SMB3.0/3.0.2 AES-CMAC signing-key
+  derivation and signed response verification over Direct TCP frames.
+- `native_smb_error_mapper`: backend-neutral native error to `AppError`
+  mapping, retryable classification and sanitized technical details.
+- `native_smb_ntlm_v2_token_provider`: NTLMv2 token provider over raw NTLM and
+  SPNEGO, deterministic challenge/timestamp injection, session base key export
+  for signing, guest/anonymous auth behavior, current-user unsupported behavior
+  and password non-disclosure assertions.
+- `native_smb_connector`: baseline connection lifecycle
+  `NEGOTIATE -> SESSION_SETUP token exchange -> TREE_CONNECT`, owned
+  transport/session facade construction, token provider failure, request
+  sequencing, signed `TREE_CONNECT` when signing is required, and explicit
+  `TREE_DISCONNECT -> LOGOFF` teardown sequencing.
+- `native_smb_directory_lister`: composed `CREATE -> QUERY_DIRECTORY... ->
+  CLOSE` flow, paged listing until `STATUS_NO_MORE_FILES`, entry aggregation
+  and correct `RestartScans` behavior.
 - `native_smb_negotiator`: scripted transport negotiation state machine,
   Direct TCP frame exchange, server signing/encryption capability extraction,
   malformed frame handling and cancellation before transport IO.
@@ -168,6 +195,7 @@ A `Must` native library feature is not complete until:
   mapping, invalid query-info response handling and cancellation before
   transport IO.
 - `native_smb_session`: baseline C++ facade over native primitives, operation
-  routing for list/stat/read/write/delete/create-directory/rename, message id
-  allocation, result mapping and error propagation without exposing raw packet
-  buffers to callers.
+  routing for list/stat/read/write/delete/create-directory/rename, recursive
+  delete, wildcard delete, message id allocation, result mapping, cancellation
+  before recursive delete network IO and error propagation without exposing raw
+  packet buffers to callers.

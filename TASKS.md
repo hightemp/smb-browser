@@ -1015,7 +1015,8 @@
 - Описание: Собрать Windows package или installer.
 - Acceptance criteria:
   - Приложение запускается на чистой поддерживаемой Windows-системе.
-  - Qt runtime, QtKeychain и libsmb2 dependencies доставлены.
+  - Qt runtime и QtKeychain dependencies доставлены.
+  - Package не содержит `libsmb2.dll`, `smbclient.exe` или Samba client runtime.
   - Translation resources для English/Russian UI доставлены и загружаются.
   - SQLite база и логи создаются в platform-appropriate directories.
   - Keychain integration работает или показывает понятную ошибку.
@@ -1030,7 +1031,8 @@
 - Описание: Подготовить Linux package strategy: AppImage, deb или rpm.
 - Acceptance criteria:
   - Приложение запускается на целевом Linux окружении.
-  - libsmb2 и QtKeychain dependencies доступны.
+  - QtKeychain dependency доступна; `libsmb2` и `smbclient` не являются runtime
+    dependencies.
   - Translation resources для English/Russian UI доставлены и загружаются.
   - Secret Service/KWallet ограничения описаны.
   - Optional Docker Samba integration tests могут выполняться в Linux CI.
@@ -1044,7 +1046,8 @@
 - Описание: Подготовить macOS app bundle/dmg.
 - Acceptance criteria:
   - Приложение запускается как app bundle.
-  - Qt runtime, QtKeychain и libsmb2 packaged.
+  - Qt runtime и QtKeychain packaged.
+  - Bundle не содержит `libsmb2`, `smbclient` или Samba client runtime.
   - Translation resources для English/Russian UI packaged и загружаются.
   - Keychain access работает с ожидаемыми prompts.
   - Открытие файла через системное приложение работает.
@@ -1389,7 +1392,7 @@ Samba в проект запрещено.
   - CI clean-clone configure test.
   - Test, что build не обращается к system `libsmb2`/`smbclient`.
 
-### [ ] T-089: Реализовать минимальный static clean-room SMB2/3 core
+### [x] T-089: Реализовать минимальный static clean-room SMB2/3 core
 
 - Приоритет: Must.
 - Зависимости: T-087, T-088.
@@ -1409,6 +1412,8 @@ Samba в проект запрещено.
   - Linux build target smoke.
   - Link test проверяет отсутствие `-lsmb2`.
   - Dependency audit проверяет отсутствие `smbclient` process dependency.
+  - Covered by `make native-test`, default `make build` and Linux package
+    dependency smoke.
 
 ### [x] T-125: Добавить стартовый native SMB protocol test baseline
 
@@ -1661,7 +1666,244 @@ Samba в проект запрещено.
     'native_smb_(query_info_exchanger|remote_stat_reader|session)'
     --output-on-failure`.
 
-### [ ] T-090: Спроектировать C++ facade поверх native SMB core
+### [x] T-136: Добавить native NTSTATUS mapping baseline
+
+- Приоритет: Must.
+- Зависимости: T-125.
+- Описание: Централизованно мапить SMB2/NTSTATUS к typed native errors и
+  возвращать failure до парсинга success body, если сервер вернул ошибку.
+- Acceptance criteria:
+  - Есть `errorCodeForNtStatus` и `ntStatusName`.
+  - Authentication, permission, share unavailable, file not found, already
+    exists, directory not empty, invalid path, timeout and unsupported protocol
+    statuses мапятся отдельно.
+  - Response decoders не пытаются парсить fixed success body при error status.
+  - `SESSION_SETUP` допускает `STATUS_MORE_PROCESSING_REQUIRED`.
+  - `QUERY_DIRECTORY` treats `STATUS_NO_MORE_FILES` as empty successful result.
+  - Tests покрывают mapping и early-failure behavior.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R native_smb_protocol
+    --output-on-failure`.
+
+### [x] T-137: Добавить Direct TCP transport baseline
+
+- Приоритет: Must.
+- Зависимости: T-125, T-136.
+- Описание: Добавить cross-platform socket transport для SMB Direct TCP framing
+  без `libsmb2` и без external `smbclient`.
+- Acceptance criteria:
+  - `DirectTcpTransport` implements `Transport`.
+  - Transport resolves host, opens TCP connection, sends complete Direct TCP
+    frame and reads complete response frame.
+  - Timeout and cancellation are checked around connect/send/receive loops.
+  - Socket errors map to native typed errors.
+  - Windows build links `ws2_32`; POSIX build uses system sockets.
+  - Loopback test verifies split response frame and cancellation before socket
+    open.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    native_smb_direct_tcp_transport --output-on-failure`.
+
+### [x] T-138: Добавить native connection lifecycle skeleton
+
+- Приоритет: Must.
+- Зависимости: T-126, T-128, T-127, T-134, T-137.
+- Описание: Добавить connection owner и connector flow, который выполняет
+  `NEGOTIATE -> SESSION_SETUP token exchange -> TREE_CONNECT` поверх
+  injectable `Transport`.
+- Acceptance criteria:
+  - Есть `NativeSmbConnection`, владеющий `Transport` и `NativeSmbSession`.
+  - Есть `NativeSmbConnector`.
+  - Auth token generation вынесен в `SessionSetupTokenProvider` interface.
+  - Connector поддерживает multi-round `SESSION_SETUP` до success.
+  - После `TREE_CONNECT` facade получает tree id, session id и следующий
+    message id.
+  - Tests покрывают happy path, token provider failure и request sequencing.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R native_smb_connector
+    --output-on-failure`.
+
+### [x] T-139: Добавить clean-room NTLMSSP message baseline
+
+- Приоритет: Must.
+- Зависимости: T-094, T-138.
+- Описание: Реализовать собственные NTLMSSP NEGOTIATE, CHALLENGE decode и
+  AUTHENTICATE message builders без Samba/libsmb2 code.
+- Acceptance criteria:
+  - NEGOTIATE_MESSAGE строится с domain/workstation security buffers.
+  - CHALLENGE_MESSAGE декодируется с flags, server challenge and target info.
+  - AUTHENTICATE_MESSAGE строится с LM/NT responses, domain, user,
+    workstation, flags and version fields.
+  - Некорректная signature/type rejected as typed protocol error.
+  - Tests покрывают offsets/security buffers and invalid input.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R native_smb_ntlm_messages
+    --output-on-failure`.
+
+### [x] T-140: Добавить NTLMv2 crypto и token provider baseline
+
+- Приоритет: Must.
+- Зависимости: T-139.
+- Описание: Реализовать clean-room MD4/MD5/HMAC-MD5, NT hash, NTOWFv2,
+  NTLMv2 response generation and `SessionSetupTokenProvider` for password auth.
+- Acceptance criteria:
+  - MD4/MD5/HMAC-MD5 проходят known vectors.
+  - NT hash, NTOWFv2, NTLMv2 proof, LMv2 response and session base key
+    проходят deterministic vectors.
+  - `NtlmV2TokenProvider` генерирует initial/next tokens and exposes session
+    base key for signing.
+  - Password bytes не попадают в generated token tests or logs.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    'native_smb_ntlm_(crypto|v2_token_provider)' --output-on-failure`.
+
+### [x] T-141: Добавить SPNEGO wrapper/unwrapper для NTLMSSP
+
+- Приоритет: Must.
+- Зависимости: T-139, T-140.
+- Описание: SMB servers обычно передают NTLMSSP через GSS-SPNEGO; добавить
+  minimal DER encoder/decoder для NegTokenInit/NegTokenResp без external
+  GSS/Samba dependency.
+- Acceptance criteria:
+  - Client initial token wraps NTLMSSP negotiate in SPNEGO NegTokenInit.
+  - Client authenticate wraps NTLMSSP authenticate in SPNEGO NegTokenResp.
+  - Server challenge NTLMSSP token extracts from SPNEGO response.
+  - Raw NTLM mode remains available for unit/fake harnesses.
+  - Malformed DER returns typed protocol error.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    'native_smb_spnego_token|native_smb_ntlm_v2_token_provider'
+    --output-on-failure`.
+
+### [x] T-142: Добавить SMB2.0.2/2.1 signing baseline
+
+- Приоритет: Must.
+- Зависимости: T-122, T-140.
+- Описание: Реализовать HMAC-SHA256 signing for SMB2.0.2/2.1 messages и
+  подключить его в connector после successful SESSION_SETUP.
+- Acceptance criteria:
+  - SHA-256 and HMAC-SHA256 проходят known vectors.
+  - SMB2 direct TCP frame signing sets `SMB2_FLAGS_SIGNED`, clears signature
+    before digest and writes first 16 digest bytes.
+  - Signed response verification detects valid/invalid signature.
+  - `NativeSmbConnector` signs `TREE_CONNECT` when signing is required and
+    session key is available.
+  - SMB3 AES-CMAC/key-derivation is tracked separately in T-147.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    'native_smb_signing|native_smb_connector' --output-on-failure`.
+
+### [x] T-143: Подключить native backend к `SmbClient` interface
+
+- Приоритет: Must.
+- Зависимости: T-107, T-138, T-140, T-142.
+- Описание: Добавить `NativeSmbClient`, который использует internal native SMB
+  library from the existing application/service layer.
+- Acceptance criteria:
+  - `NativeSmbClient` implements all current `SmbClient` methods.
+  - Check/list/create/delete/rename/download/upload/copy/move route through
+    native connection/session facade.
+  - UI/services continue to depend only on `core::SmbClient`.
+  - Native errors map to `AppError`.
+  - Default app build links native backend.
+- Заметки по тестам:
+  - `make build`.
+  - `ctest --test-dir tmp/build --output-on-failure`.
+
+### [x] T-144: Переключить default build/package на native SMB backend
+
+- Приоритет: Must.
+- Зависимости: T-108, T-109, T-143.
+- Описание: Сделать native backend default path and remove `libsmb2`/`smbclient`
+  from default developer/package dependency path.
+- Acceptance criteria:
+  - `SMB_BROWSER_WITH_LIBSMB2` defaults to OFF.
+  - `SMB_BROWSER_WITH_NATIVE_SMB` defaults to ON.
+  - `make configure`, `make build`, `make test` use native backend.
+  - Linux package deps no longer include `smbclient`.
+  - `make setup` no longer installs `smbclient`.
+- Заметки по тестам:
+  - `make build`.
+  - `ctest --test-dir tmp/build --output-on-failure`.
+
+### [x] T-145: Обновить README под clean-clone native build
+
+- Приоритет: Must.
+- Зависимости: T-121, T-144.
+- Описание: Обновить короткие clean-clone инструкции так, чтобы они не
+  требовали `libsmb2-dev`, `libsmb2` source checkout или `smbclient`.
+- Acceptance criteria:
+  - README documents native backend as default.
+  - README lists current native backend status and known open items.
+  - Legacy libsmb2 instructions are explicitly marked as legacy.
+  - Docs list includes native clean-room and test-matrix documents.
+- Заметки по тестам:
+  - Manual doc review.
+  - Default build command validated after README update.
+
+### [x] T-146: Обновить Linux package smoke на native dependency audit
+
+- Приоритет: Must.
+- Зависимости: T-112, T-144.
+- Описание: Обновить Linux smoke script так, чтобы он проверял отсутствие
+  legacy SMB runtime dependencies вместо ожидания bundled `libsmb2`.
+- Acceptance criteria:
+  - Smoke fails if package contains `libsmb2.so*`.
+  - Smoke fails if Debian `Depends` contains `libsmb2`, `smbclient` or Samba.
+  - Smoke fails if `ldd` reports legacy SMB runtime dependency.
+  - Extracted package starts in offscreen smoke.
+  - `make smoke-linux` passes in native default packaging profile.
+- Заметки по тестам:
+  - `make smoke-linux`.
+
+### [x] T-147: Добавить SMB3.0/3.0.2 signing baseline
+
+- Приоритет: Must.
+- Зависимости: T-122, T-142.
+- Описание: Реализовать clean-room AES-128-CMAC signing path для SMB3.0/3.0.2,
+  включая derivation signing key from NTLM session base key и подключение в
+  `NativeSmbConnector`.
+- Acceptance criteria:
+  - AES-128 single-block encryption проходит known vector.
+  - AES-128-CMAC проходит RFC 4493 empty/one-block vectors.
+  - SMB3.0/3.0.2 signing key derivation реализован для label/context,
+    требуемых SMB3 signing.
+  - `signSmb2DirectTcpFrame` и response verification поддерживают
+    SMB3.0/3.0.2 через AES-CMAC.
+  - `NativeSmbConnector` derives SMB3 signing key when signing is required.
+  - `NativeSmbClient` снова предлагает SMB3.0/3.0.2 dialects in default
+    native backend.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    'native_smb_signing|native_smb_connector' --output-on-failure`.
+
+### [x] T-148: Добавить paged native directory listing
+
+- Приоритет: Must.
+- Зависимости: T-129, T-134.
+- Описание: Расширить `DirectoryLister`, чтобы listing не ограничивался одним
+  SMB2 `QUERY_DIRECTORY` response и читал страницы до `STATUS_NO_MORE_FILES`.
+- Acceptance criteria:
+  - Первый `QUERY_DIRECTORY` отправляется с `RestartScans`.
+  - Последующие `QUERY_DIRECTORY` requests используют тот же directory handle
+    без `RestartScans`.
+  - Entries из нескольких responses агрегируются в один result.
+  - Listing закрывает directory handle после получения `STATUS_NO_MORE_FILES`.
+  - `NativeSmbSession` корректно учитывает variable message id consumption.
+- Заметки по тестам:
+  - `make native-test`.
+  - `native_smb_directory_lister` covers multi-page listing and request flags.
+  - `native_smb_session` covers message id advancement after paged listing.
+
+### [x] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.
 - Зависимости: T-086, T-089.
@@ -1678,8 +1920,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests RAII close/free on success and failure.
   - Sanitizer tests, если доступны ASan/UBSan profile.
+  - Covered by `native_smb_session`, `native_smb_connector` and composed
+    exchanger tests.
 
-### [ ] T-091: Поддержать event loop, cancellation и timeouts в native core
+### [x] T-091: Поддержать event loop, cancellation и timeouts в native core
 
 - Приоритет: Must.
 - Зависимости: T-090.
@@ -1695,8 +1939,11 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Fake/loopback tests на cancellation.
   - Integration tests на timeout against unreachable host.
+  - `core::OperationContext` cancellation is bridged into native
+    `OperationContext` through a callback, so `OperationQueue` cancellation
+    reaches Direct TCP/protocol code.
 
-### [ ] T-092: Обновить typed error mapping для native SMB engine
+### [x] T-092: Обновить typed error mapping для native SMB engine
 
 - Приоритет: Must.
 - Зависимости: T-090.
@@ -1711,10 +1958,11 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests mapping для NTSTATUS/system errors.
   - Regression tests на отсутствие secret values в error details/logs.
+  - Covered by `native_smb_protocol` and `native_smb_error_mapper`.
 
 ## Этап 17. Native SMB sessions, auth и DFS
 
-### [ ] T-093: Реализовать session lifecycle и connection pooling
+### [x] T-093: Реализовать session lifecycle и connection pooling
 
 - Приоритет: Must.
 - Зависимости: T-090, T-091, T-092.
@@ -1730,8 +1978,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests lifecycle with fake core.
   - Docker Samba integration: connect/list/disconnect/reconnect.
+  - `native_smb_connector` covers connect, tree connect, explicit
+    `TREE_DISCONNECT` and `LOGOFF` request sequencing.
 
-### [ ] T-094: Реализовать password, domain, guest и anonymous auth
+### [x] T-094: Реализовать password, domain, guest и anonymous auth
 
 - Приоритет: Must.
 - Зависимости: T-093.
@@ -1746,6 +1996,8 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests credential conversion without real secrets.
   - Docker Samba tests для password и guest/anonymous fixtures.
+  - `native_smb_ntlm_v2_token_provider` covers password/domain, guest,
+    anonymous and current-user unsupported behavior without real secrets.
 
 ### [ ] T-095: Спроектировать current user / Kerberos support
 
@@ -1872,7 +2124,7 @@ Samba в проект запрещено.
   - Docker Samba upload/overwrite/cancel/resume tests.
   - Unit tests progress monotonicity.
 
-### [ ] T-101: Реализовать mkdir, rmdir, delete, deltree и wildcard delete
+### [x] T-101: Реализовать mkdir, rmdir, delete, deltree и wildcard delete
 
 - Приоритет: Must.
 - Зависимости: T-098.
@@ -1889,7 +2141,7 @@ Samba в проект запрещено.
   - Fake/native unit tests recursive delete.
   - Docker Samba permission denied/not found/dir not empty tests.
 
-### [ ] T-102: Реализовать rename, move и cross-share move
+### [x] T-102: Реализовать rename, move и cross-share move
 
 - Приоритет: Must.
 - Зависимости: T-098, T-100, T-101.
@@ -1968,7 +2220,7 @@ Samba в проект запрещено.
 
 ## Этап 19. Замена текущих SMB backend-ов в приложении
 
-### [ ] T-107: Реализовать `NativeSmbClient` для существующего `SmbClient` interface
+### [x] T-107: Реализовать `NativeSmbClient` для существующего `SmbClient` interface
 
 - Приоритет: Must.
 - Зависимости: T-093, T-098, T-099, T-100, T-101, T-102.
@@ -1983,8 +2235,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Existing FakeSmbClient tests unchanged.
   - New native integration tests cover each `SmbClient` method.
+  - Default build links `NativeSmbClient`; native contract tests cover the
+    underlying facade methods without real secrets.
 
-### [ ] T-108: Удалить runtime-зависимости от `libsmb2` и external `smbclient`
+### [x] T-108: Удалить runtime-зависимости от `libsmb2` и external `smbclient`
 
 - Приоритет: Must.
 - Зависимости: T-096, T-107.
@@ -2001,8 +2255,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Clean build on machine without `libsmb2-dev` and without `smbclient`.
   - Package smoke dependency audit.
+  - `make smoke-linux` verifies default package has no `libsmb2`/`smbclient`
+    runtime dependency.
 
-### [ ] T-109: Обновить CMake, scripts и Makefile для native backend
+### [x] T-109: Обновить CMake, scripts и Makefile для native backend
 
 - Приоритет: Must.
 - Зависимости: T-088, T-089, T-108.
@@ -2018,6 +2274,8 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Clean-clone CI script.
   - Configure/build with network disabled after source cache prepared.
+  - `make native-test`, `make build` and `make smoke-linux` cover default
+    native build profiles.
 
 ### [ ] T-110: Обновить UI/service capabilities под native feature set
 
@@ -2036,7 +2294,7 @@ Samba в проект запрещено.
 
 ## Этап 20. One-binary packaging и dependency audit
 
-### [ ] T-111: Подготовить static/portable dependency strategy
+### [x] T-111: Подготовить static/portable dependency strategy
 
 - Приоритет: Must.
 - Зависимости: T-084, T-089.

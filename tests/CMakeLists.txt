@@ -128,6 +128,116 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-protocol"
     )
 
+    add_executable(test_native_smb_direct_tcp_transport
+        test_native_smb_direct_tcp_transport.cpp
+    )
+
+    target_link_libraries(test_native_smb_direct_tcp_transport
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_direct_tcp_transport
+             COMMAND test_native_smb_direct_tcp_transport)
+    set_tests_properties(native_smb_direct_tcp_transport PROPERTIES
+        LABELS "native-unit;native-transport"
+    )
+
+    add_executable(test_native_smb_ntlm_messages
+        test_native_smb_ntlm_messages.cpp
+    )
+
+    target_link_libraries(test_native_smb_ntlm_messages
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_ntlm_messages
+             COMMAND test_native_smb_ntlm_messages)
+    set_tests_properties(native_smb_ntlm_messages PROPERTIES
+        LABELS "native-unit;native-auth"
+    )
+
+    add_executable(test_native_smb_ntlm_crypto
+        test_native_smb_ntlm_crypto.cpp
+    )
+
+    target_link_libraries(test_native_smb_ntlm_crypto
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_ntlm_crypto
+             COMMAND test_native_smb_ntlm_crypto)
+    set_tests_properties(native_smb_ntlm_crypto PROPERTIES
+        LABELS "native-unit;native-auth"
+    )
+
+    add_executable(test_native_smb_spnego_token
+        test_native_smb_spnego_token.cpp
+    )
+
+    target_link_libraries(test_native_smb_spnego_token
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_spnego_token
+             COMMAND test_native_smb_spnego_token)
+    set_tests_properties(native_smb_spnego_token PROPERTIES
+        LABELS "native-unit;native-auth;native-protocol"
+    )
+
+    add_executable(test_native_smb_signing
+        test_native_smb_signing.cpp
+    )
+
+    target_link_libraries(test_native_smb_signing
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_signing COMMAND test_native_smb_signing)
+    set_tests_properties(native_smb_signing PROPERTIES
+        LABELS "native-unit;native-auth;native-protocol"
+    )
+
+    add_executable(test_native_smb_ntlm_v2_token_provider
+        test_native_smb_ntlm_v2_token_provider.cpp
+    )
+
+    target_link_libraries(test_native_smb_ntlm_v2_token_provider
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_ntlm_v2_token_provider
+             COMMAND test_native_smb_ntlm_v2_token_provider)
+    set_tests_properties(native_smb_ntlm_v2_token_provider PROPERTIES
+        LABELS "native-unit;native-auth;native-contract"
+    )
+
+    add_executable(test_native_smb_connector
+        test_native_smb_connector.cpp
+    )
+
+    target_link_libraries(test_native_smb_connector
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_connector COMMAND test_native_smb_connector)
+    set_tests_properties(native_smb_connector PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
     add_executable(test_native_smb_negotiator
         test_native_smb_negotiator.cpp
     )
@@ -349,6 +459,22 @@ if(TARGET smb_browser_native_smb)
     set_tests_properties(native_smb_session PROPERTIES
         LABELS "native-unit;native-fake-transport;native-contract"
     )
+
+    add_executable(test_native_smb_error_mapper
+        test_native_smb_error_mapper.cpp
+    )
+
+    target_link_libraries(test_native_smb_error_mapper
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_error_mapper
+             COMMAND test_native_smb_error_mapper)
+    set_tests_properties(native_smb_error_mapper PROPERTIES
+        LABELS "native-unit;native-contract"
+    )
 endif()
 
 add_executable(test_log_sanitizer
@@ -423,32 +549,32 @@ target_link_libraries(test_file_logger
 
 add_test(NAME file_logger COMMAND test_file_logger)
 
-add_executable(test_smbclient_dfs_referral_resolver
-    test_smbclient_dfs_referral_resolver.cpp
-)
-
-target_link_libraries(test_smbclient_dfs_referral_resolver
-    PRIVATE
-        smb_browser_infrastructure
-        Qt5::Test
-)
-
-add_test(NAME smbclient_dfs_referral_resolver
-         COMMAND test_smbclient_dfs_referral_resolver)
-
-add_executable(test_dfs_resolving_smb_client
-    test_dfs_resolving_smb_client.cpp
-)
-
-target_link_libraries(test_dfs_resolving_smb_client
-    PRIVATE
-        smb_browser_infrastructure
-        Qt5::Test
-)
-
-add_test(NAME dfs_resolving_smb_client COMMAND test_dfs_resolving_smb_client)
-
 if(SMB_BROWSER_WITH_LIBSMB2)
+    add_executable(test_smbclient_dfs_referral_resolver
+        test_smbclient_dfs_referral_resolver.cpp
+    )
+
+    target_link_libraries(test_smbclient_dfs_referral_resolver
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME smbclient_dfs_referral_resolver
+             COMMAND test_smbclient_dfs_referral_resolver)
+
+    add_executable(test_dfs_resolving_smb_client
+        test_dfs_resolving_smb_client.cpp
+    )
+
+    target_link_libraries(test_dfs_resolving_smb_client
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME dfs_resolving_smb_client COMMAND test_dfs_resolving_smb_client)
+
     add_executable(test_libsmb2_error_mapper
         test_libsmb2_error_mapper.cpp
     )

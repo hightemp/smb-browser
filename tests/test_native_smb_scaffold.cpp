@@ -62,6 +62,16 @@ private slots:
     token.cancel();
     QVERIFY(token.isCancellationRequested());
   }
+
+  void operationContextSupportsCancellationCallback() {
+    bool cancelled = false;
+    smb::native_smb::OperationContext context;
+    context.cancellationCallback = [&cancelled]() { return cancelled; };
+
+    QVERIFY(!smb::native_smb::isCancellationRequested(context));
+    cancelled = true;
+    QVERIFY(smb::native_smb::isCancellationRequested(context));
+  }
 };
 
 QTEST_MAIN(NativeSmbScaffoldTest)

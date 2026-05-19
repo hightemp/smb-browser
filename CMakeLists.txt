@@ -24,7 +24,7 @@ find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
 
-option(SMB_BROWSER_WITH_LIBSMB2 "Build the libsmb2 SMB backend" ON)
+option(SMB_BROWSER_WITH_LIBSMB2 "Build the legacy libsmb2 SMB backend" OFF)
 option(SMB_BROWSER_USE_SYSTEM_LIBSMB2
     "Use a system/pkg-config libsmb2 instead of fetching the pinned source"
     OFF
@@ -98,6 +98,28 @@ option(SMB_BROWSER_WITH_NATIVE_SMB
     "Build the clean-room native SMB engine scaffold"
     ON
 )
+option(SMB_BROWSER_ENABLE_HARDENING
+    "Enable release compiler/linker hardening flags where supported"
+    ON
+)
+
+if(SMB_BROWSER_ENABLE_HARDENING)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(
+            "$<$<CONFIG:Release>:-fstack-protector-strong>"
+            "$<$<CONFIG:Release>:-D_FORTIFY_SOURCE=2>"
+        )
+        if(UNIX AND NOT APPLE)
+            add_link_options(
+                "$<$<CONFIG:Release>:-Wl,-z,relro>"
+                "$<$<CONFIG:Release>:-Wl,-z,now>"
+            )
+        endif()
+    elseif(MSVC)
+        add_compile_options("$<$<CONFIG:Release>:/guard:cf>")
+        add_link_options("$<$<CONFIG:Release>:/guard:cf>")
+    endif()
+endif()
 
 add_subdirectory(src)
 
@@ -129,7 +151,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5svg5, libqt5keychain1, libsodium23, smbclient"
+        "libqt5core5a, libqt5gui5, libqt5widgets5, libqt5sql5, libqt5sql5-sqlite, libqt5svg5, libqt5keychain1, libsodium23"
     )
 elseif(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")

@@ -109,8 +109,9 @@ smb::native_smb::ByteVector fileIdBothEntry(const std::string &name,
   return bytes;
 }
 
-smb::native_smb::ByteVector queryDirectoryResponsePayload() {
-  auto entry = fileIdBothEntry("report.xlsx", 0, 2001);
+smb::native_smb::ByteVector queryDirectoryResponsePayload(
+    const std::string &name = "report.xlsx", std::uint64_t fileId = 2001) {
+  auto entry = fileIdBothEntry(name, 0, fileId);
 
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::QueryDirectory;
@@ -125,6 +126,17 @@ smb::native_smb::ByteVector queryDirectoryResponsePayload() {
   appendU32Le(bytes, static_cast<std::uint32_t>(entry.size()));
   bytes.insert(bytes.end(), entry.begin(), entry.end());
   return bytes;
+}
+
+smb::native_smb::ByteVector queryDirectoryNoMoreFilesPayload() {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::QueryDirectory;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = smb::native_smb::kStatusNoMoreFiles;
+  header.messageId = 32;
+  header.treeId = 77;
+  header.sessionId = 34;
+  return smb::native_smb::encodeSmb2SyncHeader(header);
 }
 
 smb::native_smb::ByteVector closeResponsePayload() {
@@ -164,13 +176,14 @@ private slots:
   void listsDirectoryOverScriptedTransport() {
     ScriptedTransport transport({framedSuccess(createResponsePayload()),
                                  framedSuccess(queryDirectoryResponsePayload()),
+                                 framedSuccess(queryDirectoryNoMoreFilesPayload()),
                                  framedSuccess(closeResponsePayload())});
 
     const smb::native_smb::DirectoryLister lister;
     const auto result = lister.list(transport, "folder", 30, 77, 34, {});
 
     QVERIFY(result.ok);
-    QCOMPARE(transport.requestFrames.size(), std::size_t{3});
+    QCOMPARE(transport.requestFrames.size(), std::size_t{4});
     QCOMPARE(result.value.directoryFileId.persistent,
              std::uint64_t{0x0102030405060708ULL});
     QCOMPARE(result.value.directoryFileId.volatileId,
@@ -199,13 +212,46 @@ private slots:
              static_cast<int>(smb::native_smb::Command::QueryDirectory));
 
     const auto closePayload =
-        smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[2]);
+        smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[3]);
     QVERIFY(closePayload.ok);
     const auto closeHeader =
         smb::native_smb::decodeSmb2SyncHeader(closePayload.value);
     QVERIFY(closeHeader.ok);
     QCOMPARE(static_cast<int>(closeHeader.value.command),
              static_cast<int>(smb::native_smb::Command::Close));
+  }
+
+  void readsDirectoryPagesUntilNoMoreFiles() {
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload()),
+        framedSuccess(queryDirectoryResponsePayload("first.txt", 2001)),
+        framedSuccess(queryDirectoryResponsePayload("second.txt", 2002)),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    const smb::native_smb::DirectoryLister lister;
+    const auto result = lister.list(transport, "folder", 30, 77, 34, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(transport.requestFrames.size(), std::size_t{5});
+    QCOMPARE(result.value.entries.size(), std::size_t{2});
+    QCOMPARE(QString::fromStdString(result.value.entries[0].name),
+             QStringLiteral("first.txt"));
+    QCOMPARE(QString::fromStdString(result.value.entries[1].name),
+             QStringLiteral("second.txt"));
+    QCOMPARE(result.value.messagesUsed, std::uint64_t{5});
+
+    const auto firstQueryPayload =
+        smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[1]);
+    QVERIFY(firstQueryPayload.ok);
+    QCOMPARE(firstQueryPayload.value[67],
+             smb::native_smb::kQueryDirectoryRestartScans);
+
+    const auto secondQueryPayload =
+        smb::native_smb::decodeDirectTcpPayload(transport.requestFrames[2]);
+    QVERIFY(secondQueryPayload.ok);
+    QCOMPARE(secondQueryPayload.value[67], std::uint8_t{0});
   }
 
   void stopsWhenCreateResponseIsInvalid() {

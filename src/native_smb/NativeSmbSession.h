@@ -90,13 +90,24 @@ public:
                const OperationContext &context);
 
   DecodeResult<NativeObjectMutationResult>
+  deleteTree(const std::string &path, const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  deleteWildcard(const std::string &parentPath, const std::string &pattern,
+                 const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
   renameObject(const std::string &fromPath, const std::string &toPath,
                bool replaceIfExists, const OperationContext &context);
 
+  std::uint32_t treeId() const;
+  std::uint64_t sessionId() const;
+  std::uint64_t allocateMessageIds(std::uint64_t count);
   std::uint64_t nextMessageIdForTests() const;
 
 private:
-  std::uint64_t allocateMessageIds(std::uint64_t count);
+  DecodeResult<NativeObjectMutationResult>
+  deleteTreeInternal(const std::string &path, const OperationContext &context);
 
   Transport &m_transport;
   std::uint32_t m_treeId = 0;

@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <deque>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -50,6 +52,14 @@ void appendU64Le(smb::native_smb::ByteVector &bytes, std::uint64_t value) {
   for (int shift = 0; shift < 64; shift += 8) {
     bytes.push_back(static_cast<std::uint8_t>((value >> shift) & 0xFF));
   }
+}
+
+void writeU32Le(smb::native_smb::ByteVector &bytes, std::size_t offset,
+                std::uint32_t value) {
+  bytes[offset] = static_cast<std::uint8_t>(value & 0xFF);
+  bytes[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+  bytes[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+  bytes[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
 }
 
 void appendZeros(smb::native_smb::ByteVector &bytes, std::size_t count) {
@@ -106,8 +116,10 @@ smb::native_smb::ByteVector closeResponsePayload() {
   return bytes;
 }
 
-smb::native_smb::ByteVector directoryEntry() {
-  const auto name = smb::native_smb::encodeUtf16Le("folder");
+smb::native_smb::ByteVector directoryEntryFor(
+    const std::string &entryName, std::uint32_t attributes,
+    std::uint64_t endOfFile = 0, std::uint64_t fileId = 1002) {
+  const auto name = smb::native_smb::encodeUtf16Le(entryName);
   smb::native_smb::ByteVector bytes;
   appendU32Le(bytes, 0);
   appendU32Le(bytes, 0);
@@ -115,22 +127,34 @@ smb::native_smb::ByteVector directoryEntry() {
   appendU64Le(bytes, 12);
   appendU64Le(bytes, 13);
   appendU64Le(bytes, 14);
-  appendU64Le(bytes, 0);
-  appendU64Le(bytes, 0);
-  appendU32Le(bytes, smb::native_smb::kFileAttributeDirectory);
+  appendU64Le(bytes, endOfFile);
+  appendU64Le(bytes, endOfFile == 0 ? 0 : endOfFile);
+  appendU32Le(bytes, attributes);
   appendU32Le(bytes, static_cast<std::uint32_t>(name.size()));
   appendU32Le(bytes, 0);
   bytes.push_back(0);
   bytes.push_back(0);
   appendZeros(bytes, 24);
   appendU16Le(bytes, 0);
-  appendU64Le(bytes, 1002);
+  appendU64Le(bytes, fileId);
   bytes.insert(bytes.end(), name.begin(), name.end());
   return bytes;
 }
 
-smb::native_smb::ByteVector queryDirectoryResponsePayload() {
-  const auto entry = directoryEntry();
+smb::native_smb::ByteVector directoryEntry() {
+  return directoryEntryFor("folder", smb::native_smb::kFileAttributeDirectory);
+}
+
+smb::native_smb::ByteVector queryDirectoryResponsePayload(
+    std::vector<smb::native_smb::ByteVector> entries) {
+  smb::native_smb::ByteVector payload;
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    if (i + 1 < entries.size()) {
+      writeU32Le(entries[i], 0, static_cast<std::uint32_t>(entries[i].size()));
+    }
+    payload.insert(payload.end(), entries[i].begin(), entries[i].end());
+  }
+
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::QueryDirectory;
   header.flags = smb::native_smb::kFlagServerToRedir;
@@ -140,9 +164,23 @@ smb::native_smb::ByteVector queryDirectoryResponsePayload() {
   auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
   appendU16Le(bytes, smb::native_smb::kQueryDirectoryResponseStructureSize);
   appendU16Le(bytes, 72);
-  appendU32Le(bytes, static_cast<std::uint32_t>(entry.size()));
-  bytes.insert(bytes.end(), entry.begin(), entry.end());
+  appendU32Le(bytes, static_cast<std::uint32_t>(payload.size()));
+  bytes.insert(bytes.end(), payload.begin(), payload.end());
   return bytes;
+}
+
+smb::native_smb::ByteVector queryDirectoryResponsePayload() {
+  return queryDirectoryResponsePayload({directoryEntry()});
+}
+
+smb::native_smb::ByteVector queryDirectoryNoMoreFilesPayload() {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::QueryDirectory;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = smb::native_smb::kStatusNoMoreFiles;
+  header.treeId = 77;
+  header.sessionId = 34;
+  return smb::native_smb::encodeSmb2SyncHeader(header);
 }
 
 smb::native_smb::ByteVector readResponsePayload() {
@@ -183,24 +221,26 @@ smb::native_smb::ByteVector writeResponsePayload() {
   return bytes;
 }
 
-smb::native_smb::ByteVector fileBasicInformationBuffer() {
+smb::native_smb::ByteVector fileBasicInformationBuffer(
+    std::uint32_t attributes = smb::native_smb::kFileAttributeReparsePoint) {
   smb::native_smb::ByteVector bytes;
   appendU64Le(bytes, 10);
   appendU64Le(bytes, 20);
   appendU64Le(bytes, 30);
   appendU64Le(bytes, 40);
-  appendU32Le(bytes, smb::native_smb::kFileAttributeReparsePoint);
+  appendU32Le(bytes, attributes);
   appendU32Le(bytes, 0);
   return bytes;
 }
 
-smb::native_smb::ByteVector fileStandardInformationBuffer() {
+smb::native_smb::ByteVector fileStandardInformationBuffer(
+    bool directory = true, std::uint64_t endOfFile = 123) {
   smb::native_smb::ByteVector bytes;
   appendU64Le(bytes, 4096);
-  appendU64Le(bytes, 123);
+  appendU64Le(bytes, endOfFile);
   appendU32Le(bytes, 2);
   bytes.push_back(0);
-  bytes.push_back(1);
+  bytes.push_back(directory ? 1 : 0);
   appendU16Le(bytes, 0);
   return bytes;
 }
@@ -260,6 +300,7 @@ private slots:
             smb::native_smb::Command::Create,
             smb::native_smb::kFileAttributeDirectory)),
         framedSuccess(queryDirectoryResponsePayload()),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
         framedSuccess(closeResponsePayload()),
         framedSuccess(createResponsePayload()),
         framedSuccess(readResponsePayload()),
@@ -299,20 +340,20 @@ private slots:
     QCOMPARE(QString::fromStdString(removed.value.path),
              QStringLiteral("docs/file.txt"));
 
-    QCOMPARE(transport.requestFrames.size(), std::size_t{12});
+    QCOMPARE(transport.requestFrames.size(), std::size_t{13});
     QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
              std::uint64_t{100});
     QCOMPARE(requestHeader(transport.requestFrames[1]).messageId,
              std::uint64_t{101});
     QCOMPARE(requestHeader(transport.requestFrames[2]).messageId,
              std::uint64_t{102});
-    QCOMPARE(requestHeader(transport.requestFrames[3]).messageId,
-             std::uint64_t{103});
-    QCOMPARE(requestHeader(transport.requestFrames[6]).messageId,
-             std::uint64_t{106});
-    QCOMPARE(requestHeader(transport.requestFrames[9]).messageId,
-             std::uint64_t{109});
-    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{112});
+    QCOMPARE(requestHeader(transport.requestFrames[4]).messageId,
+             std::uint64_t{104});
+    QCOMPARE(requestHeader(transport.requestFrames[7]).messageId,
+             std::uint64_t{107});
+    QCOMPARE(requestHeader(transport.requestFrames[10]).messageId,
+             std::uint64_t{110});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{113});
   }
 
   void routesStatObject() {
@@ -387,6 +428,139 @@ private slots:
     QCOMPARE(requestHeader(transport.requestFrames[2]).messageId,
              std::uint64_t{52});
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{55});
+  }
+
+  void recursivelyDeletesDirectoryTrees() {
+    const auto directoryAttributes = smb::native_smb::kFileAttributeDirectory;
+    const auto fileAttributes = smb::native_smb::kFileAttributeNormal;
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(queryInfoResponsePayload(
+            fileBasicInformationBuffer(directoryAttributes))),
+        framedSuccess(
+            queryInfoResponsePayload(fileStandardInformationBuffer(true))),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(queryDirectoryResponsePayload({
+            directoryEntryFor("file.txt", fileAttributes, 4, 2001),
+            directoryEntryFor("subdir", directoryAttributes, 0, 2002),
+        })),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            fileAttributes)),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(queryInfoResponsePayload(
+            fileBasicInformationBuffer(directoryAttributes))),
+        framedSuccess(
+            queryInfoResponsePayload(fileStandardInformationBuffer(true))),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            directoryAttributes)),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 200;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto removed = session.deleteTree("root", {});
+
+    QVERIFY(removed.ok);
+    QCOMPARE(QString::fromStdString(removed.value.path),
+             QStringLiteral("root"));
+    QCOMPARE(transport.requestFrames.size(), std::size_t{24});
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[5]).command),
+             static_cast<int>(smb::native_smb::Command::QueryDirectory));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[20]).command),
+             static_cast<int>(smb::native_smb::Command::Close));
+    QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
+             std::uint64_t{200});
+    QCOMPARE(requestHeader(transport.requestFrames[21]).messageId,
+             std::uint64_t{221});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{224});
+  }
+
+  void deletesWildcardMatchesOnly() {
+    const auto fileAttributes = smb::native_smb::kFileAttributeNormal;
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload(
+            smb::native_smb::Command::Create,
+            smb::native_smb::kFileAttributeDirectory)),
+        framedSuccess(queryDirectoryResponsePayload({
+            directoryEntryFor("keep.txt", fileAttributes, 1, 3001),
+            directoryEntryFor("a.tmp", fileAttributes, 2, 3002),
+            directoryEntryFor("b.TMP", fileAttributes, 3, 3003),
+        })),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            fileAttributes)),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload(smb::native_smb::Command::Create,
+                                            fileAttributes)),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 400;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto removed = session.deleteWildcard("root", "*.tmp", {});
+
+    QVERIFY(removed.ok);
+    QCOMPARE(QString::fromStdString(removed.value.path),
+             QStringLiteral("root\\*.tmp"));
+    QCOMPARE(transport.requestFrames.size(), std::size_t{10});
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[0]).command),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[4]).command),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[7]).command),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{410});
+  }
+
+  void cancelsRecursiveDeleteBeforeNetworkIo() {
+    ScriptedTransport transport({});
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    smb::native_smb::CancellationToken token;
+    token.cancel();
+    smb::native_smb::OperationContext context;
+    context.cancellationToken = &token;
+
+    const auto removed = session.deleteTree("root", context);
+
+    QVERIFY(!removed.ok);
+    QCOMPARE(static_cast<int>(removed.error.code),
+             static_cast<int>(smb::native_smb::ErrorCode::Cancelled));
+    QCOMPARE(transport.requestFrames.size(), std::size_t{0});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{1});
   }
 
   void returnsErrorsWithoutLeakingTransportDetails() {
