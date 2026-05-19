@@ -1,6 +1,15 @@
 add_library(smb_browser_native_smb STATIC
+    Negotiator.cpp
+    Negotiator.h
+    Protocol.cpp
+    Protocol.h
+    SessionSetupExchanger.cpp
+    SessionSetupExchanger.h
     SmbNative.cpp
     SmbNative.h
+    Transport.h
+    TreeConnector.cpp
+    TreeConnector.h
 )
 
 set_target_properties(smb_browser_native_smb

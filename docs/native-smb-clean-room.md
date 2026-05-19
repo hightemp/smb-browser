@@ -297,6 +297,8 @@ Phase 5: packaging and release
 
 ## Test strategy
 
+Полная матрица покрытия зафиксирована в `docs/native-smb-test-matrix.md`.
+
 Default tests:
 
 - Unit tests for path normalization, credentials conversion, error mapping,

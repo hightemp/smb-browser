@@ -1410,6 +1410,93 @@ Samba в проект запрещено.
   - Link test проверяет отсутствие `-lsmb2`.
   - Dependency audit проверяет отсутствие `smbclient` process dependency.
 
+### [x] T-125: Добавить стартовый native SMB protocol test baseline
+
+- Приоритет: Must.
+- Зависимости: T-088, T-124.
+- Описание: Добавить первые clean-room protocol primitives и unit tests,
+  которые фиксируют бинарную основу SMB2/SMB3 engine до реализации сетевой
+  session/auth логики.
+- Acceptance criteria:
+  - Есть static target `smb_browser_native_smb`.
+  - Есть CTest label `native-unit`.
+  - Есть CTest label `native-protocol`.
+  - Unit tests покрывают SMB2 SYNC header encode/decode.
+  - Unit tests покрывают SMB2 NEGOTIATE request builder.
+  - Unit tests покрывают Direct TCP frame length encoding/decoding.
+  - Unit tests проверяют signing security mode mapping.
+  - Unit tests проверяют, что initial dialect policy не содержит SMB1.
+  - `make native-test` запускает native tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-unit
+    --output-on-failure`.
+
+### [x] T-126: Добавить fake-transport negotiation baseline
+
+- Приоритет: Must.
+- Зависимости: T-125.
+- Описание: Добавить первый state-machine слой native SMB library, который
+  работает поверх scripted transport и позволяет тестировать negotiate flow без
+  реального SMB-сервера.
+- Acceptance criteria:
+  - Есть `Transport` interface внутри `src/native_smb`.
+  - Есть `Negotiator`, который строит SMB2 NEGOTIATE request, оборачивает его
+    в Direct TCP frame, читает response frame и парсит NEGOTIATE response.
+  - Negotiator возвращает выбранный dialect, signing requirement, encryption
+    capability, max read/write и security buffer.
+  - Есть CTest label `native-fake-transport`.
+  - Tests покрывают successful negotiation, invalid frame, short frame и
+    cancellation before transport IO.
+  - Реальный network и SMB-сервер не нужны.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-fake-transport
+    --output-on-failure`.
+
+### [x] T-127: Добавить fake-transport tree connect baseline
+
+- Приоритет: Must.
+- Зависимости: T-125, T-126.
+- Описание: Добавить request/response primitives и fake-transport flow для
+  SMB2 TREE_CONNECT, чтобы проверять подключение к share, DFS flags и
+  encryption-required flags без реального SMB-сервера.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 TREE_CONNECT request.
+  - TREE_CONNECT path кодируется как UTF-16LE UNC path `\\server\share`.
+  - `Protocol` умеет парсить SMB2 TREE_CONNECT response.
+  - Response parser извлекает share type, share flags, capabilities,
+    maximal access, DFS flags и encryption-required flag.
+  - Есть `TreeConnector` поверх `Transport`.
+  - Tests покрывают successful tree connect, unexpected response command и
+    cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-fake-transport
+    --output-on-failure`.
+
+### [x] T-128: Добавить fake-transport session setup baseline
+
+- Приоритет: Must.
+- Зависимости: T-125, T-126.
+- Описание: Добавить request/response primitives и fake-transport flow для
+  SMB2 SESSION_SETUP token exchange до реализации реальной NTLM/Kerberos
+  логики.
+- Acceptance criteria:
+  - `Protocol` умеет парсить SMB2 SESSION_SETUP response.
+  - Parser извлекает response status, session id, session flags,
+    security buffer и `STATUS_MORE_PROCESSING_REQUIRED`.
+  - Parser определяет guest/null/encrypt-data session flags.
+  - Есть `SessionSetupExchanger` поверх `Transport`.
+  - Tests покрывают successful token exchange, unexpected response command и
+    cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-fake-transport
+    --output-on-failure`.
+
 ### [ ] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.
@@ -1863,6 +1950,27 @@ Samba в проект запрещено.
   - Static analysis/sanitizer profile added for native SMB code.
 
 ## Этап 21. Test matrix для native SMB migration
+
+### [x] T-124: Зафиксировать полную test matrix для native SMB library
+
+- Приоритет: Must.
+- Зависимости: T-085, T-087.
+- Описание: Описать, как проверять весь функционал внутренней SMB-библиотеки
+  на разных уровнях: protocol unit, fake transport, contract tests, Docker
+  Samba, Windows Server/manual, security regression и package audit.
+- Acceptance criteria:
+  - Документ `docs/native-smb-test-matrix.md` существует.
+  - Для каждой Must/Should/Could capability из native feature matrix указан
+    ожидаемый уровень покрытия.
+  - Definition of done запрещает считать Must-возможность готовой без
+    protocol/fake/contract/integration или documented manual coverage.
+  - Отдельно отражены signing, encryption, DFS, current-user/Kerberos,
+    ACL/EA/symlink/hardlink/notify, cancellation/timeouts и secret handling.
+  - Реальные пароли и корпоративные credentials запрещены в тестах и fixtures.
+- Заметки по тестам:
+  - Тестов к документационному gate нет.
+  - Matrix становится checklist для T-116, T-117, T-118, T-120 и всех native
+    implementation задач.
 
 ### [ ] T-116: Расширить FakeSmbClient/native contract tests
 

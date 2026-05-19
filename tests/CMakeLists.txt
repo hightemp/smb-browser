@@ -109,6 +109,71 @@ if(TARGET smb_browser_native_smb)
     )
 
     add_test(NAME native_smb_scaffold COMMAND test_native_smb_scaffold)
+    set_tests_properties(native_smb_scaffold PROPERTIES
+        LABELS "native-unit"
+    )
+
+    add_executable(test_native_smb_protocol
+        test_native_smb_protocol.cpp
+    )
+
+    target_link_libraries(test_native_smb_protocol
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_protocol COMMAND test_native_smb_protocol)
+    set_tests_properties(native_smb_protocol PROPERTIES
+        LABELS "native-unit;native-protocol"
+    )
+
+    add_executable(test_native_smb_negotiator
+        test_native_smb_negotiator.cpp
+    )
+
+    target_link_libraries(test_native_smb_negotiator
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_negotiator COMMAND test_native_smb_negotiator)
+    set_tests_properties(native_smb_negotiator PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
+    add_executable(test_native_smb_session_setup
+        test_native_smb_session_setup.cpp
+    )
+
+    target_link_libraries(test_native_smb_session_setup
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_session_setup
+             COMMAND test_native_smb_session_setup)
+    set_tests_properties(native_smb_session_setup PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
+    add_executable(test_native_smb_tree_connector
+        test_native_smb_tree_connector.cpp
+    )
+
+    target_link_libraries(test_native_smb_tree_connector
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_tree_connector
+             COMMAND test_native_smb_tree_connector)
+    set_tests_properties(native_smb_tree_connector PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
 endif()
 
 add_executable(test_log_sanitizer

@@ -7,6 +7,7 @@ PRD.md - содержит контекст проекта
 - docs/linux-packaging.md - Linux packaging profile, CPack/DEB commands, runtime dependencies and keychain notes
 - docs/macos-packaging.md - macOS app bundle/DMG packaging plan, macdeployqt notes and smoke checklist
 - docs/native-smb-clean-room.md - clean-room migration plan для внутреннего SMB2/SMB3 engine без libsmb2/smbclient runtime dependencies
+- docs/native-smb-test-matrix.md - test matrix для полного покрытия возможностей внутренней SMB-библиотеки
 - docs/release-checklist.md - release gate/checklist для первой версии, включая тестовые профили и known limitations
 - docs/secret-handling-policy.md - правила работы с секретами, логированием и review checklist
 - docs/windows-packaging.md - Windows ZIP/NSIS packaging plan, windeployqt notes and smoke checklist

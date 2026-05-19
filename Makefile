@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 
 BUILD_DIR ?= tmp/build
 NO_SMB_BUILD_DIR ?= tmp/build-no-smb
+NATIVE_BUILD_DIR ?= tmp/build-native-no-legacy
 PACKAGE_BUILD_DIR ?= tmp/package-linux
 SAMBA_BUILD_DIR ?= tmp/build-samba
 GENERATOR ?= Ninja
@@ -31,6 +32,7 @@ help:
 	@printf '  %-22s %s\n' 'make install' 'Install from BUILD_DIR using cmake --install'
 	@printf '\n%s\n' 'Alternative profiles:'
 	@printf '  %-22s %s\n' 'make no-smb' 'Configure/build/test without libsmb2 backend'
+	@printf '  %-22s %s\n' 'make native-test' 'Run clean-room native SMB unit/protocol tests without libsmb2'
 	@printf '  %-22s %s\n' 'make libsmb2' 'Build libsmb2 into tmp/libsmb2-prefix manually'
 	@printf '  %-22s %s\n' 'make samba-up' 'Start Docker Samba fixture'
 	@printf '  %-22s %s\n' 'make samba-test' 'Run opt-in Docker Samba integration tests'
@@ -109,6 +111,20 @@ no-smb: no-smb-configure
 	cmake --build $(NO_SMB_BUILD_DIR) $(JOBS)
 	ctest --test-dir $(NO_SMB_BUILD_DIR) $(CTEST_ARGS)
 
+.PHONY: native-configure
+native-configure:
+	cmake -S . -B $(NATIVE_BUILD_DIR) -G "$(GENERATOR)" \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		-DSMB_BROWSER_WITH_LIBSMB2=OFF \
+		-DSMB_BROWSER_WITH_NATIVE_SMB=ON \
+		-DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
+
+.PHONY: native-test
+native-test: native-configure
+	cmake --build $(NATIVE_BUILD_DIR) \
+		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector $(JOBS)
+	ctest --test-dir $(NATIVE_BUILD_DIR) -L native-unit $(CTEST_ARGS)
+
 .PHONY: libsmb2
 libsmb2:
 	scripts/build-libsmb2.sh
@@ -138,7 +154,7 @@ status:
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) $(NO_SMB_BUILD_DIR) $(PACKAGE_BUILD_DIR) $(SAMBA_BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(NO_SMB_BUILD_DIR) $(NATIVE_BUILD_DIR) $(PACKAGE_BUILD_DIR) $(SAMBA_BUILD_DIR)
 
 .PHONY: distclean
 distclean:
