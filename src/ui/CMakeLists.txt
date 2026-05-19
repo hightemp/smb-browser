@@ -40,8 +40,6 @@ add_library(smb_browser_ui STATIC
     StatusPanel.h
     ThemeManager.cpp
     ThemeManager.h
-    TrayController.cpp
-    TrayController.h
     icons.qrc
 )
 

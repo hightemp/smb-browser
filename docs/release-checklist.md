@@ -135,7 +135,7 @@ Run on each target platform before publishing binaries.
   - add/edit/delete connection works;
   - credential save/load works;
   - connect/list/upload/download/rename/delete works against a test SMB server;
-  - tray show/exit behavior works.
+  - closing the main window exits the application process.
 
 - [ ] Linux:
   - package smoke script passes:
@@ -152,7 +152,7 @@ Run on each target platform before publishing binaries.
   - Keychain prompts are expected and understandable;
   - translations are packaged and load correctly;
   - opening a downloaded file through the system application works;
-  - tray/menu behavior is checked manually.
+  - closing the main window exits the application process.
 
 ## Release notes
 

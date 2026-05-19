@@ -41,7 +41,6 @@ private slots:
     settings.languageMode = smb::core::LanguageMode::Russian;
     settings.credentialStoreMode =
         smb::core::CredentialStoreMode::EncryptedVault;
-    settings.closeToTray = false;
     settings.operationTimeoutMs = 12000;
     settings.cacheRetentionDays = 21;
     settings.cacheMaxSizeMb = 256;
@@ -55,10 +54,16 @@ private slots:
     QVERIFY(loaded.value().languageMode == smb::core::LanguageMode::Russian);
     QVERIFY(loaded.value().credentialStoreMode ==
             smb::core::CredentialStoreMode::EncryptedVault);
-    QVERIFY(!loaded.value().closeToTray);
     QCOMPARE(loaded.value().operationTimeoutMs, 12000);
     QCOMPARE(loaded.value().cacheRetentionDays, 21);
     QCOMPARE(loaded.value().cacheMaxSizeMb, 256);
+
+    QSqlQuery query(storage.database());
+    QVERIFY(query.exec(QStringLiteral(
+        "SELECT COUNT(*) FROM settings "
+        "WHERE key IN ('close_to_tray', 'show_tray_notifications')")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toInt(), 0);
   }
 
   void unknownEnumValuesFallBackToSafeDefaults() {

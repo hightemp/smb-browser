@@ -52,16 +52,6 @@ credentialStoreModeFromString(const QString &value) {
   return smb::core::CredentialStoreMode::SystemKeychainWithVaultFallback;
 }
 
-bool boolFromString(const QString &value, bool fallback) {
-  if (value == QStringLiteral("true")) {
-    return true;
-  }
-  if (value == QStringLiteral("false")) {
-    return false;
-  }
-  return fallback;
-}
-
 int intFromString(const QString &value, int fallback) {
   bool ok = false;
   const auto parsed = value.toInt(&ok);
@@ -113,16 +103,6 @@ SettingsRepository::load() const {
   settings.credentialStoreMode = credentialStoreModeFromString(
       values.value(QStringLiteral("credential_store_mode"),
                    smb::core::toString(settings.credentialStoreMode)));
-  settings.closeToTray = boolFromString(
-      values.value(QStringLiteral("close_to_tray"),
-                   settings.closeToTray ? QStringLiteral("true")
-                                        : QStringLiteral("false")),
-      settings.closeToTray);
-  settings.showTrayNotifications = boolFromString(
-      values.value(QStringLiteral("show_tray_notifications"),
-                   settings.showTrayNotifications ? QStringLiteral("true")
-                                                  : QStringLiteral("false")),
-      settings.showTrayNotifications);
   settings.logLevel =
       values.value(QStringLiteral("log_level"), settings.logLevel);
   settings.operationTimeoutMs =
@@ -155,11 +135,6 @@ SettingsRepository::save(const smb::core::ApplicationSettings &settings) {
        smb::core::toString(settings.languageMode)},
       {QStringLiteral("credential_store_mode"),
        smb::core::toString(settings.credentialStoreMode)},
-      {QStringLiteral("close_to_tray"),
-       settings.closeToTray ? QStringLiteral("true") : QStringLiteral("false")},
-      {QStringLiteral("show_tray_notifications"),
-       settings.showTrayNotifications ? QStringLiteral("true")
-                                      : QStringLiteral("false")},
       {QStringLiteral("log_level"), settings.logLevel},
       {QStringLiteral("operation_timeout_ms"),
        QString::number(settings.operationTimeoutMs)},

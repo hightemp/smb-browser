@@ -711,7 +711,7 @@
 - Заметки по тестам:
   - FakeSmbClient tests на recursion, depth limit, cancellation.
 
-## Этап 9. Logging, theme, settings и tray
+## Этап 9. Logging, theme и settings
 
 ### [x] T-051: Реализовать Logger и LogSanitizer
 
@@ -779,7 +779,7 @@
 - Зависимости: T-017, T-053, T-051, T-054.
 - Описание: Диалог настроек приложения.
 - Acceptance criteria:
-  - Настройки темы, языка интерфейса, tray behavior, logging, credential store, cache policy доступны пользователю.
+  - Настройки темы, языка интерфейса, logging, credential store, cache policy доступны пользователю.
   - Изменения сохраняются через SettingsRepository.
   - Выбор языка содержит System, English, Russian.
   - Неверные настройки не приводят к падению.
@@ -787,20 +787,20 @@
   - UI smoke test open/save settings.
   - Unit tests на validation logic, включая language mode.
 
-### [x] T-056: Реализовать TrayController
+### [x] T-056: Исключить системный трей из первой версии
 
 - Приоритет: Should.
-- Зависимости: T-036, T-037, T-053.
-- Описание: Системный трей, tray menu и lifecycle behavior.
+- Зависимости: T-036, T-055.
+- Описание: Не включать системный трей в продуктовую область первой версии,
+  чтобы не усложнять lifecycle приложения и настройки.
 - Acceptance criteria:
-  - Закрытие окна сворачивает в трей, если включена настройка.
-  - "Exit" реально завершает приложение.
-  - Из трея можно открыть главное окно.
-  - В tray menu есть быстрый список избранных подключений.
-  - Уведомления об ошибках подключения показываются, если поддержаны платформой.
+  - В приложении нет tray icon, tray menu и close-to-tray behavior.
+  - Закрытие главного окна завершает приложение.
+  - В SettingsDialog нет настроек tray behavior.
+  - Ошибки подключения отображаются внутри main/status/log UI.
 - Заметки по тестам:
-  - Manual tests на Windows/Linux/macOS.
-  - Unit tests для tray menu model через fake favorites.
+  - UI/settings tests подтверждают отсутствие tray controls.
+  - Smoke: `make run` после закрытия окна возвращает управление консоли.
 
 ### [x] T-057: Реализовать status/progress area
 
@@ -1136,23 +1136,15 @@
 ### [x] T-079: Завершать приложение при закрытии главного окна по умолчанию
 
 - Приоритет: Must.
-- Зависимости: T-055, T-056.
+- Зависимости: T-055.
 - Описание: Убрать неожиданное зависание `make run` после закрытия главного
-  окна: clean/default конфигурация должна завершать приложение, а close-to-tray
-  должен включаться только настройкой пользователя.
+  окна: clean/default конфигурация должна завершать приложение.
 - Acceptance criteria:
-  - `ApplicationSettings::defaults()` задает `closeToTray = false`.
-  - `TrayController` получает значения `closeToTray` и
-    `showTrayNotifications` из сохраненных настроек при запуске.
-  - `make run` запускает приложение с dev-override, который отключает
-    close-to-tray даже при старой сохраненной настройке.
-  - Сохранение Settings применяет tray behavior без перезапуска приложения.
-  - При выключенном close-to-tray close event не перехватывается tray
-    controller.
+  - `QApplication` завершает процесс при закрытии последнего окна.
+  - `make run` после закрытия главного окна возвращает управление консоли.
+  - Закрытие окна не перехватывается дополнительным lifecycle controller.
 - Заметки по тестам:
-  - Unit test defaults в `test_settings_model`.
-  - UI/unit test, что `SettingsDialog` эмитит сохраненные settings.
-  - Unit test `TrayController`: disabled close-to-tray позволяет закрыть окно.
+  - Unit/UI smoke tests main window lifecycle.
   - Smoke: `make run-offscreen`.
 
 ### [x] T-080: Синхронизировать изменения открытого файла обратно на SMB
@@ -1178,3 +1170,23 @@
     проверить запуск upload в исходный SMB path.
   - Regression test на отсутствие настоящих credentials в путях cache/logs
     остается частью security suite.
+
+### [x] T-081: Удалить системный трей из кода и документации
+
+- Приоритет: Must.
+- Зависимости: T-055, T-056, T-079.
+- Описание: Полностью убрать остатки tray-функциональности из runtime,
+  настроек, тестов, CMake и продуктовых документов.
+- Acceptance criteria:
+  - `TrayController` удален из UI target.
+  - `test_tray_controller` удален из test target list.
+  - `ApplicationSettings` и `SettingsRepository` больше не содержат
+    `closeToTray` и `showTrayNotifications`.
+  - `SettingsDialog` не показывает Behavior/tray controls.
+  - `main.cpp` не создает tray icon и не использует tray lifecycle wiring.
+  - PRD/TASKS не требуют tray как функциональность первой версии.
+- Заметки по тестам:
+  - Full CTest suite.
+  - `make no-smb`.
+  - `make run-offscreen`.
+  - Linux package smoke.

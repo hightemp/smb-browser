@@ -29,7 +29,6 @@
 #include "ui/RemoteBrowserWidget.h"
 #include "ui/StatusPanel.h"
 #include "ui/ThemeManager.h"
-#include "ui/TrayController.h"
 
 #include <QApplication>
 #include <QDir>
@@ -141,14 +140,6 @@ QString statusForCheck(
     return QObject::tr("Connection: Available");
   }
   return QObject::tr("Connection: Unavailable");
-}
-
-bool closeToTrayDisabledByEnvironment() {
-  return qEnvironmentVariableIsSet("SMB_BROWSER_DISABLE_CLOSE_TO_TRAY");
-}
-
-bool effectiveCloseToTray(const smb::core::ApplicationSettings &settings) {
-  return settings.closeToTray && !closeToTrayDisabledByEnvironment();
 }
 
 } // namespace
@@ -322,17 +313,6 @@ int main(int argc, char *argv[]) {
                      window.statusPanel()->setLastError(error);
                    });
 
-  smb::ui::TrayController trayController;
-  trayController.setMainWindow(&window);
-  trayController.setCloseToTrayEnabled(effectiveCloseToTray(settings));
-  trayController.setNotificationsEnabled(settings.showTrayNotifications);
-  QObject::connect(
-      &window, &MainWindow::settingsSaved, &trayController,
-      [&trayController](const smb::core::ApplicationSettings &next) {
-        trayController.setCloseToTrayEnabled(effectiveCloseToTray(next));
-        trayController.setNotificationsEnabled(next.showTrayNotifications);
-      });
-  trayController.showTrayIcon();
   window.show();
 
   return app.exec();

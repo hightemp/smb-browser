@@ -606,22 +606,6 @@ set_tests_properties(status_panel PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
-add_executable(test_tray_controller
-    test_tray_controller.cpp
-)
-
-target_link_libraries(test_tray_controller
-    PRIVATE
-        smb_browser_ui
-        Qt5::Test
-        Qt5::Widgets
-)
-
-add_test(NAME tray_controller COMMAND test_tray_controller)
-set_tests_properties(tray_controller PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-)
-
 add_executable(test_import_export_controller
     test_import_export_controller.cpp
 )

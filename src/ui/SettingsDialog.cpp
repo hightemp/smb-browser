@@ -5,7 +5,6 @@
 #include "ui/ThemeManager.h"
 
 #include <QApplication>
-#include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
@@ -105,19 +104,6 @@ SettingsDialog::SettingsDialog(
   appearanceForm->addRow(tr("Language"), m_languageModeCombo);
   layout->addWidget(appearanceGroup);
 
-  auto *behaviorGroup = new QGroupBox(tr("Behavior"), this);
-  behaviorGroup->setObjectName(QStringLiteral("behaviorSettingsGroup"));
-  auto *behaviorForm = new QFormLayout(behaviorGroup);
-  m_closeToTrayCheckBox = new QCheckBox(tr("Close window to tray"), behaviorGroup);
-  m_closeToTrayCheckBox->setObjectName(QStringLiteral("closeToTrayCheckBox"));
-  behaviorForm->addRow(QString(), m_closeToTrayCheckBox);
-  m_trayNotificationsCheckBox =
-      new QCheckBox(tr("Show tray notifications"), behaviorGroup);
-  m_trayNotificationsCheckBox->setObjectName(
-      QStringLiteral("trayNotificationsCheckBox"));
-  behaviorForm->addRow(QString(), m_trayNotificationsCheckBox);
-  layout->addWidget(behaviorGroup);
-
   auto *securityGroup = new QGroupBox(tr("Security"), this);
   securityGroup->setObjectName(QStringLiteral("securitySettingsGroup"));
   auto *securityForm = new QFormLayout(securityGroup);
@@ -186,8 +172,6 @@ SettingsDialog::SettingsDialog(
 
   connect(buttons, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
-  connect(m_closeToTrayCheckBox, &QCheckBox::toggled, this,
-          &SettingsDialog::updateTrayControls);
   connect(m_clearCacheButton, &QPushButton::clicked, this,
           &SettingsDialog::clearCache);
 
@@ -217,15 +201,12 @@ void SettingsDialog::setSettings(
   setComboByData(m_languageModeCombo, value(settings.languageMode));
   setComboByData(m_credentialStoreModeCombo,
                  value(settings.credentialStoreMode));
-  m_closeToTrayCheckBox->setChecked(settings.closeToTray);
-  m_trayNotificationsCheckBox->setChecked(settings.showTrayNotifications);
   const auto logLevelIndex = m_logLevelCombo->findData(settings.logLevel);
   m_logLevelCombo->setCurrentIndex(logLevelIndex < 0 ? 1 : logLevelIndex);
   m_operationTimeoutSpinBox->setValue(settings.operationTimeoutMs);
   m_cacheRetentionSpinBox->setValue(settings.cacheRetentionDays);
   m_cacheMaxSizeSpinBox->setValue(settings.cacheMaxSizeMb);
   setValidationMessage({});
-  updateTrayControls();
 }
 
 smb::core::ApplicationSettings SettingsDialog::settings() const {
@@ -233,8 +214,6 @@ smb::core::ApplicationSettings SettingsDialog::settings() const {
   next.themeMode = selectedThemeMode();
   next.languageMode = selectedLanguageMode();
   next.credentialStoreMode = selectedCredentialStoreMode();
-  next.closeToTray = m_closeToTrayCheckBox->isChecked();
-  next.showTrayNotifications = m_trayNotificationsCheckBox->isChecked();
   next.logLevel = m_logLevelCombo->currentData().toString();
   next.operationTimeoutMs = m_operationTimeoutSpinBox->value();
   next.cacheRetentionDays = m_cacheRetentionSpinBox->value();
@@ -274,12 +253,7 @@ void SettingsDialog::accept() {
     m_localizationManager->apply(*QCoreApplication::instance());
   }
 
-  emit settingsSaved(m_settings);
   QDialog::accept();
-}
-
-void SettingsDialog::updateTrayControls() {
-  m_trayNotificationsCheckBox->setEnabled(m_closeToTrayCheckBox->isChecked());
 }
 
 void SettingsDialog::clearCache() {

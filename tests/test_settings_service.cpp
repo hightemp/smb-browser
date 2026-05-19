@@ -25,7 +25,6 @@ private slots:
     settings.themeMode = smb::core::ThemeMode::Dark;
     settings.languageMode = smb::core::LanguageMode::Russian;
     settings.logLevel = QStringLiteral("debug");
-    settings.closeToTray = false;
     settings.operationTimeoutMs = 45000;
 
     QVERIFY(service.saveSettings(settings).ok());
@@ -34,7 +33,6 @@ private slots:
     QVERIFY(loaded.value().themeMode == smb::core::ThemeMode::Dark);
     QVERIFY(loaded.value().languageMode == smb::core::LanguageMode::Russian);
     QCOMPARE(loaded.value().logLevel, QStringLiteral("debug"));
-    QVERIFY(!loaded.value().closeToTray);
     QCOMPARE(loaded.value().operationTimeoutMs, 45000);
   }
 };

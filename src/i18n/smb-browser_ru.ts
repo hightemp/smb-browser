@@ -372,18 +372,6 @@
         <translation>Язык</translation>
     </message>
     <message>
-        <source>Behavior</source>
-        <translation>Поведение</translation>
-    </message>
-    <message>
-        <source>Close window to tray</source>
-        <translation>Закрывать окно в трей</translation>
-    </message>
-    <message>
-        <source>Show tray notifications</source>
-        <translation>Показывать уведомления в трее</translation>
-    </message>
-    <message>
         <source>Security</source>
         <translation>Безопасность</translation>
     </message>
@@ -612,17 +600,6 @@
     <message>
         <source>Operation: %1 (%2)</source>
         <translation>Операция: %1 (%2)</translation>
-    </message>
-</context>
-<context>
-    <name>smb::ui::TrayController</name>
-    <message>
-        <source>Show</source>
-        <translation>Показать</translation>
-    </message>
-    <message>
-        <source>Exit</source>
-        <translation>Выход</translation>
     </message>
 </context>
 </TS>

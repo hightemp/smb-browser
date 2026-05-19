@@ -64,6 +64,6 @@ Before marking Windows packaging complete:
 7. If `smbclient.exe` is packaged, connect to a DFS namespace path and confirm
    it resolves to a target share.
 8. Download, upload, rename, delete, and open a test file.
-9. Confirm tray show/exit behavior.
+9. Confirm closing the main window exits the application process.
 10. Confirm logs and SQLite database are created under Windows application data
    locations and do not contain secrets.

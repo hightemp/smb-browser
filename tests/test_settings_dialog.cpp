@@ -1,7 +1,6 @@
 #include "application/TempFileCache.h"
 #include "ui/SettingsDialog.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
 #include <QFileInfo>
@@ -50,10 +49,10 @@ private slots:
             nullptr);
     QVERIFY(dialog.findChild<QComboBox *>(QStringLiteral("languageModeCombo")) !=
             nullptr);
-    QVERIFY(dialog.findChild<QCheckBox *>(
-                QStringLiteral("closeToTrayCheckBox")) != nullptr);
-    QVERIFY(dialog.findChild<QCheckBox *>(
-                QStringLiteral("trayNotificationsCheckBox")) != nullptr);
+    QVERIFY(dialog.findChild<QObject *>(QStringLiteral("closeToTrayCheckBox")) ==
+            nullptr);
+    QVERIFY(dialog.findChild<QObject *>(
+                QStringLiteral("trayNotificationsCheckBox")) == nullptr);
     QVERIFY(dialog.findChild<QComboBox *>(
                 QStringLiteral("credentialStoreModeCombo")) != nullptr);
     QVERIFY(dialog.findChild<QComboBox *>(QStringLiteral("logLevelCombo")) !=
@@ -72,8 +71,6 @@ private slots:
     FakeSettingsUseCase useCase;
     useCase.loaded.themeMode = smb::core::ThemeMode::Dark;
     useCase.loaded.languageMode = smb::core::LanguageMode::Russian;
-    useCase.loaded.closeToTray = false;
-    useCase.loaded.showTrayNotifications = true;
     useCase.loaded.logLevel = QStringLiteral("warning");
     useCase.loaded.operationTimeoutMs = 45000;
     useCase.loaded.cacheRetentionDays = 14;
@@ -85,30 +82,16 @@ private slots:
     const auto settings = dialog.settings();
     QVERIFY(settings.themeMode == smb::core::ThemeMode::Dark);
     QVERIFY(settings.languageMode == smb::core::LanguageMode::Russian);
-    QVERIFY(!settings.closeToTray);
     QCOMPARE(settings.logLevel, QStringLiteral("warning"));
     QCOMPARE(settings.operationTimeoutMs, 45000);
     QCOMPARE(settings.cacheRetentionDays, 14);
     QCOMPARE(settings.cacheMaxSizeMb, 128);
-
-    auto *trayNotifications = dialog.findChild<QCheckBox *>(
-        QStringLiteral("trayNotificationsCheckBox"));
-    QVERIFY(trayNotifications != nullptr);
-    QVERIFY(!trayNotifications->isEnabled());
   }
 
   void acceptSavesUpdatedSettingsThroughUseCase() {
     FakeSettingsUseCase useCase;
     smb::ui::SettingsDialog dialog(&useCase);
     QVERIFY(dialog.loadSettings());
-    bool settingsSavedEmitted = false;
-    smb::core::ApplicationSettings emittedSettings;
-    QObject::connect(&dialog, &smb::ui::SettingsDialog::settingsSaved,
-                     [&settingsSavedEmitted, &emittedSettings](
-                         const smb::core::ApplicationSettings &settings) {
-                       settingsSavedEmitted = true;
-                       emittedSettings = settings;
-                     });
 
     auto *theme = dialog.findChild<QComboBox *>(QStringLiteral("themeModeCombo"));
     auto *language =
@@ -130,9 +113,6 @@ private slots:
     QVERIFY(useCase.saved.themeMode == smb::core::ThemeMode::Dark);
     QVERIFY(useCase.saved.languageMode == smb::core::LanguageMode::Russian);
     QCOMPARE(useCase.saved.operationTimeoutMs, 120000);
-    QVERIFY(settingsSavedEmitted);
-    QVERIFY(emittedSettings.themeMode == smb::core::ThemeMode::Dark);
-    QVERIFY(emittedSettings.languageMode == smb::core::LanguageMode::Russian);
   }
 
   void clearCacheButtonClearsConfiguredCache() {

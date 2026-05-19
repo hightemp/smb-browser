@@ -6,7 +6,6 @@
 #include <QDialog>
 #include <memory>
 
-class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -39,11 +38,7 @@ public:
 public slots:
   void accept() override;
 
-signals:
-  void settingsSaved(const smb::core::ApplicationSettings &settings);
-
 private:
-  void updateTrayControls();
   void clearCache();
   void setValidationMessage(const QString &message);
   smb::core::ThemeMode selectedThemeMode() const;
@@ -61,8 +56,6 @@ private:
 
   QComboBox *m_themeModeCombo = nullptr;
   QComboBox *m_languageModeCombo = nullptr;
-  QCheckBox *m_closeToTrayCheckBox = nullptr;
-  QCheckBox *m_trayNotificationsCheckBox = nullptr;
   QComboBox *m_credentialStoreModeCombo = nullptr;
   QComboBox *m_logLevelCombo = nullptr;
   QSpinBox *m_operationTimeoutSpinBox = nullptr;

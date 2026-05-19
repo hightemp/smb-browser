@@ -68,6 +68,6 @@ Before marking macOS packaging complete:
    resolves to a target share.
 8. Download, upload, rename, delete, and open a test file through the system
    application.
-9. Confirm tray/menu behavior.
+9. Confirm closing the main window exits the application process.
 10. Confirm logs and SQLite database are created under macOS application support
    locations and do not contain secrets.
