@@ -1497,6 +1497,31 @@ Samba в проект запрещено.
   - `ctest --test-dir tmp/build-native-no-legacy -L native-fake-transport
     --output-on-failure`.
 
+### [x] T-129: Добавить fake-transport directory listing baseline
+
+- Приоритет: Must.
+- Зависимости: T-125, T-127, T-128.
+- Описание: Добавить минимальные protocol primitives и fake-transport flow
+  для будущего `listDirectory`: `CREATE` directory handle и
+  `QUERY_DIRECTORY` с `FileIdBothDirectoryInformation`.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 CREATE request для открытия каталога.
+  - `Protocol` умеет парсить SMB2 CREATE response и извлекать FileId.
+  - `Protocol` умеет строить SMB2 QUERY_DIRECTORY request.
+  - `Protocol` умеет парсить SMB2 QUERY_DIRECTORY response с
+    `FileIdBothDirectoryInformation` entries.
+  - Parser извлекает name, timestamps, size, attributes, EA/reparse field,
+    file id, directory flag и reparse flag.
+  - Есть `DirectoryLister` поверх `Transport`, который выполняет
+    `CREATE -> QUERY_DIRECTORY`.
+  - Tests покрывают successful listing, invalid create response и cancellation
+    before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
+    --output-on-failure`.
+
 ### [ ] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.

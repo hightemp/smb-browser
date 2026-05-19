@@ -174,6 +174,22 @@ if(TARGET smb_browser_native_smb)
     set_tests_properties(native_smb_tree_connector PROPERTIES
         LABELS "native-unit;native-fake-transport"
     )
+
+    add_executable(test_native_smb_directory_lister
+        test_native_smb_directory_lister.cpp
+    )
+
+    target_link_libraries(test_native_smb_directory_lister
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_directory_lister
+             COMMAND test_native_smb_directory_lister)
+    set_tests_properties(native_smb_directory_lister PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
 endif()
 
 add_executable(test_log_sanitizer

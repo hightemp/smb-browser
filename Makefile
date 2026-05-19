@@ -122,7 +122,7 @@ native-configure:
 .PHONY: native-test
 native-test: native-configure
 	cmake --build $(NATIVE_BUILD_DIR) \
-		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector $(JOBS)
+		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector test_native_smb_directory_lister $(JOBS)
 	ctest --test-dir $(NATIVE_BUILD_DIR) -L native-unit $(CTEST_ARGS)
 
 .PHONY: libsmb2

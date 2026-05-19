@@ -62,6 +62,11 @@ enum class ShareType : std::uint8_t {
   Print = 0x03,
 };
 
+struct FileId {
+  std::uint64_t persistent = 0;
+  std::uint64_t volatileId = 0;
+};
+
 struct ProtocolError {
   ErrorCode code = ErrorCode::None;
   std::string message;
@@ -157,6 +162,63 @@ struct TreeConnectResponse {
   bool requiresEncryption = false;
 };
 
+struct CreateRequestOptions {
+  std::string path;
+  std::uint8_t requestedOplockLevel = 0;
+  std::uint32_t impersonationLevel = 0x00000002;
+  std::uint32_t desiredAccess = 0;
+  std::uint32_t fileAttributes = 0;
+  std::uint32_t shareAccess = 0;
+  std::uint32_t createDisposition = 0x00000001;
+  std::uint32_t createOptions = 0;
+  ByteVector createContexts;
+};
+
+struct CreateResponse {
+  std::uint8_t oplockLevel = 0;
+  std::uint8_t flags = 0;
+  std::uint32_t createAction = 0;
+  std::uint64_t creationTime = 0;
+  std::uint64_t lastAccessTime = 0;
+  std::uint64_t lastWriteTime = 0;
+  std::uint64_t changeTime = 0;
+  std::uint64_t allocationSize = 0;
+  std::uint64_t endOfFile = 0;
+  std::uint32_t fileAttributes = 0;
+  FileId fileId;
+  bool isReparsePoint = false;
+};
+
+struct QueryDirectoryRequestOptions {
+  FileId fileId;
+  std::string pattern = "*";
+  std::uint8_t informationClass = 0x25;
+  std::uint8_t flags = 0x01;
+  std::uint32_t fileIndex = 0;
+  std::uint32_t outputBufferLength = 65536;
+};
+
+struct DirectoryEntry {
+  std::string name;
+  std::uint32_t fileIndex = 0;
+  std::uint64_t creationTime = 0;
+  std::uint64_t lastAccessTime = 0;
+  std::uint64_t lastWriteTime = 0;
+  std::uint64_t changeTime = 0;
+  std::uint64_t endOfFile = 0;
+  std::uint64_t allocationSize = 0;
+  std::uint32_t fileAttributes = 0;
+  std::uint32_t eaSizeOrReparseTag = 0;
+  std::uint64_t fileId = 0;
+  bool isDirectory = false;
+  bool isReparsePoint = false;
+};
+
+struct QueryDirectoryResponse {
+  std::uint32_t status = 0;
+  std::vector<DirectoryEntry> entries;
+};
+
 constexpr std::size_t kSmb2HeaderSize = 64;
 constexpr std::size_t kDirectTcpHeaderSize = 4;
 constexpr std::uint32_t kSmb2ProtocolId = 0x424D53FE;
@@ -167,6 +229,10 @@ constexpr std::uint16_t kSessionSetupRequestStructureSize = 25;
 constexpr std::uint16_t kSessionSetupResponseStructureSize = 9;
 constexpr std::uint16_t kTreeConnectRequestStructureSize = 9;
 constexpr std::uint16_t kTreeConnectResponseStructureSize = 16;
+constexpr std::uint16_t kCreateRequestStructureSize = 57;
+constexpr std::uint16_t kCreateResponseStructureSize = 89;
+constexpr std::uint16_t kQueryDirectoryRequestStructureSize = 33;
+constexpr std::uint16_t kQueryDirectoryResponseStructureSize = 9;
 constexpr std::uint32_t kStatusSuccess = 0x00000000;
 constexpr std::uint32_t kStatusMoreProcessingRequired = 0xC0000016;
 constexpr std::uint32_t kFlagServerToRedir = 0x00000001;
@@ -180,12 +246,30 @@ constexpr std::uint32_t kShareCapabilityDfs = 0x00000008;
 constexpr std::uint16_t kSessionFlagIsGuest = 0x0001;
 constexpr std::uint16_t kSessionFlagIsNull = 0x0002;
 constexpr std::uint16_t kSessionFlagEncryptData = 0x0004;
+constexpr std::uint32_t kFileReadData = 0x00000001;
+constexpr std::uint32_t kFileListDirectory = 0x00000001;
+constexpr std::uint32_t kFileReadEa = 0x00000008;
+constexpr std::uint32_t kFileReadAttributes = 0x00000080;
+constexpr std::uint32_t kFileAttributeDirectory = 0x00000010;
+constexpr std::uint32_t kFileAttributeNormal = 0x00000080;
+constexpr std::uint32_t kFileAttributeReparsePoint = 0x00000400;
+constexpr std::uint32_t kFileShareRead = 0x00000001;
+constexpr std::uint32_t kFileShareWrite = 0x00000002;
+constexpr std::uint32_t kFileShareDelete = 0x00000004;
+constexpr std::uint32_t kFileOpen = 0x00000001;
+constexpr std::uint32_t kFileDirectoryFile = 0x00000001;
+constexpr std::uint32_t kFileNonDirectoryFile = 0x00000040;
+constexpr std::uint8_t kFileIdBothDirectoryInformation = 0x25;
+constexpr std::uint8_t kQueryDirectoryRestartScans = 0x01;
 
 std::uint32_t capabilityMask(std::initializer_list<GlobalCapability> values);
 std::uint16_t securityModeForPolicy(SecurityPolicy policy);
 
 std::vector<Dialect> defaultInitialDialects();
 ByteVector encodeUtf16Le(std::string_view text);
+DecodeResult<std::string> decodeUtf16Le(const std::uint8_t *data,
+                                        std::size_t size);
+DecodeResult<std::string> decodeUtf16Le(const ByteVector &bytes);
 
 ByteVector encodeSmb2SyncHeader(const Smb2SyncHeader &header);
 DecodeResult<Smb2SyncHeader> decodeSmb2SyncHeader(const std::uint8_t *data,
@@ -215,6 +299,20 @@ DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const std::uint8_t *data, std::size_t size);
 DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const ByteVector &bytes);
+ByteVector buildCreateRequest(const CreateRequestOptions &options,
+                              std::uint64_t messageId,
+                              std::uint32_t treeId,
+                              std::uint64_t sessionId);
+DecodeResult<CreateResponse> decodeCreateResponse(const std::uint8_t *data,
+                                                  std::size_t size);
+DecodeResult<CreateResponse> decodeCreateResponse(const ByteVector &bytes);
+ByteVector buildQueryDirectoryRequest(
+    const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
+    std::uint32_t treeId, std::uint64_t sessionId);
+DecodeResult<QueryDirectoryResponse>
+decodeQueryDirectoryResponse(const std::uint8_t *data, std::size_t size);
+DecodeResult<QueryDirectoryResponse>
+decodeQueryDirectoryResponse(const ByteVector &bytes);
 
 ByteVector encodeDirectTcpFrame(const ByteVector &smb2Message);
 DecodeResult<std::uint32_t>

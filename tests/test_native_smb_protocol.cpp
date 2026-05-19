@@ -26,6 +26,10 @@ void appendU64Le(smb::native_smb::ByteVector &bytes, std::uint64_t value) {
   }
 }
 
+void appendZeros(smb::native_smb::ByteVector &bytes, std::size_t count) {
+  bytes.insert(bytes.end(), count, 0);
+}
+
 std::uint16_t readU16Le(const smb::native_smb::ByteVector &bytes,
                         std::size_t offset) {
   return static_cast<std::uint16_t>(bytes[offset]) |
@@ -120,6 +124,83 @@ smb::native_smb::ByteVector buildSessionSetupResponse() {
   bytes.push_back('G');
   bytes.push_back('S');
   bytes.push_back('S');
+  return bytes;
+}
+
+smb::native_smb::ByteVector buildCreateResponse() {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::Create;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 20;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kCreateResponseStructureSize);
+  bytes.push_back(0);
+  bytes.push_back(0);
+  appendU32Le(bytes, 1);
+  appendU64Le(bytes, 10);
+  appendU64Le(bytes, 20);
+  appendU64Le(bytes, 30);
+  appendU64Le(bytes, 40);
+  appendU64Le(bytes, 4096);
+  appendU64Le(bytes, 123);
+  appendU32Le(bytes, smb::native_smb::kFileAttributeDirectory);
+  appendU32Le(bytes, 0);
+  appendU64Le(bytes, 0x0102030405060708ULL);
+  appendU64Le(bytes, 0x1112131415161718ULL);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  return bytes;
+}
+
+smb::native_smb::ByteVector fileIdBothEntry(
+    const std::string &name, std::uint32_t nextEntryOffset,
+    std::uint32_t attributes, std::uint64_t size, std::uint64_t fileId) {
+  auto encodedName = smb::native_smb::encodeUtf16Le(name);
+  smb::native_smb::ByteVector bytes;
+  appendU32Le(bytes, nextEntryOffset);
+  appendU32Le(bytes, 0);
+  appendU64Le(bytes, 1);
+  appendU64Le(bytes, 2);
+  appendU64Le(bytes, 3);
+  appendU64Le(bytes, 4);
+  appendU64Le(bytes, size);
+  appendU64Le(bytes, size);
+  appendU32Le(bytes, attributes);
+  appendU32Le(bytes, static_cast<std::uint32_t>(encodedName.size()));
+  appendU32Le(bytes, 0);
+  bytes.push_back(0);
+  bytes.push_back(0);
+  appendZeros(bytes, 24);
+  appendU16Le(bytes, 0);
+  appendU64Le(bytes, fileId);
+  bytes.insert(bytes.end(), encodedName.begin(), encodedName.end());
+  if (nextEntryOffset > bytes.size()) {
+    appendZeros(bytes, nextEntryOffset - bytes.size());
+  }
+  return bytes;
+}
+
+smb::native_smb::ByteVector buildQueryDirectoryResponse() {
+  auto entries = fileIdBothEntry("alpha.txt", 128, 0, 123, 1001);
+  const auto folder = fileIdBothEntry(
+      "folder", 0, smb::native_smb::kFileAttributeDirectory, 0, 1002);
+  entries.insert(entries.end(), folder.begin(), folder.end());
+
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::QueryDirectory;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 21;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kQueryDirectoryResponseStructureSize);
+  appendU16Le(bytes, 72);
+  appendU32Le(bytes, static_cast<std::uint32_t>(entries.size()));
+  bytes.insert(bytes.end(), entries.begin(), entries.end());
   return bytes;
 }
 
@@ -322,6 +403,18 @@ private slots:
         std::invalid_argument);
   }
 
+  void decodesUtf16Le() {
+    const auto bytes = smb::native_smb::encodeUtf16Le("папка");
+    const auto decoded = smb::native_smb::decodeUtf16Le(bytes);
+
+    QVERIFY(decoded.ok);
+    QCOMPARE(QString::fromStdString(decoded.value), QStringLiteral("папка"));
+
+    const smb::native_smb::ByteVector invalid{0x00, 0xD8};
+    const auto failed = smb::native_smb::decodeUtf16Le(invalid);
+    QVERIFY(!failed.ok);
+  }
+
   void buildsTreeConnectRequest() {
     smb::native_smb::TreeConnectRequestOptions options;
     options.server = "server";
@@ -365,6 +458,105 @@ private slots:
     QVERIFY(response.value.isDfs);
     QVERIFY(response.value.isDfsRoot);
     QVERIFY(response.value.requiresEncryption);
+  }
+
+  void buildsCreateDirectoryRequest() {
+    smb::native_smb::CreateRequestOptions options;
+    options.path = "folder";
+    options.desiredAccess =
+        smb::native_smb::kFileListDirectory |
+        smb::native_smb::kFileReadEa |
+        smb::native_smb::kFileReadAttributes;
+    options.fileAttributes = smb::native_smb::kFileAttributeNormal;
+    options.shareAccess = smb::native_smb::kFileShareRead |
+                          smb::native_smb::kFileShareWrite |
+                          smb::native_smb::kFileShareDelete;
+    options.createDisposition = smb::native_smb::kFileOpen;
+    options.createOptions = smb::native_smb::kFileDirectoryFile;
+
+    const auto bytes =
+        smb::native_smb::buildCreateRequest(options, 20, 77, 34);
+
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kCreateRequestStructureSize);
+    QCOMPARE(bytes[66], std::uint8_t{0});
+    QCOMPARE(bytes[67], std::uint8_t{0});
+    QCOMPARE(readU32Le(bytes, 68), std::uint32_t{2});
+    QCOMPARE(readU32Le(bytes, 88), std::uint32_t{0x00000089});
+    QCOMPARE(readU32Le(bytes, 96), std::uint32_t{7});
+    QCOMPARE(readU32Le(bytes, 100), smb::native_smb::kFileOpen);
+    QCOMPARE(readU32Le(bytes, 104), smb::native_smb::kFileDirectoryFile);
+    QCOMPARE(readU16Le(bytes, 108), std::uint16_t{120});
+    QCOMPARE(readU16Le(bytes, 110), std::uint16_t{12});
+    QCOMPARE(readU16Le(bytes, 120), std::uint16_t{'f'});
+
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(header.value.treeId, std::uint32_t{77});
+    QCOMPARE(header.value.sessionId, std::uint64_t{34});
+  }
+
+  void decodesCreateResponse() {
+    const auto response =
+        smb::native_smb::decodeCreateResponse(buildCreateResponse());
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.createAction, std::uint32_t{1});
+    QCOMPARE(response.value.creationTime, std::uint64_t{10});
+    QCOMPARE(response.value.endOfFile, std::uint64_t{123});
+    QCOMPARE(response.value.fileAttributes,
+             smb::native_smb::kFileAttributeDirectory);
+    QCOMPARE(response.value.fileId.persistent,
+             std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(response.value.fileId.volatileId,
+             std::uint64_t{0x1112131415161718ULL});
+    QVERIFY(!response.value.isReparsePoint);
+  }
+
+  void buildsQueryDirectoryRequest() {
+    smb::native_smb::QueryDirectoryRequestOptions options;
+    options.fileId.persistent = 0x0102030405060708ULL;
+    options.fileId.volatileId = 0x1112131415161718ULL;
+    options.pattern = "*";
+
+    const auto bytes =
+        smb::native_smb::buildQueryDirectoryRequest(options, 21, 77, 34);
+
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kQueryDirectoryRequestStructureSize);
+    QCOMPARE(bytes[66], smb::native_smb::kFileIdBothDirectoryInformation);
+    QCOMPARE(bytes[67], smb::native_smb::kQueryDirectoryRestartScans);
+    QCOMPARE(readU32Le(bytes, 68), std::uint32_t{0});
+    QCOMPARE(readU64Le(bytes, 72), std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(readU64Le(bytes, 80), std::uint64_t{0x1112131415161718ULL});
+    QCOMPARE(readU16Le(bytes, 88), std::uint16_t{96});
+    QCOMPARE(readU16Le(bytes, 90), std::uint16_t{2});
+    QCOMPARE(readU32Le(bytes, 92), std::uint32_t{65536});
+    QCOMPARE(readU16Le(bytes, 96), std::uint16_t{'*'});
+
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::QueryDirectory));
+  }
+
+  void decodesQueryDirectoryResponse() {
+    const auto response = smb::native_smb::decodeQueryDirectoryResponse(
+        buildQueryDirectoryResponse());
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.entries.size(), std::size_t{2});
+    QCOMPARE(QString::fromStdString(response.value.entries[0].name),
+             QStringLiteral("alpha.txt"));
+    QCOMPARE(response.value.entries[0].endOfFile, std::uint64_t{123});
+    QVERIFY(!response.value.entries[0].isDirectory);
+    QCOMPARE(response.value.entries[0].fileId, std::uint64_t{1001});
+    QCOMPARE(QString::fromStdString(response.value.entries[1].name),
+             QStringLiteral("folder"));
+    QVERIFY(response.value.entries[1].isDirectory);
+    QCOMPARE(response.value.entries[1].fileId, std::uint64_t{1002});
   }
 
   void mapsSigningPolicyToSecurityMode() {

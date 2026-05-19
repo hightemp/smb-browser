@@ -1,4 +1,6 @@
 add_library(smb_browser_native_smb STATIC
+    DirectoryLister.cpp
+    DirectoryLister.h
     Negotiator.cpp
     Negotiator.h
     Protocol.cpp

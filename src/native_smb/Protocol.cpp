@@ -29,6 +29,11 @@ void appendU64Le(ByteVector &bytes, std::uint64_t value) {
   }
 }
 
+void appendFileId(ByteVector &bytes, const FileId &fileId) {
+  appendU64Le(bytes, fileId.persistent);
+  appendU64Le(bytes, fileId.volatileId);
+}
+
 void appendUtf16CodeUnit(ByteVector &bytes, std::uint16_t value) {
   appendU16Le(bytes, value);
 }
@@ -63,6 +68,24 @@ std::string uncPath(const TreeConnectRequestOptions &options) {
     throw std::invalid_argument("SMB tree connect requires server and share.");
   }
   return "\\\\" + options.server + "\\" + options.share;
+}
+
+void appendUtf8CodePoint(std::string &text, std::uint32_t codePoint) {
+  if (codePoint <= 0x7F) {
+    text.push_back(static_cast<char>(codePoint));
+  } else if (codePoint <= 0x7FF) {
+    text.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+    text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+  } else if (codePoint <= 0xFFFF) {
+    text.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+    text.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+  } else {
+    text.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+    text.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+  }
 }
 
 } // namespace
@@ -150,6 +173,49 @@ ByteVector encodeUtf16Le(std::string_view text) {
   }
 
   return bytes;
+}
+
+DecodeResult<std::string> decodeUtf16Le(const std::uint8_t *data,
+                                        std::size_t size) {
+  if (data == nullptr && size > 0) {
+    return DecodeResult<std::string>::failure(
+        ErrorCode::IoError, "UTF-16LE buffer is null.");
+  }
+  if ((size % 2) != 0) {
+    return DecodeResult<std::string>::failure(
+        ErrorCode::IoError, "UTF-16LE buffer has odd byte length.");
+  }
+
+  std::string text;
+  for (std::size_t offset = 0; offset < size; offset += 2) {
+    const auto unit = readU16Le(data + offset);
+    if (unit >= 0xD800 && unit <= 0xDBFF) {
+      if (offset + 3 >= size) {
+        return DecodeResult<std::string>::failure(
+            ErrorCode::IoError, "UTF-16LE high surrogate is truncated.");
+      }
+      const auto next = readU16Le(data + offset + 2);
+      if (next < 0xDC00 || next > 0xDFFF) {
+        return DecodeResult<std::string>::failure(
+            ErrorCode::IoError, "UTF-16LE high surrogate is not paired.");
+      }
+      const auto codePoint =
+          0x10000 + (((unit - 0xD800) << 10) | (next - 0xDC00));
+      appendUtf8CodePoint(text, codePoint);
+      offset += 2;
+    } else if (unit >= 0xDC00 && unit <= 0xDFFF) {
+      return DecodeResult<std::string>::failure(
+          ErrorCode::IoError, "UTF-16LE low surrogate has no high surrogate.");
+    } else {
+      appendUtf8CodePoint(text, unit);
+    }
+  }
+
+  return DecodeResult<std::string>::success(text);
+}
+
+DecodeResult<std::string> decodeUtf16Le(const ByteVector &bytes) {
+  return decodeUtf16Le(bytes.data(), bytes.size());
 }
 
 ByteVector encodeSmb2SyncHeader(const Smb2SyncHeader &header) {
@@ -481,6 +547,245 @@ decodeTreeConnectResponse(const std::uint8_t *data, std::size_t size) {
 DecodeResult<TreeConnectResponse>
 decodeTreeConnectResponse(const ByteVector &bytes) {
   return decodeTreeConnectResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildCreateRequest(const CreateRequestOptions &options,
+                              std::uint64_t messageId, std::uint32_t treeId,
+                              std::uint64_t sessionId) {
+  const auto name = encodeUtf16Le(options.path);
+  if (name.size() > std::numeric_limits<std::uint16_t>::max()) {
+    throw std::invalid_argument("SMB2 CREATE name is too large.");
+  }
+  if (options.createContexts.size() >
+      std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 CREATE contexts are too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::Create;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  constexpr std::uint16_t kNameOffset = kSmb2HeaderSize + 56;
+  const auto createContextsOffset =
+      options.createContexts.empty()
+          ? 0
+          : static_cast<std::uint32_t>(kNameOffset + name.size());
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kCreateRequestStructureSize);
+  bytes.push_back(0);
+  bytes.push_back(options.requestedOplockLevel);
+  appendU32Le(bytes, options.impersonationLevel);
+  appendU64Le(bytes, 0);
+  appendU64Le(bytes, 0);
+  appendU32Le(bytes, options.desiredAccess);
+  appendU32Le(bytes, options.fileAttributes);
+  appendU32Le(bytes, options.shareAccess);
+  appendU32Le(bytes, options.createDisposition);
+  appendU32Le(bytes, options.createOptions);
+  appendU16Le(bytes, name.empty() ? 0 : kNameOffset);
+  appendU16Le(bytes, static_cast<std::uint16_t>(name.size()));
+  appendU32Le(bytes, createContextsOffset);
+  appendU32Le(bytes, static_cast<std::uint32_t>(options.createContexts.size()));
+  bytes.insert(bytes.end(), name.begin(), name.end());
+  bytes.insert(bytes.end(), options.createContexts.begin(),
+               options.createContexts.end());
+  return bytes;
+}
+
+DecodeResult<CreateResponse> decodeCreateResponse(const std::uint8_t *data,
+                                                  std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<CreateResponse>::failure(headerResult.error.code,
+                                                headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Create) {
+    return DecodeResult<CreateResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a CREATE response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<CreateResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 CREATE response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 88) {
+    return DecodeResult<CreateResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 CREATE response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kCreateResponseStructureSize) {
+    return DecodeResult<CreateResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 CREATE response structure size.");
+  }
+
+  CreateResponse response;
+  response.oplockLevel = body[2];
+  response.flags = body[3];
+  response.createAction = readU32Le(body + 4);
+  response.creationTime = readU64Le(body + 8);
+  response.lastAccessTime = readU64Le(body + 16);
+  response.lastWriteTime = readU64Le(body + 24);
+  response.changeTime = readU64Le(body + 32);
+  response.allocationSize = readU64Le(body + 40);
+  response.endOfFile = readU64Le(body + 48);
+  response.fileAttributes = readU32Le(body + 56);
+  response.fileId.persistent = readU64Le(body + 64);
+  response.fileId.volatileId = readU64Le(body + 72);
+  response.isReparsePoint = (response.flags & 0x01) != 0 ||
+                            (response.fileAttributes &
+                             kFileAttributeReparsePoint) != 0;
+  return DecodeResult<CreateResponse>::success(response);
+}
+
+DecodeResult<CreateResponse> decodeCreateResponse(const ByteVector &bytes) {
+  return decodeCreateResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildQueryDirectoryRequest(
+    const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
+    std::uint32_t treeId, std::uint64_t sessionId) {
+  const auto pattern = encodeUtf16Le(options.pattern);
+  if (pattern.size() > std::numeric_limits<std::uint16_t>::max()) {
+    throw std::invalid_argument("SMB2 QUERY_DIRECTORY pattern is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::QueryDirectory;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  constexpr std::uint16_t kFileNameOffset = kSmb2HeaderSize + 32;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kQueryDirectoryRequestStructureSize);
+  bytes.push_back(options.informationClass);
+  bytes.push_back(options.flags);
+  appendU32Le(bytes, options.fileIndex);
+  appendFileId(bytes, options.fileId);
+  appendU16Le(bytes, pattern.empty() ? 0 : kFileNameOffset);
+  appendU16Le(bytes, static_cast<std::uint16_t>(pattern.size()));
+  appendU32Le(bytes, options.outputBufferLength);
+  bytes.insert(bytes.end(), pattern.begin(), pattern.end());
+  return bytes;
+}
+
+DecodeResult<QueryDirectoryResponse>
+decodeQueryDirectoryResponse(const std::uint8_t *data, std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        headerResult.error.code, headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::QueryDirectory) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a QUERY_DIRECTORY response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 QUERY_DIRECTORY response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 8) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 QUERY_DIRECTORY response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kQueryDirectoryResponseStructureSize) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 QUERY_DIRECTORY response structure size.");
+  }
+
+  const auto outputOffset = readU16Le(body + 2);
+  const auto outputLength = readU32Le(body + 4);
+  const auto outputEnd = static_cast<std::size_t>(outputOffset) + outputLength;
+  if (outputLength > 0 &&
+      (outputOffset < kSmb2HeaderSize || outputEnd > size ||
+       outputEnd < outputOffset)) {
+    return DecodeResult<QueryDirectoryResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 QUERY_DIRECTORY response output buffer is out of bounds.");
+  }
+
+  QueryDirectoryResponse response;
+  response.status = headerResult.value.status;
+  std::size_t entryOffset = outputOffset;
+  const auto entriesEnd = outputEnd;
+  while (outputLength > 0 && entryOffset < entriesEnd) {
+    if (entriesEnd - entryOffset < 104) {
+      return DecodeResult<QueryDirectoryResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_ID_BOTH_DIR_INFORMATION entry is shorter than fixed part.");
+    }
+
+    const auto *entry = data + entryOffset;
+    const auto nextEntryOffset = readU32Le(entry);
+    const auto fileNameLength = readU32Le(entry + 60);
+    const auto fileNameOffset = entryOffset + 104;
+    const auto fileNameEnd = fileNameOffset + fileNameLength;
+    if (fileNameEnd > entriesEnd || fileNameEnd < fileNameOffset) {
+      return DecodeResult<QueryDirectoryResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_ID_BOTH_DIR_INFORMATION file name is out of bounds.");
+    }
+    if (nextEntryOffset != 0 &&
+        (nextEntryOffset < 104 + fileNameLength ||
+         entryOffset + nextEntryOffset > entriesEnd)) {
+      return DecodeResult<QueryDirectoryResponse>::failure(
+          ErrorCode::IoError,
+          "FILE_ID_BOTH_DIR_INFORMATION next entry offset is invalid.");
+    }
+
+    const auto decodedName = decodeUtf16Le(data + fileNameOffset,
+                                           fileNameLength);
+    if (!decodedName.ok) {
+      return DecodeResult<QueryDirectoryResponse>::failure(
+          decodedName.error.code, decodedName.error.message);
+    }
+
+    DirectoryEntry parsed;
+    parsed.name = decodedName.value;
+    parsed.fileIndex = readU32Le(entry + 4);
+    parsed.creationTime = readU64Le(entry + 8);
+    parsed.lastAccessTime = readU64Le(entry + 16);
+    parsed.lastWriteTime = readU64Le(entry + 24);
+    parsed.changeTime = readU64Le(entry + 32);
+    parsed.endOfFile = readU64Le(entry + 40);
+    parsed.allocationSize = readU64Le(entry + 48);
+    parsed.fileAttributes = readU32Le(entry + 56);
+    parsed.eaSizeOrReparseTag = readU32Le(entry + 64);
+    parsed.fileId = readU64Le(entry + 96);
+    parsed.isDirectory =
+        (parsed.fileAttributes & kFileAttributeDirectory) != 0;
+    parsed.isReparsePoint =
+        (parsed.fileAttributes & kFileAttributeReparsePoint) != 0;
+    response.entries.push_back(parsed);
+
+    if (nextEntryOffset == 0) {
+      break;
+    }
+    entryOffset += nextEntryOffset;
+  }
+
+  return DecodeResult<QueryDirectoryResponse>::success(response);
+}
+
+DecodeResult<QueryDirectoryResponse>
+decodeQueryDirectoryResponse(const ByteVector &bytes) {
+  return decodeQueryDirectoryResponse(bytes.data(), bytes.size());
 }
 
 ByteVector encodeDirectTcpFrame(const ByteVector &smb2Message) {

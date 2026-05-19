@@ -132,3 +132,7 @@ A `Must` native library feature is not complete until:
 - `native_smb_tree_connector`: scripted transport tree connect state machine,
   UTF-16LE share path request, tree id extraction, DFS/share encryption flags,
   unexpected response handling and cancellation before transport IO.
+- `native_smb_directory_lister`: scripted `CREATE directory` plus
+  `QUERY_DIRECTORY` flow, directory handle FileId propagation,
+  `FileIdBothDirectoryInformation` entry parsing, invalid create response
+  handling and cancellation before transport IO.
