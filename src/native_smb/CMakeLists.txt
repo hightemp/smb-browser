@@ -9,12 +9,18 @@ add_library(smb_browser_native_smb STATIC
     FileWriter.h
     Negotiator.cpp
     Negotiator.h
+    NativeSmbSession.cpp
+    NativeSmbSession.h
     Protocol.cpp
     Protocol.h
+    QueryInfoExchanger.cpp
+    QueryInfoExchanger.h
     ReadExchanger.cpp
     ReadExchanger.h
     RemoteObjectOperator.cpp
     RemoteObjectOperator.h
+    RemoteStatReader.cpp
+    RemoteStatReader.h
     SetInfoExchanger.cpp
     SetInfoExchanger.h
     SessionSetupExchanger.cpp

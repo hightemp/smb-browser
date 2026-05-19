@@ -1612,6 +1612,55 @@ Samba в проект запрещено.
   - `ctest --test-dir tmp/build-native-no-legacy -L native-contract
     --output-on-failure`.
 
+### [x] T-134: Добавить baseline C++ facade поверх native SMB primitives
+
+- Приоритет: Must.
+- Зависимости: T-129, T-131, T-132, T-133.
+- Описание: Добавить первый facade layer для native SMB library, который
+  скрывает `treeId`, `sessionId`, message id allocation и composed
+  protocol/exchanger details от будущего application backend.
+- Acceptance criteria:
+  - Есть `NativeSmbSession` поверх injectable `Transport`.
+  - Facade предоставляет методы `listDirectory`, `readFileOnce`,
+    `writeFileOnce`, `createDirectory`, `deleteObject`, `renameObject`.
+  - Facade возвращает native-level result structs без raw packet buffers и без
+    exposing internal `FileId` в public operation results.
+  - Message id allocation инкапсулирована внутри facade.
+  - Tests покрывают routing composed operations, message id advancement,
+    result mapping и error propagation.
+  - `make native-test` запускает facade tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R native_smb_session
+    --output-on-failure`.
+
+### [x] T-135: Добавить fake-transport stat/query-info baseline
+
+- Приоритет: Must.
+- Зависимости: T-130, T-134.
+- Описание: Добавить SMB2 QUERY_INFO primitives и composed stat flow, чтобы
+  future metadata mapping мог получать timestamps, attributes, size,
+  allocation size, link count, delete-pending и directory flag без реального
+  SMB-сервера.
+- Acceptance criteria:
+  - `Protocol` умеет строить SMB2 QUERY_INFO request.
+  - `Protocol` умеет парсить SMB2 QUERY_INFO response.
+  - `Protocol` умеет парсить `FileBasicInformation`.
+  - `Protocol` умеет парсить `FileStandardInformation`.
+  - `QueryInfoExchanger` выполняет QUERY_INFO поверх `Transport`.
+  - `RemoteStatReader` выполняет
+    `CREATE -> QUERY_INFO(FileBasicInformation) ->
+    QUERY_INFO(FileStandardInformation) -> CLOSE`.
+  - `NativeSmbSession` exposes `statObject`.
+  - Tests покрывают successful stat, unexpected response command, invalid
+    query-info response in composed flow и cancellation before transport IO.
+  - `make native-test` запускает эти tests без `libsmb2`.
+- Заметки по тестам:
+  - `make native-test`.
+  - `ctest --test-dir tmp/build-native-no-legacy -R
+    'native_smb_(query_info_exchanger|remote_stat_reader|session)'
+    --output-on-failure`.
+
 ### [ ] T-090: Спроектировать C++ facade поверх native SMB core
 
 - Приоритет: Must.

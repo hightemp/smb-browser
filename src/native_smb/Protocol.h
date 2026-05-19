@@ -256,6 +256,38 @@ struct SetInfoResponse {
   std::uint32_t status = 0;
 };
 
+struct QueryInfoRequestOptions {
+  FileId fileId;
+  std::uint8_t infoType = 0x01;
+  std::uint8_t fileInfoClass = 0;
+  std::uint32_t outputBufferLength = 65536;
+  ByteVector inputBuffer;
+  std::uint32_t additionalInformation = 0;
+  std::uint32_t flags = 0;
+};
+
+struct QueryInfoResponse {
+  std::uint32_t status = 0;
+  std::uint16_t outputBufferOffset = 0;
+  ByteVector buffer;
+};
+
+struct FileBasicInformation {
+  std::uint64_t creationTime = 0;
+  std::uint64_t lastAccessTime = 0;
+  std::uint64_t lastWriteTime = 0;
+  std::uint64_t changeTime = 0;
+  std::uint32_t fileAttributes = 0;
+};
+
+struct FileStandardInformation {
+  std::uint64_t allocationSize = 0;
+  std::uint64_t endOfFile = 0;
+  std::uint32_t numberOfLinks = 0;
+  bool deletePending = false;
+  bool directory = false;
+};
+
 struct QueryDirectoryRequestOptions {
   FileId fileId;
   std::string pattern = "*";
@@ -306,6 +338,8 @@ constexpr std::uint16_t kWriteRequestStructureSize = 49;
 constexpr std::uint16_t kWriteResponseStructureSize = 17;
 constexpr std::uint16_t kSetInfoRequestStructureSize = 33;
 constexpr std::uint16_t kSetInfoResponseStructureSize = 2;
+constexpr std::uint16_t kQueryInfoRequestStructureSize = 41;
+constexpr std::uint16_t kQueryInfoResponseStructureSize = 9;
 constexpr std::uint16_t kQueryDirectoryRequestStructureSize = 33;
 constexpr std::uint16_t kQueryDirectoryResponseStructureSize = 9;
 constexpr std::uint32_t kStatusSuccess = 0x00000000;
@@ -322,6 +356,8 @@ constexpr std::uint16_t kSessionFlagIsGuest = 0x0001;
 constexpr std::uint16_t kSessionFlagIsNull = 0x0002;
 constexpr std::uint16_t kSessionFlagEncryptData = 0x0004;
 constexpr std::uint8_t kInfoTypeFile = 0x01;
+constexpr std::uint8_t kFileBasicInformation = 0x04;
+constexpr std::uint8_t kFileStandardInformation = 0x05;
 constexpr std::uint8_t kFileRenameInformation = 0x0A;
 constexpr std::uint8_t kFileDispositionInformation = 0x0D;
 constexpr std::uint32_t kFileReadData = 0x00000001;
@@ -427,6 +463,17 @@ DecodeResult<SetInfoResponse> decodeSetInfoResponse(const ByteVector &bytes);
 ByteVector buildFileDispositionInformation(bool deletePending);
 ByteVector buildFileRenameInformation(std::string_view newPath,
                                       bool replaceIfExists);
+ByteVector buildQueryInfoRequest(const QueryInfoRequestOptions &options,
+                                 std::uint64_t messageId,
+                                 std::uint32_t treeId,
+                                 std::uint64_t sessionId);
+DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const std::uint8_t *data,
+                                                        std::size_t size);
+DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const ByteVector &bytes);
+DecodeResult<FileBasicInformation>
+decodeFileBasicInformation(const ByteVector &bytes);
+DecodeResult<FileStandardInformation>
+decodeFileStandardInformation(const ByteVector &bytes);
 ByteVector buildQueryDirectoryRequest(
     const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
     std::uint32_t treeId, std::uint64_t sessionId);

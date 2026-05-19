@@ -231,6 +231,45 @@ smb::native_smb::ByteVector buildSetInfoResponse() {
   return bytes;
 }
 
+smb::native_smb::ByteVector fileBasicInformationBuffer() {
+  smb::native_smb::ByteVector bytes;
+  appendU64Le(bytes, 10);
+  appendU64Le(bytes, 20);
+  appendU64Le(bytes, 30);
+  appendU64Le(bytes, 40);
+  appendU32Le(bytes, smb::native_smb::kFileAttributeReparsePoint);
+  appendU32Le(bytes, 0);
+  return bytes;
+}
+
+smb::native_smb::ByteVector fileStandardInformationBuffer() {
+  smb::native_smb::ByteVector bytes;
+  appendU64Le(bytes, 4096);
+  appendU64Le(bytes, 123);
+  appendU32Le(bytes, 2);
+  bytes.push_back(1);
+  bytes.push_back(0);
+  appendU16Le(bytes, 0);
+  return bytes;
+}
+
+smb::native_smb::ByteVector buildQueryInfoResponse(
+    const smb::native_smb::ByteVector &buffer) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::QueryInfo;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 26;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kQueryInfoResponseStructureSize);
+  appendU16Le(bytes, 72);
+  appendU32Le(bytes, static_cast<std::uint32_t>(buffer.size()));
+  bytes.insert(bytes.end(), buffer.begin(), buffer.end());
+  return bytes;
+}
+
 smb::native_smb::ByteVector fileIdBothEntry(
     const std::string &name, std::uint32_t nextEntryOffset,
     std::uint32_t attributes, std::uint64_t size, std::uint64_t fileId) {
@@ -772,6 +811,71 @@ private slots:
 
     QVERIFY(response.ok);
     QCOMPARE(response.value.status, smb::native_smb::kStatusSuccess);
+  }
+
+  void buildsQueryInfoRequest() {
+    smb::native_smb::QueryInfoRequestOptions options;
+    options.fileId.persistent = 0x0102030405060708ULL;
+    options.fileId.volatileId = 0x1112131415161718ULL;
+    options.infoType = smb::native_smb::kInfoTypeFile;
+    options.fileInfoClass = smb::native_smb::kFileBasicInformation;
+    options.outputBufferLength = 40;
+
+    const auto bytes =
+        smb::native_smb::buildQueryInfoRequest(options, 26, 77, 34);
+
+    QCOMPARE(bytes.size(), std::size_t{104});
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kQueryInfoRequestStructureSize);
+    QCOMPARE(bytes[66], smb::native_smb::kInfoTypeFile);
+    QCOMPARE(bytes[67], smb::native_smb::kFileBasicInformation);
+    QCOMPARE(readU32Le(bytes, 68), std::uint32_t{40});
+    QCOMPARE(readU16Le(bytes, 72), std::uint16_t{0});
+    QCOMPARE(readU16Le(bytes, 74), std::uint16_t{0});
+    QCOMPARE(readU32Le(bytes, 76), std::uint32_t{0});
+    QCOMPARE(readU32Le(bytes, 80), std::uint32_t{0});
+    QCOMPARE(readU32Le(bytes, 84), std::uint32_t{0});
+    QCOMPARE(readU64Le(bytes, 88), std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(readU64Le(bytes, 96), std::uint64_t{0x1112131415161718ULL});
+
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::QueryInfo));
+  }
+
+  void decodesQueryInfoResponse() {
+    const auto response = smb::native_smb::decodeQueryInfoResponse(
+        buildQueryInfoResponse(fileBasicInformationBuffer()));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.outputBufferOffset, std::uint16_t{72});
+    QCOMPARE(response.value.buffer.size(), std::size_t{40});
+  }
+
+  void decodesFileBasicInformation() {
+    const auto basic =
+        smb::native_smb::decodeFileBasicInformation(fileBasicInformationBuffer());
+
+    QVERIFY(basic.ok);
+    QCOMPARE(basic.value.creationTime, std::uint64_t{10});
+    QCOMPARE(basic.value.lastAccessTime, std::uint64_t{20});
+    QCOMPARE(basic.value.lastWriteTime, std::uint64_t{30});
+    QCOMPARE(basic.value.changeTime, std::uint64_t{40});
+    QCOMPARE(basic.value.fileAttributes,
+             smb::native_smb::kFileAttributeReparsePoint);
+  }
+
+  void decodesFileStandardInformation() {
+    const auto standard = smb::native_smb::decodeFileStandardInformation(
+        fileStandardInformationBuffer());
+
+    QVERIFY(standard.ok);
+    QCOMPARE(standard.value.allocationSize, std::uint64_t{4096});
+    QCOMPARE(standard.value.endOfFile, std::uint64_t{123});
+    QCOMPARE(standard.value.numberOfLinks, std::uint32_t{2});
+    QVERIFY(standard.value.deletePending);
+    QVERIFY(!standard.value.directory);
   }
 
   void buildsQueryDirectoryRequest() {

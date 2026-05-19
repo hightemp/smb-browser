@@ -239,6 +239,22 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-fake-transport"
     )
 
+    add_executable(test_native_smb_query_info_exchanger
+        test_native_smb_query_info_exchanger.cpp
+    )
+
+    target_link_libraries(test_native_smb_query_info_exchanger
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_query_info_exchanger
+             COMMAND test_native_smb_query_info_exchanger)
+    set_tests_properties(native_smb_query_info_exchanger PROPERTIES
+        LABELS "native-unit;native-fake-transport"
+    )
+
     add_executable(test_native_smb_directory_lister
         test_native_smb_directory_lister.cpp
     )
@@ -300,6 +316,37 @@ if(TARGET smb_browser_native_smb)
     add_test(NAME native_smb_remote_object_operator
              COMMAND test_native_smb_remote_object_operator)
     set_tests_properties(native_smb_remote_object_operator PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_remote_stat_reader
+        test_native_smb_remote_stat_reader.cpp
+    )
+
+    target_link_libraries(test_native_smb_remote_stat_reader
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_remote_stat_reader
+             COMMAND test_native_smb_remote_stat_reader)
+    set_tests_properties(native_smb_remote_stat_reader PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
+    add_executable(test_native_smb_session
+        test_native_smb_session.cpp
+    )
+
+    target_link_libraries(test_native_smb_session
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_session COMMAND test_native_smb_session)
+    set_tests_properties(native_smb_session PROPERTIES
         LABELS "native-unit;native-fake-transport;native-contract"
     )
 endif()

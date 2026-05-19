@@ -969,6 +969,130 @@ DecodeResult<SetInfoResponse> decodeSetInfoResponse(const ByteVector &bytes) {
   return decodeSetInfoResponse(bytes.data(), bytes.size());
 }
 
+ByteVector buildQueryInfoRequest(const QueryInfoRequestOptions &options,
+                                 std::uint64_t messageId,
+                                 std::uint32_t treeId,
+                                 std::uint64_t sessionId) {
+  if (options.inputBuffer.size() >
+      std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 QUERY_INFO input buffer is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::QueryInfo;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  constexpr std::uint16_t kInputBufferOffset = kSmb2HeaderSize + 40;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kQueryInfoRequestStructureSize);
+  bytes.push_back(options.infoType);
+  bytes.push_back(options.fileInfoClass);
+  appendU32Le(bytes, options.outputBufferLength);
+  appendU16Le(bytes, options.inputBuffer.empty() ? 0 : kInputBufferOffset);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, static_cast<std::uint32_t>(options.inputBuffer.size()));
+  appendU32Le(bytes, options.additionalInformation);
+  appendU32Le(bytes, options.flags);
+  appendFileId(bytes, options.fileId);
+  bytes.insert(bytes.end(), options.inputBuffer.begin(),
+               options.inputBuffer.end());
+  return bytes;
+}
+
+DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const std::uint8_t *data,
+                                                        std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<QueryInfoResponse>::failure(headerResult.error.code,
+                                                   headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::QueryInfo) {
+    return DecodeResult<QueryInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not a QUERY_INFO response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<QueryInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 QUERY_INFO response is missing server-to-redirector flag.");
+  }
+  if (size < kSmb2HeaderSize + 8) {
+    return DecodeResult<QueryInfoResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 QUERY_INFO response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kQueryInfoResponseStructureSize) {
+    return DecodeResult<QueryInfoResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 QUERY_INFO response structure size.");
+  }
+
+  const auto outputOffset = readU16Le(body + 2);
+  const auto outputLength = readU32Le(body + 4);
+  const auto outputEnd =
+      static_cast<std::size_t>(outputOffset) + outputLength;
+  if (outputLength > 0 &&
+      (outputOffset < kSmb2HeaderSize || outputEnd > size ||
+       outputEnd < outputOffset)) {
+    return DecodeResult<QueryInfoResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 QUERY_INFO response output buffer is out of bounds.");
+  }
+
+  QueryInfoResponse response;
+  response.status = headerResult.value.status;
+  response.outputBufferOffset = outputOffset;
+  if (outputLength > 0) {
+    response.buffer.assign(data + outputOffset, data + outputEnd);
+  }
+  return DecodeResult<QueryInfoResponse>::success(response);
+}
+
+DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(
+    const ByteVector &bytes) {
+  return decodeQueryInfoResponse(bytes.data(), bytes.size());
+}
+
+DecodeResult<FileBasicInformation>
+decodeFileBasicInformation(const ByteVector &bytes) {
+  if (bytes.size() < 40) {
+    return DecodeResult<FileBasicInformation>::failure(
+        ErrorCode::IoError,
+        "FILE_BASIC_INFORMATION buffer is shorter than 40 bytes.");
+  }
+
+  FileBasicInformation info;
+  info.creationTime = readU64Le(bytes.data());
+  info.lastAccessTime = readU64Le(bytes.data() + 8);
+  info.lastWriteTime = readU64Le(bytes.data() + 16);
+  info.changeTime = readU64Le(bytes.data() + 24);
+  info.fileAttributes = readU32Le(bytes.data() + 32);
+  return DecodeResult<FileBasicInformation>::success(info);
+}
+
+DecodeResult<FileStandardInformation>
+decodeFileStandardInformation(const ByteVector &bytes) {
+  if (bytes.size() < 24) {
+    return DecodeResult<FileStandardInformation>::failure(
+        ErrorCode::IoError,
+        "FILE_STANDARD_INFORMATION buffer is shorter than 24 bytes.");
+  }
+
+  FileStandardInformation info;
+  info.allocationSize = readU64Le(bytes.data());
+  info.endOfFile = readU64Le(bytes.data() + 8);
+  info.numberOfLinks = readU32Le(bytes.data() + 16);
+  info.deletePending = bytes[20] != 0;
+  info.directory = bytes[21] != 0;
+  return DecodeResult<FileStandardInformation>::success(info);
+}
+
 ByteVector buildFileDispositionInformation(bool deletePending) {
   return ByteVector{static_cast<std::uint8_t>(deletePending ? 1 : 0)};
 }

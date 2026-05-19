@@ -154,7 +154,20 @@ A `Must` native library feature is not complete until:
 - `native_smb_set_info_exchanger`: scripted SET_INFO flow,
   FileDispositionInformation buffer construction, response parsing, unexpected
   response handling and cancellation before transport IO.
+- `native_smb_query_info_exchanger`: scripted QUERY_INFO flow,
+  FileBasicInformation request construction, output buffer response parsing,
+  unexpected response handling and cancellation before transport IO.
 - `native_smb_remote_object_operator`: scripted `CREATE -> CLOSE` directory
   creation, `CREATE -> SET_INFO(FileDispositionInformation) -> CLOSE` delete
   flow, `CREATE -> SET_INFO(FileRenameInformation for SMB2) -> CLOSE` rename
   flow, invalid set-info response handling and cancellation before transport IO.
+- `native_smb_remote_stat_reader`: scripted
+  `CREATE -> QUERY_INFO(FileBasicInformation) ->
+  QUERY_INFO(FileStandardInformation) -> CLOSE` stat flow, timestamps,
+  attributes, size/allocation, link count, delete-pending, directory/reparse
+  mapping, invalid query-info response handling and cancellation before
+  transport IO.
+- `native_smb_session`: baseline C++ facade over native primitives, operation
+  routing for list/stat/read/write/delete/create-directory/rename, message id
+  allocation, result mapping and error propagation without exposing raw packet
+  buffers to callers.
