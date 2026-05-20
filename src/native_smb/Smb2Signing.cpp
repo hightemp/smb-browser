@@ -266,14 +266,6 @@ ByteVector asciiWithNull(const char *text) {
   return bytes;
 }
 
-ByteVector asciiBytes(const char *text) {
-  ByteVector bytes;
-  while (*text != '\0') {
-    bytes.push_back(static_cast<std::uint8_t>(*text++));
-  }
-  return bytes;
-}
-
 DecodeResult<ByteVector> deriveSmb311Key(const ByteVector &sessionKey,
                                          const char *label,
                                          const ByteVector &context) {
@@ -288,7 +280,7 @@ DecodeResult<ByteVector> deriveSmb311Key(const ByteVector &sessionKey,
         "SMB 3.1.1 key derivation requires a 64-byte preauth hash.");
   }
 
-  const auto labelBytes = asciiBytes(label);
+  const auto labelBytes = asciiWithNull(label);
   ByteVector input;
   appendU32Be(input, 1);
   input.insert(input.end(), labelBytes.begin(), labelBytes.end());
