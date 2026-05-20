@@ -10,6 +10,7 @@ This checklist is the release gate for the first usable desktop build.
   - SMB-to-desktop drag-and-drop remains a platform-specific follow-up.
   - Recursive SMB search remains optional/experimental.
   - Docker Samba integration tests are opt-in and not part of default local test runs.
+  - Native SMB perf/stress tests are opt-in and not part of default local test runs.
   - Native DFS/current-user/Kerberos/encryption limitations are documented if still open.
   - Platform packaging smoke must be completed on each target OS before publishing packages.
 
@@ -107,6 +108,14 @@ ctest --test-dir tmp/build-samba -L docker-samba --output-on-failure
 
 ```bash
 make samba-down
+```
+
+## Optional perf/stress profile
+
+- [ ] Native SMB perf/stress profile passes:
+
+```bash
+make perf-test
 ```
 
 ## Security gate

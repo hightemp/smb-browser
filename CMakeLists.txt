@@ -94,6 +94,10 @@ option(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS
     "Enable opt-in Docker Samba integration tests"
     OFF
 )
+option(SMB_BROWSER_ENABLE_PERF_TESTS
+    "Enable opt-in native SMB performance and stress tests"
+    OFF
+)
 option(SMB_BROWSER_WITH_NATIVE_SMB
     "Build the clean-room native SMB engine scaffold"
     ON

@@ -1,5 +1,8 @@
 #include "NativeSmbSession.h"
 
+#include "CloseExchanger.h"
+
+#include <algorithm>
 #include <cctype>
 #include <string_view>
 #include <utility>
@@ -31,6 +34,18 @@ DecodeResult<NativeObjectMutationResult> mutationFailureFrom(
                                                            error.message);
 }
 
+DecodeResult<NativeExtendedAttributesResult> eaFailureFrom(
+    const ProtocolError &error) {
+  return DecodeResult<NativeExtendedAttributesResult>::failure(error.code,
+                                                               error.message);
+}
+
+DecodeResult<NativeSecurityDescriptorResult> securityFailureFrom(
+    const ProtocolError &error) {
+  return DecodeResult<NativeSecurityDescriptorResult>::failure(error.code,
+                                                               error.message);
+}
+
 DecodeResult<NativeNotifyResult> notifyFailureFrom(
     const ProtocolError &error) {
   return DecodeResult<NativeNotifyResult>::failure(error.code, error.message);
@@ -44,6 +59,17 @@ DecodeResult<NativeObjectMutationResult> mutationFailure(
 
 bool isCancelled(const OperationContext &context) {
   return isCancellationRequested(context);
+}
+
+DecodeResult<ByteVector> exchangePayload(Transport &transport,
+                                         const ByteVector &request,
+                                         const OperationContext &context) {
+  const auto frame = transport.exchange(encodeDirectTcpFrame(request), context);
+  if (!frame.ok) {
+    return DecodeResult<ByteVector>::failure(frame.error.code,
+                                             frame.error.message);
+  }
+  return decodeDirectTcpPayload(frame.value);
 }
 
 bool isDotEntry(std::string_view name) {
@@ -121,6 +147,78 @@ NativeNotifyEntry toNativeNotifyEntry(const ChangeNotifyEntry &entry) {
   return result;
 }
 
+CreateRequestOptions copySourceOptions(const std::string &path) {
+  CreateRequestOptions options;
+  options.path = path;
+  options.desiredAccess = kFileReadData | kFileReadAttributes;
+  options.fileAttributes = kFileAttributeNormal;
+  options.shareAccess = kFileShareRead | kFileShareWrite | kFileShareDelete;
+  options.createDisposition = kFileOpen;
+  options.createOptions = kFileNonDirectoryFile;
+  return options;
+}
+
+CreateRequestOptions copyTargetOptions(const std::string &path) {
+  CreateRequestOptions options;
+  options.path = path;
+  options.desiredAccess = kFileWriteData | kFileWriteAttributes |
+                          kFileReadAttributes;
+  options.fileAttributes = kFileAttributeNormal;
+  options.shareAccess = kFileShareRead | kFileShareWrite | kFileShareDelete;
+  options.createDisposition = kFileOverwriteIf;
+  options.createOptions = kFileNonDirectoryFile;
+  return options;
+}
+
+DecodeResult<CreateResponse> openFile(Transport &transport,
+                                      const CreateRequestOptions &options,
+                                      std::uint64_t messageId,
+                                      std::uint32_t treeId,
+                                      std::uint64_t sessionId,
+                                      const OperationContext &context) {
+  const auto payload = exchangePayload(
+      transport, buildCreateRequest(options, messageId, treeId, sessionId),
+      context);
+  if (!payload.ok) {
+    return DecodeResult<CreateResponse>::failure(payload.error.code,
+                                                payload.error.message);
+  }
+  return decodeCreateResponse(payload.value);
+}
+
+DecodeResult<IoctlResponse> ioctl(Transport &transport,
+                                  const IoctlRequestOptions &options,
+                                  std::uint64_t messageId,
+                                  std::uint32_t treeId,
+                                  std::uint64_t sessionId,
+                                  const OperationContext &context) {
+  const auto payload = exchangePayload(
+      transport, buildIoctlRequest(options, messageId, treeId, sessionId),
+      context);
+  if (!payload.ok) {
+    return DecodeResult<IoctlResponse>::failure(payload.error.code,
+                                               payload.error.message);
+  }
+  return decodeIoctlResponse(payload.value);
+}
+
+DecodeResult<bool> closeFile(Transport &transport, const FileId &fileId,
+                             std::uint64_t messageId, std::uint32_t treeId,
+                             std::uint64_t sessionId,
+                             const OperationContext &context) {
+  CloseRequestOptions closeOptions;
+  closeOptions.fileId = fileId;
+  const CloseExchanger closer;
+  const auto response =
+      closer.close(transport, closeOptions, messageId, treeId, sessionId,
+                   context);
+  if (!response.ok) {
+    return DecodeResult<bool>::failure(response.error.code,
+                                       response.error.message);
+  }
+  return DecodeResult<bool>::success(true);
+}
+
 } // namespace
 
 NativeSmbSession::NativeSmbSession(Transport &transport,
@@ -175,14 +273,16 @@ DecodeResult<NativeWriteResult>
 NativeSmbSession::writeFileOnce(const std::string &path,
                                 const ByteVector &data, std::uint64_t offset,
                                 const OperationContext &context) {
-  const auto messageId = allocateMessageIds(3);
+  const auto messageId = m_nextMessageId;
   const FileWriter writer;
   const auto result =
       writer.writeOnce(m_transport, path, data, offset, messageId, m_treeId,
                        m_sessionId, context);
   if (!result.ok) {
+    m_nextMessageId += 3;
     return writeFailureFrom(result.error);
   }
+  m_nextMessageId += result.value.messagesUsed;
 
   NativeWriteResult write;
   write.bytesWritten = result.value.bytesWritten;
@@ -216,6 +316,129 @@ NativeSmbSession::statObject(const std::string &path,
   stat.reparsePoint = result.value.reparsePoint;
   stat.deletePending = result.value.deletePending;
   return DecodeResult<NativeStatResult>::success(stat);
+}
+
+NativeMetadataCapabilities NativeSmbSession::metadataCapabilities() const {
+  return NativeMetadataCapabilities{};
+}
+
+DecodeResult<NativeObjectMutationResult> NativeSmbSession::setBasicInformation(
+    const std::string &path, const FileBasicInformation &info,
+    const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result =
+      metadata.setBasicInformation(m_transport, path, info, messageId,
+                                   m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return mutationFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeObjectMutationResult mutation;
+  mutation.path = path;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeExtendedAttributesResult>
+NativeSmbSession::listExtendedAttributes(const std::string &path,
+                                         const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result = metadata.listExtendedAttributes(
+      m_transport, path, messageId, m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return eaFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeExtendedAttributesResult attributes;
+  attributes.entries = result.value.entries;
+  return DecodeResult<NativeExtendedAttributesResult>::success(
+      std::move(attributes));
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::setExtendedAttributes(
+    const std::string &path,
+    const std::vector<FileFullEaInformation> &entries,
+    const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result = metadata.setExtendedAttributes(
+      m_transport, path, entries, messageId, m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return mutationFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeObjectMutationResult mutation;
+  mutation.path = path;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::removeExtendedAttribute(const std::string &path,
+                                          const std::string &name,
+                                          const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result = metadata.removeExtendedAttribute(
+      m_transport, path, name, messageId, m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return mutationFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeObjectMutationResult mutation;
+  mutation.path = path;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeSecurityDescriptorResult>
+NativeSmbSession::querySecurityDescriptor(
+    const std::string &path, std::uint32_t securityInformation,
+    const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result = metadata.querySecurityDescriptor(
+      m_transport, path, securityInformation, messageId, m_treeId, m_sessionId,
+      context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return securityFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeSecurityDescriptorResult security;
+  security.descriptor = result.value.descriptor;
+  return DecodeResult<NativeSecurityDescriptorResult>::success(
+      std::move(security));
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbSession::setSecurityDescriptor(const std::string &path,
+                                        std::uint32_t securityInformation,
+                                        const ByteVector &descriptor,
+                                        const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteMetadataOperator metadata;
+  const auto result = metadata.setSecurityDescriptor(
+      m_transport, path, securityInformation, descriptor, messageId, m_treeId,
+      m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return mutationFailureFrom(result.error);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+
+  NativeObjectMutationResult mutation;
+  mutation.path = path;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
 }
 
 DecodeResult<NativeObjectMutationResult>
@@ -313,6 +536,162 @@ DecodeResult<NativeObjectMutationResult> NativeSmbSession::renameObject(
 
   NativeObjectMutationResult mutation;
   mutation.path = toPath;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeObjectMutationResult> NativeSmbSession::createHardLink(
+    const std::string &existingPath, const std::string &linkPath,
+    bool replaceIfExists, const OperationContext &context) {
+  const auto messageId = allocateMessageIds(3);
+  const RemoteObjectOperator objects;
+  const auto result =
+      objects.createHardLink(m_transport, existingPath, linkPath,
+                             replaceIfExists, messageId, m_treeId,
+                             m_sessionId, context);
+  if (!result.ok) {
+    return mutationFailureFrom(result.error);
+  }
+
+  NativeObjectMutationResult mutation;
+  mutation.path = linkPath;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeObjectMutationResult> NativeSmbSession::createSymbolicLink(
+    const std::string &linkPath, const std::string &targetPath,
+    bool directory, bool relative, const OperationContext &context) {
+  const auto messageId = allocateMessageIds(3);
+  const RemoteObjectOperator objects;
+  const auto result =
+      objects.createSymbolicLink(m_transport, linkPath, targetPath, directory,
+                                 relative, messageId, m_treeId, m_sessionId,
+                                 context);
+  if (!result.ok) {
+    return mutationFailureFrom(result.error);
+  }
+
+  NativeObjectMutationResult mutation;
+  mutation.path = linkPath;
+  return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
+}
+
+DecodeResult<NativeObjectMutationResult> NativeSmbSession::copyFileServerSide(
+    const std::string &sourcePath, const std::string &targetPath,
+    std::uint64_t size, const OperationContext &context) {
+  if (isCancelled(context)) {
+    return mutationFailure(ErrorCode::Cancelled,
+                           "SMB server-side copy was cancelled.");
+  }
+
+  const auto sourceCreate = openFile(
+      m_transport, copySourceOptions(sourcePath), allocateMessageIds(1),
+      m_treeId, m_sessionId, context);
+  if (!sourceCreate.ok) {
+    return mutationFailureFrom(sourceCreate.error);
+  }
+
+  const auto closeSource = [this, &context](const FileId &fileId) {
+    OperationContext cleanupContext;
+    cleanupContext.timeout = context.timeout;
+    return closeFile(m_transport, fileId, allocateMessageIds(1), m_treeId,
+                     m_sessionId, cleanupContext);
+  };
+  const auto closeTarget = closeSource;
+
+  if (isCancelled(context)) {
+    (void)closeSource(sourceCreate.value.fileId);
+    return mutationFailure(ErrorCode::Cancelled,
+                           "SMB server-side copy was cancelled.");
+  }
+
+  const auto targetCreate = openFile(
+      m_transport, copyTargetOptions(targetPath), allocateMessageIds(1),
+      m_treeId, m_sessionId, context);
+  if (!targetCreate.ok) {
+    (void)closeSource(sourceCreate.value.fileId);
+    return mutationFailureFrom(targetCreate.error);
+  }
+
+  const auto closeBoth = [&]() {
+    (void)closeTarget(targetCreate.value.fileId);
+    (void)closeSource(sourceCreate.value.fileId);
+  };
+
+  if (size == 0) {
+    closeBoth();
+    NativeObjectMutationResult mutation;
+    mutation.path = targetPath;
+    return DecodeResult<NativeObjectMutationResult>::success(
+        std::move(mutation));
+  }
+
+  IoctlRequestOptions resumeOptions;
+  resumeOptions.ctlCode = kFsctlSrvRequestResumeKey;
+  resumeOptions.fileId = sourceCreate.value.fileId;
+  resumeOptions.maxOutputResponse = 32;
+  resumeOptions.flags = kIoctlIsFsctl;
+  const auto resume =
+      ioctl(m_transport, resumeOptions, allocateMessageIds(1), m_treeId,
+            m_sessionId, context);
+  if (!resume.ok) {
+    closeBoth();
+    return mutationFailureFrom(resume.error);
+  }
+  if (resume.value.output.size() < 24) {
+    closeBoth();
+    return mutationFailure(
+        ErrorCode::UnsupportedCapability,
+        "SMB server-side copy resume key response is too short.");
+  }
+
+  constexpr std::uint32_t kCopyChunkSize = 1024 * 1024;
+  std::uint64_t offset = 0;
+  while (offset < size) {
+    if (isCancelled(context)) {
+      closeBoth();
+      return mutationFailure(ErrorCode::Cancelled,
+                             "SMB server-side copy was cancelled.");
+    }
+
+    const auto length = static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(kCopyChunkSize, size - offset));
+    IoctlRequestOptions copyOptions;
+    copyOptions.ctlCode = kFsctlSrvCopyChunk;
+    copyOptions.fileId = targetCreate.value.fileId;
+    copyOptions.input = buildSrvCopyChunkRequest(
+        resume.value.output, {CopyChunk{offset, offset, length}});
+    copyOptions.maxOutputResponse = 16;
+    copyOptions.flags = kIoctlIsFsctl;
+
+    const auto copied =
+        ioctl(m_transport, copyOptions, allocateMessageIds(1), m_treeId,
+              m_sessionId, context);
+    if (!copied.ok) {
+      closeBoth();
+      return mutationFailureFrom(copied.error);
+    }
+    const auto parsed = decodeSrvCopyChunkResponse(copied.value.output);
+    if (!parsed.ok) {
+      closeBoth();
+      return mutationFailureFrom(parsed.error);
+    }
+    if (parsed.value.totalBytesWritten == 0 ||
+        parsed.value.totalBytesWritten > length) {
+      closeBoth();
+      return mutationFailure(
+          ErrorCode::ProtocolUnsupported,
+          "SMB server-side copy returned an invalid byte count.");
+    }
+
+    offset += parsed.value.totalBytesWritten;
+    if (context.progressCallback) {
+      context.progressCallback(TransferProgress{offset, size});
+    }
+  }
+
+  closeBoth();
+  NativeObjectMutationResult mutation;
+  mutation.path = targetPath;
   return DecodeResult<NativeObjectMutationResult>::success(std::move(mutation));
 }
 

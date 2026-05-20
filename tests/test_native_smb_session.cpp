@@ -256,6 +256,43 @@ smb::native_smb::ByteVector writeResponsePayload() {
   return bytes;
 }
 
+smb::native_smb::ByteVector ioctlResponsePayload(
+    std::uint32_t ctlCode, const smb::native_smb::ByteVector &output) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::Ioctl;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kIoctlResponseStructureSize);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, ctlCode);
+  appendU64Le(bytes, 0x0102030405060708ULL);
+  appendU64Le(bytes, 0x1112131415161718ULL);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 112);
+  appendU32Le(bytes, static_cast<std::uint32_t>(output.size()));
+  appendU32Le(bytes, smb::native_smb::kIoctlIsFsctl);
+  appendU32Le(bytes, 0);
+  bytes.insert(bytes.end(), output.begin(), output.end());
+  return bytes;
+}
+
+smb::native_smb::ByteVector resumeKeyOutput() {
+  smb::native_smb::ByteVector output(24, 0xAB);
+  return output;
+}
+
+smb::native_smb::ByteVector copyChunkResponseOutput(std::uint32_t bytesCopied) {
+  smb::native_smb::ByteVector output;
+  appendU32Le(output, 1);
+  appendU32Le(output, bytesCopied);
+  appendU32Le(output, bytesCopied);
+  return output;
+}
+
 smb::native_smb::ByteVector fileBasicInformationBuffer(
     std::uint32_t attributes = smb::native_smb::kFileAttributeReparsePoint) {
   smb::native_smb::ByteVector bytes;
@@ -346,6 +383,16 @@ private slots:
         framedSuccess(createResponsePayload()),
         framedSuccess(setInfoResponsePayload()),
         framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(ioctlResponsePayload(
+            smb::native_smb::kFsctlSetReparsePoint, {})),
+        framedSuccess(closeResponsePayload()),
     });
 
     smb::native_smb::NativeSmbSessionConfig config;
@@ -425,6 +472,25 @@ private slots:
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{14});
   }
 
+  void metadataCapabilitiesGatePosixOperations() {
+    ScriptedTransport transport({});
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto capabilities = session.metadataCapabilities();
+
+    QVERIFY(capabilities.canSetBasicInformation);
+    QVERIFY(capabilities.canListExtendedAttributes);
+    QVERIFY(capabilities.canSetExtendedAttributes);
+    QVERIFY(capabilities.canQuerySecurityDescriptor);
+    QVERIFY(capabilities.canSetSecurityDescriptor);
+    QVERIFY(!capabilities.canUsePosixMode);
+    QVERIFY(!capabilities.canUsePosixOwner);
+    QVERIFY(!capabilities.canUsePosixGroup);
+  }
+
   void statFailureAdvancesOnlySentMessageIds() {
     ScriptedTransport transport({
         framedSuccess(statusResponsePayload(
@@ -461,12 +527,70 @@ private slots:
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{14});
   }
 
+  void routesServerSideCopyWithIoctlsAndProgress() {
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(ioctlResponsePayload(
+            smb::native_smb::kFsctlSrvRequestResumeKey, resumeKeyOutput())),
+        framedSuccess(ioctlResponsePayload(
+            smb::native_smb::kFsctlSrvCopyChunk,
+            copyChunkResponseOutput(4096))),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 700;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    std::vector<smb::native_smb::TransferProgress> progress;
+    smb::native_smb::OperationContext context;
+    context.progressCallback =
+        [&progress](const smb::native_smb::TransferProgress &event) {
+          progress.push_back(event);
+        };
+
+    const auto copied = session.copyFileServerSide("source.txt", "target.txt",
+                                                   4096, context);
+
+    QVERIFY(copied.ok);
+    QCOMPARE(QString::fromStdString(copied.value.path),
+             QStringLiteral("target.txt"));
+    QCOMPARE(transport.requestFrames.size(), std::size_t{6});
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[0]).command),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[2]).command),
+             static_cast<int>(smb::native_smb::Command::Ioctl));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[3]).command),
+             static_cast<int>(smb::native_smb::Command::Ioctl));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[4]).command),
+             static_cast<int>(smb::native_smb::Command::Close));
+    QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
+             std::uint64_t{700});
+    QCOMPARE(requestHeader(transport.requestFrames[5]).messageId,
+             std::uint64_t{705});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{706});
+    QCOMPARE(progress.size(), std::size_t{1});
+    QCOMPARE(progress.back().bytesTransferred, std::uint64_t{4096});
+    QCOMPARE(progress.back().totalBytes, std::uint64_t{4096});
+  }
+
   void routesCreateDirectoryAndRename() {
     ScriptedTransport transport({
         framedSuccess(createResponsePayload()),
         framedSuccess(closeResponsePayload()),
         framedSuccess(createResponsePayload()),
         framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(setInfoResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(ioctlResponsePayload(
+            smb::native_smb::kFsctlSetReparsePoint, {})),
         framedSuccess(closeResponsePayload()),
     });
 
@@ -487,18 +611,38 @@ private slots:
     QCOMPARE(QString::fromStdString(renamed.value.path),
              QStringLiteral("new.txt"));
 
-    QCOMPARE(transport.requestFrames.size(), std::size_t{5});
+    const auto linked =
+        session.createHardLink("new.txt", "new-hardlink.txt", false, {});
+    QVERIFY(linked.ok);
+    QCOMPARE(QString::fromStdString(linked.value.path),
+             QStringLiteral("new-hardlink.txt"));
+
+    const auto symlinked =
+        session.createSymbolicLink("link.txt", "new.txt", false, true, {});
+    QVERIFY(symlinked.ok);
+    QCOMPARE(QString::fromStdString(symlinked.value.path),
+             QStringLiteral("link.txt"));
+
+    QCOMPARE(transport.requestFrames.size(), std::size_t{11});
     QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[0]).command),
              static_cast<int>(smb::native_smb::Command::Create));
     QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[1]).command),
              static_cast<int>(smb::native_smb::Command::Close));
     QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[3]).command),
              static_cast<int>(smb::native_smb::Command::SetInfo));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[6]).command),
+             static_cast<int>(smb::native_smb::Command::SetInfo));
+    QCOMPARE(static_cast<int>(requestHeader(transport.requestFrames[9]).command),
+             static_cast<int>(smb::native_smb::Command::Ioctl));
     QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
              std::uint64_t{50});
     QCOMPARE(requestHeader(transport.requestFrames[2]).messageId,
              std::uint64_t{52});
-    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{55});
+    QCOMPARE(requestHeader(transport.requestFrames[5]).messageId,
+             std::uint64_t{55});
+    QCOMPARE(requestHeader(transport.requestFrames[8]).messageId,
+             std::uint64_t{58});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{61});
   }
 
   void recursivelyDeletesDirectoryTrees() {

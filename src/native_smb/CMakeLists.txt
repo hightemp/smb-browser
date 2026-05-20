@@ -33,6 +33,8 @@ add_library(smb_browser_native_smb STATIC
     QueryInfoExchanger.h
     ReadExchanger.cpp
     ReadExchanger.h
+    RemoteMetadataOperator.cpp
+    RemoteMetadataOperator.h
     RemoteObjectOperator.cpp
     RemoteObjectOperator.h
     RemoteStatReader.cpp

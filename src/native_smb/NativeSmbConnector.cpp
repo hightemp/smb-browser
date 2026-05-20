@@ -17,6 +17,12 @@ DecodeResult<NativeSmbConnectedState> internalFailure(std::string message) {
       ErrorCode::InternalError, std::move(message));
 }
 
+DecodeResult<NativeSmbConnectedState>
+unsupportedEncryption(std::string message) {
+  return DecodeResult<NativeSmbConnectedState>::failure(
+      ErrorCode::UnsupportedCapability, std::move(message));
+}
+
 NegotiateRequestOptions negotiateOptionsFrom(
     const NativeSmbConnectorOptions &options) {
   auto negotiate = options.negotiateOptions;
@@ -51,6 +57,11 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
       negotiator.negotiate(*transport, negotiateOptionsFrom(options), context);
   if (!negotiated.ok) {
     return failureFrom(negotiated.error);
+  }
+  if (options.config.encryption == SecurityPolicy::Required) {
+    return unsupportedEncryption(
+        "SMB encryption is required by policy, but clean-room SMB encryption is "
+        "not implemented yet.");
   }
 
   auto token = tokenProvider.initialToken(negotiated.value, options.config);
@@ -93,6 +104,11 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
   if (sessionId == 0) {
     return internalFailure("SMB SESSION_SETUP completed without a session id.");
   }
+  if (session.encryptData) {
+    return unsupportedEncryption(
+        "SMB encryption is required by the server session, but clean-room SMB "
+        "encryption is not implemented yet.");
+  }
 
   if (negotiated.value.signingRequired) {
     const auto sessionKey = tokenProvider.sessionBaseKey();
@@ -130,6 +146,11 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
                             context);
   if (!tree.ok) {
     return failureFrom(tree.error);
+  }
+  if (tree.value.requiresEncryption) {
+    return unsupportedEncryption(
+        "SMB encryption is required by the share, but clean-room SMB encryption "
+        "is not implemented yet.");
   }
 
   NativeSmbSessionConfig sessionConfig;

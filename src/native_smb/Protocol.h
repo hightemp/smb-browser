@@ -255,6 +255,36 @@ struct WriteResponse {
   std::uint16_t writeChannelInfoLength = 0;
 };
 
+struct IoctlRequestOptions {
+  std::uint32_t ctlCode = 0;
+  FileId fileId;
+  ByteVector input;
+  std::uint32_t maxInputResponse = 0;
+  std::uint32_t maxOutputResponse = 65536;
+  std::uint32_t flags = 0x00000001;
+};
+
+struct IoctlResponse {
+  std::uint32_t status = 0;
+  std::uint32_t ctlCode = 0;
+  FileId fileId;
+  ByteVector input;
+  ByteVector output;
+  std::uint32_t flags = 0;
+};
+
+struct CopyChunk {
+  std::uint64_t sourceOffset = 0;
+  std::uint64_t targetOffset = 0;
+  std::uint32_t length = 0;
+};
+
+struct CopyChunkResponse {
+  std::uint32_t chunksWritten = 0;
+  std::uint32_t chunkBytesWritten = 0;
+  std::uint32_t totalBytesWritten = 0;
+};
+
 struct SetInfoRequestOptions {
   FileId fileId;
   std::uint8_t infoType = 0x01;
@@ -297,6 +327,12 @@ struct FileStandardInformation {
   std::uint32_t numberOfLinks = 0;
   bool deletePending = false;
   bool directory = false;
+};
+
+struct FileFullEaInformation {
+  std::string name;
+  ByteVector value;
+  bool needEa = false;
 };
 
 struct QueryDirectoryRequestOptions {
@@ -369,6 +405,8 @@ constexpr std::uint16_t kReadRequestStructureSize = 49;
 constexpr std::uint16_t kReadResponseStructureSize = 17;
 constexpr std::uint16_t kWriteRequestStructureSize = 49;
 constexpr std::uint16_t kWriteResponseStructureSize = 17;
+constexpr std::uint16_t kIoctlRequestStructureSize = 57;
+constexpr std::uint16_t kIoctlResponseStructureSize = 49;
 constexpr std::uint16_t kSetInfoRequestStructureSize = 33;
 constexpr std::uint16_t kSetInfoResponseStructureSize = 2;
 constexpr std::uint16_t kQueryInfoRequestStructureSize = 41;
@@ -385,6 +423,8 @@ constexpr std::uint32_t kStatusObjectNameNotFound = 0xC0000034;
 constexpr std::uint32_t kStatusObjectNameCollision = 0xC0000035;
 constexpr std::uint32_t kStatusObjectPathNotFound = 0xC000003A;
 constexpr std::uint32_t kStatusObjectPathSyntaxBad = 0xC000003B;
+constexpr std::uint32_t kStatusInvalidParameter = 0xC000000D;
+constexpr std::uint32_t kStatusInvalidDeviceRequest = 0xC0000010;
 constexpr std::uint32_t kStatusMoreProcessingRequired = 0xC0000016;
 constexpr std::uint32_t kStatusSharingViolation = 0xC0000043;
 constexpr std::uint32_t kStatusLogonFailure = 0xC000006D;
@@ -415,10 +455,13 @@ constexpr std::uint16_t kSessionFlagIsGuest = 0x0001;
 constexpr std::uint16_t kSessionFlagIsNull = 0x0002;
 constexpr std::uint16_t kSessionFlagEncryptData = 0x0004;
 constexpr std::uint8_t kInfoTypeFile = 0x01;
+constexpr std::uint8_t kInfoTypeSecurity = 0x03;
 constexpr std::uint8_t kFileBasicInformation = 0x04;
 constexpr std::uint8_t kFileStandardInformation = 0x05;
 constexpr std::uint8_t kFileRenameInformation = 0x0A;
+constexpr std::uint8_t kFileLinkInformation = 0x0B;
 constexpr std::uint8_t kFileDispositionInformation = 0x0D;
+constexpr std::uint8_t kFileFullEaInformation = 0x0F;
 constexpr std::uint32_t kFileReadData = 0x00000001;
 constexpr std::uint32_t kFileListDirectory = 0x00000001;
 constexpr std::uint32_t kFileWriteData = 0x00000002;
@@ -427,6 +470,10 @@ constexpr std::uint32_t kFileReadEa = 0x00000008;
 constexpr std::uint32_t kFileWriteEa = 0x00000010;
 constexpr std::uint32_t kFileReadAttributes = 0x00000080;
 constexpr std::uint32_t kFileWriteAttributes = 0x00000100;
+constexpr std::uint32_t kReadControlAccess = 0x00020000;
+constexpr std::uint32_t kWriteDacAccess = 0x00040000;
+constexpr std::uint32_t kWriteOwnerAccess = 0x00080000;
+constexpr std::uint32_t kAccessSystemSecurity = 0x01000000;
 constexpr std::uint32_t kFileAttributeDirectory = 0x00000010;
 constexpr std::uint32_t kFileAttributeNormal = 0x00000080;
 constexpr std::uint32_t kFileAttributeReparsePoint = 0x00000400;
@@ -440,6 +487,7 @@ constexpr std::uint32_t kFileOverwrite = 0x00000004;
 constexpr std::uint32_t kFileOverwriteIf = 0x00000005;
 constexpr std::uint32_t kFileDirectoryFile = 0x00000001;
 constexpr std::uint32_t kFileNonDirectoryFile = 0x00000040;
+constexpr std::uint32_t kFileOpenReparsePoint = 0x00200000;
 constexpr std::uint32_t kDeleteAccess = 0x00010000;
 constexpr std::uint16_t kCloseFlagPostQueryAttrib = 0x0001;
 constexpr std::uint32_t kWriteFlagWriteThrough = 0x00000001;
@@ -456,6 +504,11 @@ constexpr std::uint32_t kFileNotifyChangeLastAccess = 0x00000020;
 constexpr std::uint32_t kFileNotifyChangeCreation = 0x00000040;
 constexpr std::uint32_t kFileNotifyChangeEa = 0x00000080;
 constexpr std::uint32_t kFileNotifyChangeSecurity = 0x00000100;
+constexpr std::uint32_t kOwnerSecurityInformation = 0x00000001;
+constexpr std::uint32_t kGroupSecurityInformation = 0x00000002;
+constexpr std::uint32_t kDaclSecurityInformation = 0x00000004;
+constexpr std::uint32_t kSaclSecurityInformation = 0x00000008;
+constexpr std::uint8_t kFileNeedEa = 0x80;
 constexpr std::uint32_t kFileNotifyChangeStreamName = 0x00000200;
 constexpr std::uint32_t kFileNotifyChangeStreamSize = 0x00000400;
 constexpr std::uint32_t kFileNotifyChangeStreamWrite = 0x00000800;
@@ -468,6 +521,12 @@ constexpr std::uint32_t kFileActionRemoved = 0x00000002;
 constexpr std::uint32_t kFileActionModified = 0x00000003;
 constexpr std::uint32_t kFileActionRenamedOldName = 0x00000004;
 constexpr std::uint32_t kFileActionRenamedNewName = 0x00000005;
+constexpr std::uint32_t kIoctlIsFsctl = 0x00000001;
+constexpr std::uint32_t kIoReparseTagSymlink = 0xA000000C;
+constexpr std::uint32_t kSymlinkFlagRelative = 0x00000001;
+constexpr std::uint32_t kFsctlSetReparsePoint = 0x000900A4;
+constexpr std::uint32_t kFsctlSrvRequestResumeKey = 0x00140078;
+constexpr std::uint32_t kFsctlSrvCopyChunk = 0x001440F2;
 
 std::uint32_t capabilityMask(std::initializer_list<GlobalCapability> values);
 std::uint16_t securityModeForPolicy(SecurityPolicy policy);
@@ -548,6 +607,20 @@ ByteVector buildWriteRequest(const WriteRequestOptions &options,
 DecodeResult<WriteResponse> decodeWriteResponse(const std::uint8_t *data,
                                                 std::size_t size);
 DecodeResult<WriteResponse> decodeWriteResponse(const ByteVector &bytes);
+ByteVector buildIoctlRequest(const IoctlRequestOptions &options,
+                             std::uint64_t messageId,
+                             std::uint32_t treeId,
+                             std::uint64_t sessionId);
+DecodeResult<IoctlResponse> decodeIoctlResponse(const std::uint8_t *data,
+                                                std::size_t size);
+DecodeResult<IoctlResponse> decodeIoctlResponse(const ByteVector &bytes);
+ByteVector buildSrvCopyChunkRequest(const ByteVector &resumeKey,
+                                    const std::vector<CopyChunk> &chunks);
+DecodeResult<CopyChunkResponse>
+decodeSrvCopyChunkResponse(const ByteVector &bytes);
+ByteVector buildSymbolicLinkReparseBuffer(std::string_view substituteName,
+                                          std::string_view printName,
+                                          bool relative);
 ByteVector buildSetInfoRequest(const SetInfoRequestOptions &options,
                                std::uint64_t messageId,
                                std::uint32_t treeId,
@@ -558,6 +631,8 @@ DecodeResult<SetInfoResponse> decodeSetInfoResponse(const ByteVector &bytes);
 ByteVector buildFileDispositionInformation(bool deletePending);
 ByteVector buildFileRenameInformation(std::string_view newPath,
                                       bool replaceIfExists);
+ByteVector buildFileLinkInformation(std::string_view newPath,
+                                    bool replaceIfExists);
 ByteVector buildQueryInfoRequest(const QueryInfoRequestOptions &options,
                                  std::uint64_t messageId,
                                  std::uint32_t treeId,
@@ -565,10 +640,15 @@ ByteVector buildQueryInfoRequest(const QueryInfoRequestOptions &options,
 DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const std::uint8_t *data,
                                                         std::size_t size);
 DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(const ByteVector &bytes);
+ByteVector buildFileBasicInformation(const FileBasicInformation &info);
 DecodeResult<FileBasicInformation>
 decodeFileBasicInformation(const ByteVector &bytes);
 DecodeResult<FileStandardInformation>
 decodeFileStandardInformation(const ByteVector &bytes);
+ByteVector
+buildFileFullEaInformation(const std::vector<FileFullEaInformation> &entries);
+DecodeResult<std::vector<FileFullEaInformation>>
+decodeFileFullEaInformation(const ByteVector &bytes);
 ByteVector buildQueryDirectoryRequest(
     const QueryDirectoryRequestOptions &options, std::uint64_t messageId,
     std::uint32_t treeId, std::uint64_t sessionId);

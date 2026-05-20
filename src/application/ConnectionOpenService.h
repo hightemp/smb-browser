@@ -12,6 +12,7 @@ namespace smb::application {
 
 struct OpenConnectionResult {
   smb::core::Connection connection;
+  smb::core::SmbClientCapabilities capabilities;
   QString currentRemotePath;
   QVector<smb::core::RemoteFileEntry> entries;
 };

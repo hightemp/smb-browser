@@ -218,6 +218,31 @@ smb::native_smb::ByteVector buildWriteResponse() {
   return bytes;
 }
 
+smb::native_smb::ByteVector buildIoctlResponse(
+    const smb::native_smb::ByteVector &output) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::Ioctl;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 25;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kIoctlResponseStructureSize);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, smb::native_smb::kFsctlSrvCopyChunk);
+  appendU64Le(bytes, 0x0102030405060708ULL);
+  appendU64Le(bytes, 0x1112131415161718ULL);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 112);
+  appendU32Le(bytes, static_cast<std::uint32_t>(output.size()));
+  appendU32Le(bytes, smb::native_smb::kIoctlIsFsctl);
+  appendU32Le(bytes, 0);
+  bytes.insert(bytes.end(), output.begin(), output.end());
+  return bytes;
+}
+
 smb::native_smb::ByteVector buildSetInfoResponse() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::SetInfo;
@@ -917,6 +942,92 @@ private slots:
     QCOMPARE(response.value.writeChannelInfoLength, std::uint16_t{0});
   }
 
+  void buildsIoctlRequest() {
+    smb::native_smb::IoctlRequestOptions options;
+    options.ctlCode = smb::native_smb::kFsctlSrvRequestResumeKey;
+    options.fileId.persistent = 0x0102030405060708ULL;
+    options.fileId.volatileId = 0x1112131415161718ULL;
+    options.input = {'a', 'b'};
+    options.maxOutputResponse = 32;
+    options.flags = smb::native_smb::kIoctlIsFsctl;
+
+    const auto bytes = smb::native_smb::buildIoctlRequest(options, 25, 77, 34);
+
+    QCOMPARE(bytes.size(), std::size_t{122});
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kIoctlRequestStructureSize);
+    QCOMPARE(readU32Le(bytes, 68),
+             smb::native_smb::kFsctlSrvRequestResumeKey);
+    QCOMPARE(readU64Le(bytes, 72), std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(readU64Le(bytes, 80), std::uint64_t{0x1112131415161718ULL});
+    QCOMPARE(readU32Le(bytes, 88), std::uint32_t{120});
+    QCOMPARE(readU32Le(bytes, 92), std::uint32_t{2});
+    QCOMPARE(readU32Le(bytes, 108), std::uint32_t{32});
+    QCOMPARE(readU32Le(bytes, 112), smb::native_smb::kIoctlIsFsctl);
+    QCOMPARE(bytes[120], std::uint8_t{'a'});
+    QCOMPARE(bytes[121], std::uint8_t{'b'});
+
+    const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
+    QVERIFY(header.ok);
+    QCOMPARE(static_cast<int>(header.value.command),
+             static_cast<int>(smb::native_smb::Command::Ioctl));
+  }
+
+  void decodesIoctlResponse() {
+    smb::native_smb::ByteVector output;
+    appendU32Le(output, 1);
+    appendU32Le(output, 512);
+    appendU32Le(output, 512);
+
+    const auto response =
+        smb::native_smb::decodeIoctlResponse(buildIoctlResponse(output));
+
+    QVERIFY(response.ok);
+    QCOMPARE(response.value.ctlCode, smb::native_smb::kFsctlSrvCopyChunk);
+    QCOMPARE(response.value.fileId.persistent,
+             std::uint64_t{0x0102030405060708ULL});
+    QCOMPARE(response.value.output.size(), std::size_t{12});
+    QCOMPARE(response.value.flags, smb::native_smb::kIoctlIsFsctl);
+  }
+
+  void buildsAndDecodesSrvCopyChunkPayloads() {
+    smb::native_smb::ByteVector resumeKey(24, 0xAB);
+    const auto request = smb::native_smb::buildSrvCopyChunkRequest(
+        resumeKey, {smb::native_smb::CopyChunk{10, 20, 4096}});
+
+    QCOMPARE(request.size(), std::size_t{56});
+    QCOMPARE(request[0], std::uint8_t{0xAB});
+    QCOMPARE(readU32Le(request, 24), std::uint32_t{1});
+    QCOMPARE(readU64Le(request, 32), std::uint64_t{10});
+    QCOMPARE(readU64Le(request, 40), std::uint64_t{20});
+    QCOMPARE(readU32Le(request, 48), std::uint32_t{4096});
+
+    smb::native_smb::ByteVector response;
+    appendU32Le(response, 1);
+    appendU32Le(response, 4096);
+    appendU32Le(response, 4096);
+    const auto decoded = smb::native_smb::decodeSrvCopyChunkResponse(response);
+
+    QVERIFY(decoded.ok);
+    QCOMPARE(decoded.value.chunksWritten, std::uint32_t{1});
+    QCOMPARE(decoded.value.totalBytesWritten, std::uint32_t{4096});
+  }
+
+  void buildsSymbolicLinkReparseBuffer() {
+    const auto bytes = smb::native_smb::buildSymbolicLinkReparseBuffer(
+        "target.txt", "", true);
+
+    QCOMPARE(readU32Le(bytes, 0), smb::native_smb::kIoReparseTagSymlink);
+    QCOMPARE(readU16Le(bytes, 4), std::uint16_t{52});
+    QCOMPARE(readU16Le(bytes, 8), std::uint16_t{0});
+    QCOMPARE(readU16Le(bytes, 10), std::uint16_t{20});
+    QCOMPARE(readU16Le(bytes, 12), std::uint16_t{20});
+    QCOMPARE(readU16Le(bytes, 14), std::uint16_t{20});
+    QCOMPARE(readU32Le(bytes, 16), smb::native_smb::kSymlinkFlagRelative);
+    QCOMPARE(readU16Le(bytes, 20), std::uint16_t{'t'});
+    QCOMPARE(readU16Le(bytes, 58), std::uint16_t{'t'});
+  }
+
   void buildsSetInfoDispositionRequest() {
     smb::native_smb::SetInfoRequestOptions options;
     options.fileId.persistent = 0x0102030405060708ULL;
@@ -959,6 +1070,20 @@ private slots:
     QCOMPARE(readU32Le(bytes, 16), std::uint32_t{22});
     QCOMPARE(readU16Le(bytes, 20), std::uint16_t{'r'});
     QCOMPARE(readU16Le(bytes, 40), std::uint16_t{'t'});
+  }
+
+  void buildsFileLinkInformationForSmb2() {
+    const auto bytes =
+        smb::native_smb::buildFileLinkInformation("linked.txt", false);
+
+    QCOMPARE(bytes[0], std::uint8_t{0});
+    for (int i = 1; i < 8; ++i) {
+      QCOMPARE(bytes[static_cast<std::size_t>(i)], std::uint8_t{0});
+    }
+    QCOMPARE(readU64Le(bytes, 8), std::uint64_t{0});
+    QCOMPARE(readU32Le(bytes, 16), std::uint32_t{20});
+    QCOMPARE(readU16Le(bytes, 20), std::uint16_t{'l'});
+    QCOMPARE(readU16Le(bytes, 38), std::uint16_t{'t'});
   }
 
   void decodesSetInfoResponse() {
@@ -1022,6 +1147,24 @@ private slots:
              smb::native_smb::kFileAttributeReparsePoint);
   }
 
+  void buildsFileBasicInformation() {
+    smb::native_smb::FileBasicInformation info;
+    info.creationTime = 11;
+    info.lastAccessTime = 22;
+    info.lastWriteTime = 33;
+    info.changeTime = 44;
+    info.fileAttributes = smb::native_smb::kFileAttributeNormal;
+
+    const auto bytes = smb::native_smb::buildFileBasicInformation(info);
+
+    QCOMPARE(bytes.size(), std::size_t{40});
+    QCOMPARE(readU64Le(bytes, 0), std::uint64_t{11});
+    QCOMPARE(readU64Le(bytes, 8), std::uint64_t{22});
+    QCOMPARE(readU64Le(bytes, 16), std::uint64_t{33});
+    QCOMPARE(readU64Le(bytes, 24), std::uint64_t{44});
+    QCOMPARE(readU32Le(bytes, 32), smb::native_smb::kFileAttributeNormal);
+  }
+
   void decodesFileStandardInformation() {
     const auto standard = smb::native_smb::decodeFileStandardInformation(
         fileStandardInformationBuffer());
@@ -1032,6 +1175,34 @@ private slots:
     QCOMPARE(standard.value.numberOfLinks, std::uint32_t{2});
     QVERIFY(standard.value.deletePending);
     QVERIFY(!standard.value.directory);
+  }
+
+  void buildsAndDecodesFileFullEaInformation() {
+    smb::native_smb::FileFullEaInformation first;
+    first.name = "user.comment";
+    first.value = {'o', 'k'};
+    first.needEa = true;
+    smb::native_smb::FileFullEaInformation second;
+    second.name = "user.empty";
+
+    const auto bytes =
+        smb::native_smb::buildFileFullEaInformation({first, second});
+
+    QCOMPARE(readU32Le(bytes, 0), std::uint32_t{24});
+    QCOMPARE(bytes[4], smb::native_smb::kFileNeedEa);
+    QCOMPARE(bytes[5], std::uint8_t{12});
+    QCOMPARE(readU16Le(bytes, 6), std::uint16_t{2});
+    QCOMPARE(readU32Le(bytes, 24), std::uint32_t{0});
+
+    const auto decoded = smb::native_smb::decodeFileFullEaInformation(bytes);
+    QVERIFY(decoded.ok);
+    QCOMPARE(decoded.value.size(), std::size_t{2});
+    QCOMPARE(decoded.value[0].name, std::string{"user.comment"});
+    QCOMPARE(decoded.value[0].value, smb::native_smb::ByteVector({'o', 'k'}));
+    QVERIFY(decoded.value[0].needEa);
+    QCOMPARE(decoded.value[1].name, std::string{"user.empty"});
+    QVERIFY(decoded.value[1].value.empty());
+    QVERIFY(!decoded.value[1].needEa);
   }
 
   void buildsAndDecodesTreeDisconnect() {

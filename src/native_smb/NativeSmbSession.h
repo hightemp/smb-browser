@@ -4,6 +4,7 @@
 #include "DirectoryWatcher.h"
 #include "FileReader.h"
 #include "FileWriter.h"
+#include "RemoteMetadataOperator.h"
 #include "RemoteObjectOperator.h"
 #include "RemoteStatReader.h"
 #include "Transport.h"
@@ -55,6 +56,25 @@ struct NativeStatResult {
   bool deletePending = false;
 };
 
+struct NativeMetadataCapabilities {
+  bool canSetBasicInformation = true;
+  bool canListExtendedAttributes = true;
+  bool canSetExtendedAttributes = true;
+  bool canQuerySecurityDescriptor = true;
+  bool canSetSecurityDescriptor = true;
+  bool canUsePosixMode = false;
+  bool canUsePosixOwner = false;
+  bool canUsePosixGroup = false;
+};
+
+struct NativeExtendedAttributesResult {
+  std::vector<FileFullEaInformation> entries;
+};
+
+struct NativeSecurityDescriptorResult {
+  ByteVector descriptor;
+};
+
 struct NativeObjectMutationResult {
   std::string path;
 };
@@ -93,6 +113,37 @@ public:
   DecodeResult<NativeStatResult>
   statObject(const std::string &path, const OperationContext &context);
 
+  NativeMetadataCapabilities metadataCapabilities() const;
+
+  DecodeResult<NativeObjectMutationResult>
+  setBasicInformation(const std::string &path,
+                      const FileBasicInformation &info,
+                      const OperationContext &context);
+
+  DecodeResult<NativeExtendedAttributesResult>
+  listExtendedAttributes(const std::string &path,
+                         const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  setExtendedAttributes(const std::string &path,
+                        const std::vector<FileFullEaInformation> &entries,
+                        const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  removeExtendedAttribute(const std::string &path, const std::string &name,
+                          const OperationContext &context);
+
+  DecodeResult<NativeSecurityDescriptorResult>
+  querySecurityDescriptor(const std::string &path,
+                          std::uint32_t securityInformation,
+                          const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  setSecurityDescriptor(const std::string &path,
+                        std::uint32_t securityInformation,
+                        const ByteVector &descriptor,
+                        const OperationContext &context);
+
   DecodeResult<NativeObjectMutationResult>
   createDirectory(const std::string &path, const OperationContext &context);
 
@@ -110,6 +161,20 @@ public:
   DecodeResult<NativeObjectMutationResult>
   renameObject(const std::string &fromPath, const std::string &toPath,
                bool replaceIfExists, const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  createHardLink(const std::string &existingPath, const std::string &linkPath,
+                 bool replaceIfExists, const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  createSymbolicLink(const std::string &linkPath,
+                     const std::string &targetPath, bool directory,
+                     bool relative, const OperationContext &context);
+
+  DecodeResult<NativeObjectMutationResult>
+  copyFileServerSide(const std::string &sourcePath,
+                     const std::string &targetPath, std::uint64_t size,
+                     const OperationContext &context);
 
   DecodeResult<NativeNotifyResult>
   watchDirectoryOnce(const std::string &path, std::uint32_t completionFilter,

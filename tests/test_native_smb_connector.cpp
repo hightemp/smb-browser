@@ -134,7 +134,8 @@ smb::native_smb::DecodeResult<smb::native_smb::ByteVector> signedFrame(
 
 smb::native_smb::ByteVector sessionSetupResponsePayload(
     std::uint32_t status, std::uint64_t sessionId,
-    smb::native_smb::ByteVector securityBuffer) {
+    smb::native_smb::ByteVector securityBuffer,
+    std::uint16_t sessionFlags = 0) {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::SessionSetup;
   header.flags = smb::native_smb::kFlagServerToRedir;
@@ -143,14 +144,16 @@ smb::native_smb::ByteVector sessionSetupResponsePayload(
 
   auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
   appendU16Le(bytes, smb::native_smb::kSessionSetupResponseStructureSize);
-  appendU16Le(bytes, 0);
+  appendU16Le(bytes, sessionFlags);
   appendU16Le(bytes, securityBuffer.empty() ? 0 : 72);
   appendU16Le(bytes, static_cast<std::uint16_t>(securityBuffer.size()));
   bytes.insert(bytes.end(), securityBuffer.begin(), securityBuffer.end());
   return bytes;
 }
 
-smb::native_smb::ByteVector treeConnectResponsePayload() {
+smb::native_smb::ByteVector treeConnectResponsePayload(
+    std::uint32_t shareFlags = smb::native_smb::kShareFlagDfs,
+    std::uint32_t capabilities = smb::native_smb::kShareCapabilityDfs) {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::TreeConnect;
   header.flags = smb::native_smb::kFlagServerToRedir;
@@ -162,8 +165,8 @@ smb::native_smb::ByteVector treeConnectResponsePayload() {
   bytes.push_back(static_cast<std::uint8_t>(
       smb::native_smb::ShareType::Disk));
   bytes.push_back(0);
-  appendU32Le(bytes, smb::native_smb::kShareFlagDfs);
-  appendU32Le(bytes, smb::native_smb::kShareCapabilityDfs);
+  appendU32Le(bytes, shareFlags);
+  appendU32Le(bytes, capabilities);
   appendU32Le(bytes, 0x001F01FF);
   return bytes;
 }
@@ -357,6 +360,83 @@ private slots:
     QVERIFY(std::any_of(treeHeader.signature.begin(),
                        treeHeader.signature.end(),
                        [](std::uint8_t byte) { return byte != 0; }));
+  }
+
+  void rejectsRequiredEncryptionPolicyUntilEncryptionIsImplemented() {
+    auto transport = std::make_unique<ScriptedTransport>(
+        std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
+            framedSuccess(negotiateResponsePayload()),
+        });
+    ScriptedTokenProvider tokenProvider;
+
+    smb::native_smb::NativeSmbConnectorOptions options;
+    options.config.server = "server";
+    options.config.share = "share";
+    options.config.encryption = smb::native_smb::SecurityPolicy::Required;
+
+    const smb::native_smb::NativeSmbConnector connector;
+    auto result =
+        connector.connect(std::move(transport), tokenProvider, options, {});
+
+    QVERIFY(!result.ok);
+    QCOMPARE(static_cast<int>(result.error.code),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::UnsupportedCapability));
+  }
+
+  void rejectsServerRequiredSessionEncryptionUntilImplemented() {
+    auto transport = std::make_unique<ScriptedTransport>(
+        std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
+            framedSuccess(negotiateResponsePayload()),
+            framedSuccess(sessionSetupResponsePayload(
+                smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {},
+                smb::native_smb::kSessionFlagEncryptData)),
+        });
+    ScriptedTokenProvider tokenProvider;
+
+    smb::native_smb::NativeSmbConnectorOptions options;
+    options.config.server = "server";
+    options.config.share = "share";
+    options.config.encryption = smb::native_smb::SecurityPolicy::Preferred;
+    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+
+    const smb::native_smb::NativeSmbConnector connector;
+    auto result =
+        connector.connect(std::move(transport), tokenProvider, options, {});
+
+    QVERIFY(!result.ok);
+    QCOMPARE(static_cast<int>(result.error.code),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::UnsupportedCapability));
+  }
+
+  void rejectsShareRequiredEncryptionUntilImplemented() {
+    auto transport = std::make_unique<ScriptedTransport>(
+        std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
+            framedSuccess(negotiateResponsePayload()),
+            framedSuccess(sessionSetupResponsePayload(
+                smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {})),
+            framedSuccess(treeConnectResponsePayload(
+                smb::native_smb::kShareFlagDfs |
+                    smb::native_smb::kShareFlagEncryptData,
+                smb::native_smb::kShareCapabilityDfs)),
+        });
+    ScriptedTokenProvider tokenProvider;
+
+    smb::native_smb::NativeSmbConnectorOptions options;
+    options.config.server = "server";
+    options.config.share = "share";
+    options.config.encryption = smb::native_smb::SecurityPolicy::Preferred;
+    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+
+    const smb::native_smb::NativeSmbConnector connector;
+    auto result =
+        connector.connect(std::move(transport), tokenProvider, options, {});
+
+    QVERIFY(!result.ok);
+    QCOMPARE(static_cast<int>(result.error.code),
+             static_cast<int>(
+                 smb::native_smb::ErrorCode::UnsupportedCapability));
   }
 
   void returnsTokenProviderFailure() {

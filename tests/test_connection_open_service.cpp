@@ -111,6 +111,10 @@ private slots:
     smb::tests::FakeSmbClient smbClient;
     smbClient.setRequirePassword(true);
     smbClient.setExpectedSecret(QByteArrayLiteral("expected-secret"));
+    smb::core::SmbClientCapabilities capabilities;
+    capabilities.canReadExtendedAttributes = true;
+    capabilities.canBrowseShares = false;
+    smbClient.setCapabilities(capabilities);
     smbClient.addDirectory(QStringLiteral("/reports/archive"));
     smbClient.addFile(QStringLiteral("/reports/readme.txt"),
                       QByteArrayLiteral("hello"));
@@ -124,6 +128,8 @@ private slots:
     QCOMPARE(opened.value().entries.size(), 2);
     QCOMPARE(opened.value().entries.at(0).name, QStringLiteral("archive"));
     QCOMPARE(opened.value().entries.at(1).name, QStringLiteral("readme.txt"));
+    QVERIFY(opened.value().capabilities.canReadExtendedAttributes);
+    QVERIFY(!opened.value().capabilities.canBrowseShares);
     QVERIFY(opened.value().connection.lastOpenedAt.isValid());
 
     const auto loaded = fixture->repository->getById(QStringLiteral("conn-1"));

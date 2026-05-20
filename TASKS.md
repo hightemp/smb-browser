@@ -1023,6 +1023,8 @@
 - Заметки по тестам:
   - Manual smoke: add connection, save credential, reopen app, list SMB via test server.
   - Подготовлен smoke script `scripts/package-smoke-windows.ps1`; выполнить на Windows перед закрытием задачи.
+  - Linux workspace note: PowerShell is not installed here, so Windows smoke
+    remains manual/on-runner only.
 
 ### [x] T-072: Подготовить Linux packaging
 
@@ -1055,6 +1057,8 @@
   - Manual smoke на macOS.
   - Проверить tray/menu behavior отдельно.
   - Подготовлен smoke script `scripts/package-smoke-macos.sh`; выполнить на macOS перед закрытием задачи.
+  - Linux workspace note: `bash -n scripts/package-macos.sh
+    scripts/package-smoke-macos.sh` passes, but host smoke remains macOS-only.
 
 ### [x] T-074: Подготовить release checklist
 
@@ -2055,6 +2059,12 @@ Samba в проект запрещено.
   - Unit tests для crypto/signature state machine на synthetic vectors.
   - Docker Samba fixtures с required signing/encryption, если поддерживаются.
   - Manual Windows Server validation с signing/encryption policy.
+  - Частично реализовано: SMB2/2.1 HMAC-SHA256 signing and SMB3 AES-CMAC
+    signing are implemented; connector now enforces encryption policy and
+    fails closed when user policy, session flags or share flags require SMB
+    encryption until transform encryption/decryption is implemented.
+  - `native_smb_connector` covers required encryption policy, server session
+    encryption and share encryption fail-closed behavior.
 
 ### [ ] T-097: Реализовать share browsing и capability probing
 
@@ -2071,6 +2081,11 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Docker Samba integration для share list.
   - Unit tests capability formatting/sanitization.
+  - Частично реализовано: добавлен `SmbCapabilityReport` contract,
+    `NativeSmbClient::probeCapabilities()` returns negotiated dialect,
+    signing/encryption flags, DFS support and tree DFS/encryption flags without
+    SMB1/NetBIOS. `smb_client_contract` covers the report contract with fake
+    backend. Остаётся: IPC$/SRVSVC share enumeration and real-server tests.
 
 ## Этап 18. Native SMB file operation parity
 
@@ -2166,7 +2181,7 @@ Samba в проект запрещено.
   - Unit tests partial failure.
   - Docker Samba same-share and cross-share scenarios.
 
-### [ ] T-103: Реализовать copy и server-side copy fallback strategy
+### [x] T-103: Реализовать copy и server-side copy fallback strategy
 
 - Приоритет: Must.
 - Зависимости: T-099, T-100.
@@ -2180,8 +2195,13 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Docker Samba copy large file.
   - Unit tests fallback decision matrix.
+  - `native_smb_protocol` covers SMB2 IOCTL and SRV_COPYCHUNK payloads.
+  - `native_smb_session` covers server-side copy sequencing with
+    `FSCTL_SRV_REQUEST_RESUME_KEY` and `FSCTL_SRV_COPYCHUNK`.
+  - Docker Samba real-wire profile covers same-share copy and cross-share
+    stream-copy fallback with synthetic fixtures.
 
-### [ ] T-104: Реализовать symlink, hardlink и reparse handling
+### [x] T-104: Реализовать symlink, hardlink и reparse handling
 
 - Приоритет: Must.
 - Зависимости: T-098.
@@ -2196,8 +2216,16 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests type mapping.
   - Integration tests с Samba UNIX extensions/reparse fixture, если возможно.
+  - Реализовано: reparse indicators/listing/stat, symlink file/folder UI
+    fallback behavior, native hardlink API through `FileLinkInformation`, and
+    native symlink creation API through `FSCTL_SET_REPARSE_POINT` with Windows
+    symbolic-link reparse buffer construction.
+  - `native_smb_protocol` covers symlink reparse buffer layout.
+  - `native_smb_remote_object_operator` and `native_smb_session` cover hardlink
+    and symlink creation routing. Real-server symlink/hardlink capability
+    validation remains part of optional server-specific integration profiles.
 
-### [ ] T-105: Реализовать file attributes, timestamps, ACL и EA operations
+### [x] T-105: Реализовать file attributes, timestamps, ACL и EA operations
 
 - Приоритет: Must.
 - Зависимости: T-098.
@@ -2213,6 +2241,14 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests capability gating.
   - Optional integration tests on Samba with UNIX extensions/ACL support.
+  - Реализовано в native library: `FILE_BASIC_INFORMATION` set for timestamps
+    and attributes, `FILE_FULL_EA_INFORMATION` list/set/remove, raw security
+    descriptor query/set through SMB2 QUERY/SET_INFO with POSIX chmod/chown
+    explicitly gated as unsupported capability until a POSIX extension contract
+    is added.
+  - `native_smb_protocol` covers basic-info and EA buffer wire layout.
+  - `native_smb_remote_metadata_operator` covers metadata operation routing.
+  - `native_smb_session` covers metadata capability gating.
 
 ### [x] T-106: Реализовать change notify/watch capability
 
@@ -2288,7 +2324,7 @@ Samba в проект запрещено.
   - `make native-test`, `make build` and `make smoke-linux` cover default
     native build profiles.
 
-### [ ] T-110: Обновить UI/service capabilities под native feature set
+### [x] T-110: Обновить UI/service capabilities под native feature set
 
 - Приоритет: Should.
 - Зависимости: T-105, T-106, T-107.
@@ -2302,6 +2338,14 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - UI smoke tests for capabilities state.
   - Unit tests view-model mapping.
+  - Добавлен `SmbClientCapabilities` contract, `ConnectionOpenService`
+    прокидывает capabilities в `OpenConnectionResult`, `NativeSmbClient`
+    сообщает native metadata/watch support and unsupported POSIX/share browsing
+    reason.
+  - `RemoteBrowserWidget` uses capabilities for toolbar enabled state and
+    exposes a lightweight Properties dialog from current model metadata.
+  - `connection_open_service` covers capability propagation.
+  - `remote_browser_widget` covers capability-controlled action state.
 
 ## Этап 20. One-binary packaging и dependency audit
 
@@ -2461,7 +2505,7 @@ Samba в проект запрещено.
   - Linux automated.
   - Windows/macOS manual or runner-backed before release.
 
-### [ ] T-119: Добавить performance и stress tests для native backend
+### [x] T-119: Добавить performance и stress tests для native backend
 
 - Приоритет: Should.
 - Зависимости: T-099, T-100, T-103.
@@ -2475,6 +2519,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Optional perf profile, not default unit suite.
   - Store metrics as CI artifacts where possible.
+  - `make perf-test` enables `SMB_BROWSER_ENABLE_PERF_TESTS=ON` and runs
+    `native_smb_perf_stress` with labels `perf;native-stress`.
+  - Current coverage includes large directory parsing, chunked server-side copy
+    progress and cancellation between copy chunks.
 
 ### [x] T-120: Провести security regression suite после удаления старых backend-ов
 

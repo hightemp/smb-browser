@@ -62,6 +62,7 @@ public slots:
   void uploadFile();
   void copySelected();
   void moveSelected();
+  void showSelectedProperties();
   void prepareExternalDragForSelected();
 
 signals:
@@ -168,6 +169,8 @@ private:
   QPushButton *m_moveButton = nullptr;
   QPushButton *m_deleteButton = nullptr;
   QPushButton *m_renameButton = nullptr;
+  QPushButton *m_propertiesButton = nullptr;
+  smb::core::SmbClientCapabilities m_capabilities;
   QString m_connectionId;
   QString m_locationRootText;
   QString m_currentRemotePath;

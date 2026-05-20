@@ -73,6 +73,11 @@ void FakeSmbClient::setExpectedSecret(QByteArray expectedSecret) {
   m_expectedSecret = std::move(expectedSecret);
 }
 
+void FakeSmbClient::setCapabilities(
+    smb::core::SmbClientCapabilities capabilities) {
+  m_capabilities = std::move(capabilities);
+}
+
 void FakeSmbClient::failOperation(FakeSmbOperation operation,
                                   smb::core::ErrorCode code) {
   m_failures.insert(static_cast<int>(operation), code);
@@ -112,6 +117,12 @@ FakeSmbClient::checkConnection(const smb::core::Connection &,
   }
 
   return smb::core::Result<bool>::success(true);
+}
+
+smb::core::SmbClientCapabilities
+FakeSmbClient::capabilities(const smb::core::Connection &connection) const {
+  (void)connection;
+  return m_capabilities;
 }
 
 smb::core::Result<QVector<smb::core::RemoteFileEntry>>

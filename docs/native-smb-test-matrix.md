@@ -100,6 +100,7 @@ library. Возможность считается готовой только �
 - `windows-smb`: manual or runner-backed Windows Server validation.
 - `package-smoke`: platform package and dependency audit.
 - `security`: secret/log/export regression tests.
+- `perf`: opt-in native SMB performance/stress tests.
 
 ## Native contract environment
 
@@ -151,7 +152,9 @@ A `Must` native library feature is not complete until:
 - `native_smb_protocol`: SMB2 SYNC header, SMB2 NEGOTIATE request, Direct TCP
   framing, SMB2 NEGOTIATE response, SMB2 SESSION_SETUP request, signing
   security mode mapping, NTSTATUS typed error mapping, response early-failure
-  behavior and no-SMB1 initial dialect policy.
+  behavior, SMB2 IOCTL request/response, SRV_COPYCHUNK payloads and no-SMB1
+  initial dialect policy, plus FileRenameInformation and FileLinkInformation
+  payload builders.
 - `native_smb_direct_tcp_transport`: loopback Direct TCP transport exchange,
   split response frame handling, timeout/cancellation-aware socket path and
   cancellation before socket open.
@@ -173,7 +176,8 @@ A `Must` native library feature is not complete until:
 - `native_smb_connector`: baseline connection lifecycle
   `NEGOTIATE -> SESSION_SETUP token exchange -> TREE_CONNECT`, owned
   transport/session facade construction, token provider failure, request
-  sequencing, signed `TREE_CONNECT` when signing is required, and explicit
+  sequencing, signed `TREE_CONNECT` when signing is required, fail-closed
+  behavior when encryption is required by policy/session/share, and explicit
   `TREE_DISCONNECT -> LOGOFF` teardown sequencing.
 - `native_smb_directory_lister`: composed `CREATE -> QUERY_DIRECTORY... ->
   CLOSE` flow, paged listing until `STATUS_NO_MORE_FILES`, entry aggregation
@@ -222,6 +226,7 @@ A `Must` native library feature is not complete until:
 - `native_smb_remote_object_operator`: scripted `CREATE -> CLOSE` directory
   creation, `CREATE -> SET_INFO(FileDispositionInformation) -> CLOSE` delete
   flow, `CREATE -> SET_INFO(FileRenameInformation for SMB2) -> CLOSE` rename
+  flow, `CREATE -> IOCTL(FSCTL_SET_REPARSE_POINT) -> CLOSE` symlink creation
   flow, invalid set-info response handling and cancellation before transport IO.
 - `native_smb_remote_stat_reader`: scripted
   `CREATE -> QUERY_INFO(FileBasicInformation) ->
@@ -229,21 +234,40 @@ A `Must` native library feature is not complete until:
   attributes, size/allocation, link count, delete-pending, directory/reparse
   mapping, invalid query-info response handling and cancellation before
   transport IO.
+- `native_smb_remote_metadata_operator`: scripted
+  `CREATE -> SET_INFO(FileBasicInformation) -> CLOSE` timestamps/attributes,
+  `CREATE -> QUERY_INFO(FileFullEaInformation) -> CLOSE` EA listing,
+  `CREATE -> SET_INFO(FileFullEaInformation) -> CLOSE` EA set/remove and
+  `CREATE -> QUERY/SET_INFO(Security) -> CLOSE` raw security descriptor
+  routing. POSIX chmod/chown remain capability-gated as unsupported until a
+  POSIX SMB extension contract is added.
 - `native_smb_session`: baseline C++ facade over native primitives, operation
   routing for list/stat/read/write/delete/create-directory/rename, recursive
-  delete, wildcard delete, single-shot directory watch, message id allocation,
-  result mapping, cancellation before recursive delete network IO and error
-  propagation without exposing raw packet buffers to callers.
+  delete, wildcard delete, server-side same-share copy through
+  `FSCTL_SRV_REQUEST_RESUME_KEY`/`FSCTL_SRV_COPYCHUNK`, hardlink creation
+  routing through `FileLinkInformation`, symlink creation routing through
+  `FSCTL_SET_REPARSE_POINT`, advanced metadata capability gating, single-shot
+  directory watch, message id allocation, result mapping,
+  cancellation before recursive delete network IO and error propagation without
+  exposing raw packet buffers to callers.
 - `smb_client_contract`: application-level `SmbClient` contract. Default run
   covers FakeSmbClient check/list/upload/download/mkdir/delete/rename/copy/move,
-  symlink listing, timeout and cancellation. Native real-server contract is
-  opt-in with environment variables and covers the same mutating flow plus
-  optional symlink/DFS fixture checks when configured.
+  capability report contract, symlink listing, timeout and cancellation. Native
+  real-server contract is opt-in with environment variables and covers the same
+  mutating flow plus optional symlink/DFS fixture checks when configured.
+- `connection_open_service` and `remote_browser_widget`: service/UI capability
+  propagation, toolbar enabled state for supported operations, unsupported
+  advanced-operation gating and lightweight properties/details display from the
+  current remote model metadata.
 - `docker_samba_integration`: opt-in real-wire Docker Samba profile for the
   clean-room native backend. Covers password and guest auth, root/nested
   listing, metadata fixture visibility, large-file download progress,
   large-file upload progress, overwrite verification, rename/delete and
-  cross-share stream copy using synthetic credentials.
+  same-share copy plus cross-share stream copy using synthetic credentials.
+- `native_smb_perf_stress`: optional `make perf-test` profile. Covers large
+  directory parser/state-machine pressure, chunked server-side copy progress
+  and cancellation cleanup between copy chunks without requiring a real network
+  server.
 - `security_regression`: default security gate for export/import, SQLite
   metadata, operation names, native error diagnostics and no stdout/stderr
   diagnostics in native SMB sources.

@@ -249,6 +249,7 @@ smb::core::Result<OpenConnectionResult> ConnectionOpenService::openAtPath(
 
   OpenConnectionResult result;
   result.connection = refreshedConnection.value();
+  result.capabilities = m_smbClient.capabilities(refreshedConnection.value());
   result.currentRemotePath = currentPath;
   result.entries = std::move(listed.value());
   return smb::core::Result<OpenConnectionResult>::success(std::move(result));

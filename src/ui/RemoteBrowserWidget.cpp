@@ -20,6 +20,7 @@
 #include <QMetaObject>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -27,6 +28,7 @@
 #include <QSize>
 #include <QSizePolicy>
 #include <QStyle>
+#include <QStringList>
 #include <QTableView>
 #include <QThread>
 #include <QTimer>
@@ -76,6 +78,25 @@ bool isDownloadableRemoteEntry(const smb::core::RemoteFileEntry &entry) {
 
 QString normalizedLocalPath(const QString &path) {
   return QFileInfo(path).absoluteFilePath();
+}
+
+QString propertiesText(const smb::core::RemoteFileEntry &entry) {
+  QStringList lines;
+  lines << QObject::tr("Name: %1").arg(entry.name);
+  lines << QObject::tr("Path: %1").arg(entry.remotePath);
+  lines << QObject::tr("Type: %1").arg(smb::core::toString(entry.type));
+  lines << QObject::tr("Size: %1").arg(entry.size);
+  if (entry.modifiedAt.isValid()) {
+    lines << QObject::tr("Modified: %1").arg(
+        entry.modifiedAt.toLocalTime().toString(Qt::ISODate));
+  }
+  if (!entry.attributes.isEmpty()) {
+    lines << QObject::tr("Attributes: %1").arg(entry.attributes);
+  }
+  if (!entry.permissions.isEmpty()) {
+    lines << QObject::tr("Permissions: %1").arg(entry.permissions);
+  }
+  return lines.join(QLatin1Char('\n'));
 }
 
 } // namespace
@@ -170,6 +191,11 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   m_renameButton = new QPushButton(style()->standardIcon(QStyle::SP_FileIcon),
                                    tr("Rename"), toolbar);
   m_renameButton->setObjectName(QStringLiteral("remoteBrowserRenameButton"));
+  m_propertiesButton = new QPushButton(
+      style()->standardIcon(QStyle::SP_FileDialogDetailedView),
+      tr("Properties"), toolbar);
+  m_propertiesButton->setObjectName(
+      QStringLiteral("remoteBrowserPropertiesButton"));
 
   buttonLayout->addWidget(m_backButton);
   buttonLayout->addWidget(m_forwardButton);
@@ -181,6 +207,7 @@ RemoteBrowserWidget::RemoteBrowserWidget(
   buttonLayout->addWidget(m_copyButton);
   buttonLayout->addWidget(m_moveButton);
   buttonLayout->addWidget(m_renameButton);
+  buttonLayout->addWidget(m_propertiesButton);
   buttonLayout->addWidget(m_deleteButton);
   buttonLayout->addStretch(1);
   toolbarLayout->addLayout(buttonLayout);
@@ -261,6 +288,8 @@ RemoteBrowserWidget::RemoteBrowserWidget(
           &RemoteBrowserWidget::deleteSelected);
   connect(m_renameButton, &QPushButton::clicked, this,
           &RemoteBrowserWidget::renameSelected);
+  connect(m_propertiesButton, &QPushButton::clicked, this,
+          &RemoteBrowserWidget::showSelectedProperties);
   connect(m_searchEdit, &QLineEdit::textChanged, this,
           [this](const QString &text) {
             m_filterModel->setFilterText(text);
@@ -295,6 +324,7 @@ RemoteBrowserWidget::RemoteBrowserWidget(
 void RemoteBrowserWidget::setDirectory(
     smb::application::OpenConnectionResult result) {
   m_connectionId = result.connection.id;
+  m_capabilities = result.capabilities;
   m_locationRootText = locationRootText(result.connection);
   m_currentRemotePath = normalizeRemotePath(result.currentRemotePath);
   m_backStack.clear();
@@ -309,6 +339,7 @@ void RemoteBrowserWidget::setDirectory(
 
 void RemoteBrowserWidget::clear() {
   m_connectionId.clear();
+  m_capabilities = smb::core::SmbClientCapabilities{};
   m_locationRootText.clear();
   m_currentRemotePath.clear();
   m_pendingSymlinkFileFallbacks.clear();
@@ -529,6 +560,15 @@ void RemoteBrowserWidget::moveSelected() {
                      return copyOrMoveEntries(true, entries, destination,
                                               context);
                    });
+}
+
+void RemoteBrowserWidget::showSelectedProperties() {
+  const auto entry = selectedEntry();
+  if (entry.name.isEmpty()) {
+    return;
+  }
+
+  QMessageBox::information(this, tr("Properties"), propertiesText(entry));
 }
 
 void RemoteBrowserWidget::prepareExternalDragForSelected() {
@@ -932,16 +972,24 @@ void RemoteBrowserWidget::updateActionState() {
   m_forwardButton->setEnabled(hasConnection && !m_forwardStack.isEmpty());
   m_upButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty() &&
                          m_currentRemotePath != QStringLiteral("/"));
-  m_refreshButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty());
+  m_refreshButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty() &&
+                              m_capabilities.canListDirectory);
   m_createFolderButton->setEnabled(hasConnection &&
-                                   !m_currentRemotePath.isEmpty());
-  m_uploadButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty());
-  m_downloadButton->setEnabled(hasConnection &&
+                                   !m_currentRemotePath.isEmpty() &&
+                                   m_capabilities.canCreateDirectory);
+  m_uploadButton->setEnabled(hasConnection && !m_currentRemotePath.isEmpty() &&
+                             m_capabilities.canUpload);
+  m_downloadButton->setEnabled(hasConnection && m_capabilities.canDownload &&
                                isDownloadableRemoteEntry(selectedEntry()));
-  m_copyButton->setEnabled(hasConnection && hasSelection);
-  m_moveButton->setEnabled(hasConnection && hasSelection);
-  m_deleteButton->setEnabled(hasConnection && hasSelection);
-  m_renameButton->setEnabled(hasConnection && hasSelection);
+  m_copyButton->setEnabled(hasConnection && hasSelection &&
+                           m_capabilities.canCopy);
+  m_moveButton->setEnabled(hasConnection && hasSelection &&
+                           m_capabilities.canMove);
+  m_deleteButton->setEnabled(hasConnection && hasSelection &&
+                             m_capabilities.canRemove);
+  m_renameButton->setEnabled(hasConnection && hasSelection &&
+                             m_capabilities.canRename);
+  m_propertiesButton->setEnabled(hasConnection && hasSelection);
 }
 
 void RemoteBrowserWidget::updateLocationBar() {

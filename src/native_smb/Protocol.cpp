@@ -160,6 +160,9 @@ ErrorCode errorCodeForNtStatus(std::uint32_t status) {
   case kStatusNotADirectory:
   case kStatusFileIsADirectory:
     return ErrorCode::InvalidPath;
+  case kStatusInvalidParameter:
+  case kStatusInvalidDeviceRequest:
+    return ErrorCode::UnsupportedCapability;
   case kStatusIoTimeout:
     return ErrorCode::Timeout;
   case kStatusNotSupported:
@@ -187,6 +190,10 @@ std::string ntStatusName(std::uint32_t status) {
     return "STATUS_OBJECT_PATH_NOT_FOUND";
   case kStatusObjectPathSyntaxBad:
     return "STATUS_OBJECT_PATH_SYNTAX_BAD";
+  case kStatusInvalidParameter:
+    return "STATUS_INVALID_PARAMETER";
+  case kStatusInvalidDeviceRequest:
+    return "STATUS_INVALID_DEVICE_REQUEST";
   case kStatusMoreProcessingRequired:
     return "STATUS_MORE_PROCESSING_REQUIRED";
   case kStatusSharingViolation:
@@ -1170,6 +1177,187 @@ DecodeResult<WriteResponse> decodeWriteResponse(const ByteVector &bytes) {
   return decodeWriteResponse(bytes.data(), bytes.size());
 }
 
+ByteVector buildIoctlRequest(const IoctlRequestOptions &options,
+                             std::uint64_t messageId, std::uint32_t treeId,
+                             std::uint64_t sessionId) {
+  if (options.input.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 IOCTL input buffer is too large.");
+  }
+
+  Smb2SyncHeader header;
+  header.command = Command::Ioctl;
+  header.messageId = messageId;
+  header.treeId = treeId;
+  header.sessionId = sessionId;
+  header.creditRequest = 1;
+
+  constexpr std::uint32_t kBufferOffset = kSmb2HeaderSize + 56;
+  const auto inputOffset = options.input.empty() ? 0 : kBufferOffset;
+
+  auto bytes = encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, kIoctlRequestStructureSize);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, options.ctlCode);
+  appendFileId(bytes, options.fileId);
+  appendU32Le(bytes, inputOffset);
+  appendU32Le(bytes, static_cast<std::uint32_t>(options.input.size()));
+  appendU32Le(bytes, options.maxInputResponse);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, options.maxOutputResponse);
+  appendU32Le(bytes, options.flags);
+  appendU32Le(bytes, 0);
+  bytes.insert(bytes.end(), options.input.begin(), options.input.end());
+  if (options.input.empty()) {
+    bytes.push_back(0);
+  }
+  return bytes;
+}
+
+DecodeResult<IoctlResponse> decodeIoctlResponse(const std::uint8_t *data,
+                                                std::size_t size) {
+  const auto headerResult = decodeSmb2SyncHeader(data, size);
+  if (!headerResult.ok) {
+    return DecodeResult<IoctlResponse>::failure(headerResult.error.code,
+                                               headerResult.error.message);
+  }
+  if (headerResult.value.command != Command::Ioctl) {
+    return DecodeResult<IoctlResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 response is not an IOCTL response.");
+  }
+  if ((headerResult.value.flags & kFlagServerToRedir) == 0) {
+    return DecodeResult<IoctlResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB2 IOCTL response is missing server-to-redirector flag.");
+  }
+  if (headerResult.value.status != kStatusSuccess) {
+    return failureFromNtStatus<IoctlResponse>(headerResult.value.status,
+                                              "SMB2 IOCTL");
+  }
+  if (size < kSmb2HeaderSize + 48) {
+    return DecodeResult<IoctlResponse>::failure(
+        ErrorCode::IoError,
+        "SMB2 IOCTL response buffer is shorter than fixed response.");
+  }
+
+  const auto *body = data + kSmb2HeaderSize;
+  if (readU16Le(body) != kIoctlResponseStructureSize) {
+    return DecodeResult<IoctlResponse>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "Invalid SMB2 IOCTL response structure size.");
+  }
+
+  const auto inputOffset = readU32Le(body + 24);
+  const auto inputCount = readU32Le(body + 28);
+  const auto outputOffset = readU32Le(body + 32);
+  const auto outputCount = readU32Le(body + 36);
+
+  const auto bufferInBounds = [size](std::uint32_t offset,
+                                     std::uint32_t count) {
+    const auto end = static_cast<std::size_t>(offset) + count;
+    return count == 0 ||
+           (offset >= kSmb2HeaderSize && end <= size && end >= offset);
+  };
+  if (!bufferInBounds(inputOffset, inputCount) ||
+      !bufferInBounds(outputOffset, outputCount)) {
+    return DecodeResult<IoctlResponse>::failure(
+        ErrorCode::IoError, "SMB2 IOCTL response buffer is out of bounds.");
+  }
+
+  IoctlResponse response;
+  response.status = headerResult.value.status;
+  response.ctlCode = readU32Le(body + 4);
+  response.fileId.persistent = readU64Le(body + 8);
+  response.fileId.volatileId = readU64Le(body + 16);
+  response.flags = readU32Le(body + 40);
+  if (inputCount > 0) {
+    response.input.assign(data + inputOffset, data + inputOffset + inputCount);
+  }
+  if (outputCount > 0) {
+    response.output.assign(data + outputOffset,
+                           data + outputOffset + outputCount);
+  }
+  return DecodeResult<IoctlResponse>::success(response);
+}
+
+DecodeResult<IoctlResponse> decodeIoctlResponse(const ByteVector &bytes) {
+  return decodeIoctlResponse(bytes.data(), bytes.size());
+}
+
+ByteVector buildSrvCopyChunkRequest(const ByteVector &resumeKey,
+                                    const std::vector<CopyChunk> &chunks) {
+  if (resumeKey.size() < 24) {
+    throw std::invalid_argument("SRV_COPYCHUNK requires a 24-byte resume key.");
+  }
+  if (chunks.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("Too many SRV_COPYCHUNK chunks.");
+  }
+
+  ByteVector bytes;
+  bytes.insert(bytes.end(), resumeKey.begin(), resumeKey.begin() + 24);
+  appendU32Le(bytes, static_cast<std::uint32_t>(chunks.size()));
+  appendU32Le(bytes, 0);
+  for (const auto &chunk : chunks) {
+    appendU64Le(bytes, chunk.sourceOffset);
+    appendU64Le(bytes, chunk.targetOffset);
+    appendU32Le(bytes, chunk.length);
+    appendU32Le(bytes, 0);
+  }
+  return bytes;
+}
+
+DecodeResult<CopyChunkResponse>
+decodeSrvCopyChunkResponse(const ByteVector &bytes) {
+  if (bytes.size() < 12) {
+    return DecodeResult<CopyChunkResponse>::failure(
+        ErrorCode::IoError,
+        "SRV_COPYCHUNK response buffer is shorter than fixed response.");
+  }
+
+  CopyChunkResponse response;
+  response.chunksWritten = readU32Le(bytes.data());
+  response.chunkBytesWritten = readU32Le(bytes.data() + 4);
+  response.totalBytesWritten = readU32Le(bytes.data() + 8);
+  return DecodeResult<CopyChunkResponse>::success(response);
+}
+
+ByteVector buildSymbolicLinkReparseBuffer(std::string_view substituteName,
+                                          std::string_view printName,
+                                          bool relative) {
+  if (substituteName.empty()) {
+    throw std::invalid_argument("SMB2 symlink substitute name is empty.");
+  }
+  if (printName.empty()) {
+    printName = substituteName;
+  }
+
+  const auto substitute = encodeUtf16Le(substituteName);
+  const auto print = encodeUtf16Le(printName);
+  if (substitute.size() > std::numeric_limits<std::uint16_t>::max() ||
+      print.size() > std::numeric_limits<std::uint16_t>::max() ||
+      substitute.size() + print.size() + 12 >
+          std::numeric_limits<std::uint16_t>::max()) {
+    throw std::invalid_argument("SMB2 symlink reparse buffer is too large.");
+  }
+
+  ByteVector bytes;
+  bytes.reserve(20 + substitute.size() + print.size());
+  appendU32Le(bytes, kIoReparseTagSymlink);
+  appendU16Le(
+      bytes,
+      static_cast<std::uint16_t>(12 + substitute.size() + print.size()));
+  appendU16Le(bytes, 0);
+  appendU16Le(bytes, 0);
+  appendU16Le(bytes, static_cast<std::uint16_t>(substitute.size()));
+  appendU16Le(bytes, static_cast<std::uint16_t>(substitute.size()));
+  appendU16Le(bytes, static_cast<std::uint16_t>(print.size()));
+  appendU32Le(bytes, relative ? kSymlinkFlagRelative : 0);
+  bytes.insert(bytes.end(), substitute.begin(), substitute.end());
+  bytes.insert(bytes.end(), print.begin(), print.end());
+  return bytes;
+}
+
 ByteVector buildSetInfoRequest(const SetInfoRequestOptions &options,
                                std::uint64_t messageId,
                                std::uint32_t treeId,
@@ -1337,6 +1525,18 @@ DecodeResult<QueryInfoResponse> decodeQueryInfoResponse(
   return decodeQueryInfoResponse(bytes.data(), bytes.size());
 }
 
+ByteVector buildFileBasicInformation(const FileBasicInformation &info) {
+  ByteVector bytes;
+  bytes.reserve(40);
+  appendU64Le(bytes, info.creationTime);
+  appendU64Le(bytes, info.lastAccessTime);
+  appendU64Le(bytes, info.lastWriteTime);
+  appendU64Le(bytes, info.changeTime);
+  appendU32Le(bytes, info.fileAttributes);
+  appendU32Le(bytes, 0);
+  return bytes;
+}
+
 DecodeResult<FileBasicInformation>
 decodeFileBasicInformation(const ByteVector &bytes) {
   if (bytes.size() < 40) {
@@ -1371,6 +1571,99 @@ decodeFileStandardInformation(const ByteVector &bytes) {
   return DecodeResult<FileStandardInformation>::success(info);
 }
 
+ByteVector
+buildFileFullEaInformation(const std::vector<FileFullEaInformation> &entries) {
+  ByteVector bytes;
+  for (std::size_t index = 0; index < entries.size(); ++index) {
+    const auto &entry = entries[index];
+    if (entry.name.empty()) {
+      throw std::invalid_argument("SMB2 EA name is empty.");
+    }
+    if (entry.name.size() > std::numeric_limits<std::uint8_t>::max()) {
+      throw std::invalid_argument("SMB2 EA name is too large.");
+    }
+    if (entry.value.size() > std::numeric_limits<std::uint16_t>::max()) {
+      throw std::invalid_argument("SMB2 EA value is too large.");
+    }
+
+    const auto entryStart = bytes.size();
+    const auto fixedAndPayloadSize =
+        std::size_t{8} + entry.name.size() + std::size_t{1} +
+        entry.value.size();
+    auto alignedEntrySize = fixedAndPayloadSize;
+    if (index + 1 < entries.size()) {
+      alignedEntrySize = (fixedAndPayloadSize + 3U) & ~std::size_t{3U};
+    }
+
+    appendU32Le(bytes, index + 1 < entries.size()
+                           ? static_cast<std::uint32_t>(alignedEntrySize)
+                           : 0U);
+    bytes.push_back(entry.needEa ? kFileNeedEa : 0);
+    bytes.push_back(static_cast<std::uint8_t>(entry.name.size()));
+    appendU16Le(bytes, static_cast<std::uint16_t>(entry.value.size()));
+    bytes.insert(bytes.end(), entry.name.begin(), entry.name.end());
+    bytes.push_back(0);
+    bytes.insert(bytes.end(), entry.value.begin(), entry.value.end());
+    while (bytes.size() - entryStart < alignedEntrySize) {
+      bytes.push_back(0);
+    }
+  }
+  return bytes;
+}
+
+DecodeResult<std::vector<FileFullEaInformation>>
+decodeFileFullEaInformation(const ByteVector &bytes) {
+  std::vector<FileFullEaInformation> entries;
+  std::size_t offset = 0;
+  while (offset < bytes.size()) {
+    if (bytes.size() - offset < 8) {
+      return DecodeResult<std::vector<FileFullEaInformation>>::failure(
+          ErrorCode::IoError,
+          "FILE_FULL_EA_INFORMATION entry is shorter than fixed header.");
+    }
+
+    const auto nextEntryOffset = readU32Le(bytes.data() + offset);
+    const auto flags = bytes[offset + 4];
+    const auto nameLength = bytes[offset + 5];
+    const auto valueLength = readU16Le(bytes.data() + offset + 6);
+    const auto nameOffset = offset + 8;
+    const auto valueOffset = nameOffset + nameLength + 1;
+    const auto entryEnd = valueOffset + valueLength;
+    if (entryEnd > bytes.size()) {
+      return DecodeResult<std::vector<FileFullEaInformation>>::failure(
+          ErrorCode::IoError,
+          "FILE_FULL_EA_INFORMATION entry payload is out of bounds.");
+    }
+    if (bytes[nameOffset + nameLength] != 0) {
+      return DecodeResult<std::vector<FileFullEaInformation>>::failure(
+          ErrorCode::ProtocolUnsupported,
+          "FILE_FULL_EA_INFORMATION entry name is not NUL-terminated.");
+    }
+
+    FileFullEaInformation entry;
+    entry.name.assign(reinterpret_cast<const char *>(bytes.data() + nameOffset),
+                      nameLength);
+    entry.value.assign(bytes.begin() + static_cast<std::ptrdiff_t>(valueOffset),
+                       bytes.begin() + static_cast<std::ptrdiff_t>(entryEnd));
+    entry.needEa = (flags & kFileNeedEa) != 0;
+    entries.push_back(std::move(entry));
+
+    if (nextEntryOffset == 0) {
+      break;
+    }
+    if (nextEntryOffset < 8 || offset + nextEntryOffset <= offset ||
+        offset + nextEntryOffset > bytes.size()) {
+      return DecodeResult<std::vector<FileFullEaInformation>>::failure(
+          ErrorCode::IoError,
+          "FILE_FULL_EA_INFORMATION next entry offset is invalid.");
+    }
+    offset += nextEntryOffset;
+  }
+
+  return DecodeResult<std::vector<FileFullEaInformation>>::success(
+      std::move(entries));
+}
+
 ByteVector buildFileDispositionInformation(bool deletePending) {
   return ByteVector{static_cast<std::uint8_t>(deletePending ? 1 : 0)};
 }
@@ -1383,6 +1676,31 @@ ByteVector buildFileRenameInformation(std::string_view newPath,
   }
   if (name.size() > std::numeric_limits<std::uint32_t>::max()) {
     throw std::invalid_argument("SMB2 rename target path is too large.");
+  }
+
+  ByteVector bytes;
+  bytes.reserve(20 + name.size());
+  bytes.push_back(static_cast<std::uint8_t>(replaceIfExists ? 1 : 0));
+  for (int i = 0; i < 7; ++i) {
+    bytes.push_back(0);
+  }
+  appendU64Le(bytes, 0);
+  appendU32Le(bytes, static_cast<std::uint32_t>(name.size()));
+  bytes.insert(bytes.end(), name.begin(), name.end());
+  while (bytes.size() < 24) {
+    bytes.push_back(0);
+  }
+  return bytes;
+}
+
+ByteVector buildFileLinkInformation(std::string_view newPath,
+                                    bool replaceIfExists) {
+  const auto name = encodeUtf16Le(newPath);
+  if (name.empty()) {
+    throw std::invalid_argument("SMB2 hardlink target path is empty.");
+  }
+  if (name.size() > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::invalid_argument("SMB2 hardlink target path is too large.");
   }
 
   ByteVector bytes;

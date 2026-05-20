@@ -29,6 +29,20 @@ public:
                std::uint64_t messageId, std::uint32_t treeId,
                std::uint64_t sessionId,
                const OperationContext &context) const;
+
+  DecodeResult<RemoteObjectResult>
+  createHardLink(Transport &transport, const std::string &existingPath,
+                 const std::string &linkPath, bool replaceIfExists,
+                 std::uint64_t messageId, std::uint32_t treeId,
+                 std::uint64_t sessionId,
+                 const OperationContext &context) const;
+
+  DecodeResult<RemoteObjectResult>
+  createSymbolicLink(Transport &transport, const std::string &linkPath,
+                     const std::string &targetPath, bool directory,
+                     bool relative, std::uint64_t messageId,
+                     std::uint32_t treeId, std::uint64_t sessionId,
+                     const OperationContext &context) const;
 };
 
 } // namespace smb::native_smb

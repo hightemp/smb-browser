@@ -10,6 +10,14 @@ public:
   explicit NativeSmbClient(int timeoutSeconds = 15,
                            smb::core::LogSanitizer sanitizer = {});
 
+  smb::core::SmbClientCapabilities
+  capabilities(const smb::core::Connection &connection) const override;
+
+  smb::core::Result<smb::core::SmbCapabilityReport>
+  probeCapabilities(const smb::core::Connection &connection,
+                    const smb::core::CredentialSecret *secret,
+                    const smb::core::OperationContext &context) override;
+
   smb::core::Result<bool>
   checkConnection(const smb::core::Connection &connection,
                   const smb::core::CredentialSecret *secret,

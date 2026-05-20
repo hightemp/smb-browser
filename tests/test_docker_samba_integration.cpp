@@ -317,15 +317,32 @@ private slots:
         sambaConnectionForShare(QStringLiteral("archive"));
     const auto secret = sambaSecret();
     const auto suffix = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto sameShareTarget =
+        QStringLiteral("/same-share-copied-%1.txt").arg(suffix);
     const auto target = QStringLiteral("/copied-%1.txt").arg(suffix);
+
+    const auto sameShareCopied =
+        client->copy(publicConnection, &secret, QStringLiteral("/root.txt"),
+                     publicConnection, &secret, sameShareTarget, {});
+    QVERIFY2(sameShareCopied.ok(),
+             qPrintable(sameShareCopied.error().sanitizedTechnicalDetails));
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const auto sameShareDownloaded =
+        tempDir.filePath(QStringLiteral("same-share-copied.txt"));
+    const auto sameShareDownloadedResult = client->downloadFile(
+        publicConnection, &secret, sameShareTarget, sameShareDownloaded, {});
+    QVERIFY2(sameShareDownloadedResult.ok(),
+             qPrintable(
+                 sameShareDownloadedResult.error().sanitizedTechnicalDetails));
+    QCOMPARE(readFile(sameShareDownloaded), QByteArrayLiteral("root fixture\n"));
 
     const auto copied =
         client->copy(publicConnection, &secret, QStringLiteral("/root.txt"),
                      archiveConnection, &secret, target, {});
     QVERIFY2(copied.ok(), qPrintable(copied.error().sanitizedTechnicalDetails));
 
-    QTemporaryDir tempDir;
-    QVERIFY(tempDir.isValid());
     const auto downloaded = tempDir.filePath(QStringLiteral("copied.txt"));
     const auto downloadedResult =
         client->downloadFile(archiveConnection, &secret, target, downloaded,
@@ -337,6 +354,10 @@ private slots:
     QVERIFY(downloadedFile.open(QIODevice::ReadOnly));
     QCOMPARE(downloadedFile.readAll(), QByteArrayLiteral("root fixture\n"));
 
+    const auto sameShareRemoved =
+        client->remove(publicConnection, &secret, sameShareTarget, {});
+    QVERIFY2(sameShareRemoved.ok(),
+             qPrintable(sameShareRemoved.error().sanitizedTechnicalDetails));
     const auto removed = client->remove(archiveConnection, &secret, target, {});
     QVERIFY2(removed.ok(), qPrintable(removed.error().sanitizedTechnicalDetails));
   }

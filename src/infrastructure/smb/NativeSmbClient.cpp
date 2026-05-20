@@ -67,6 +67,22 @@ smb::native_smb::SecurityPolicy signingPolicyForAuthType(
   return smb::native_smb::SecurityPolicy::Preferred;
 }
 
+QString dialectName(smb::native_smb::Dialect dialect) {
+  switch (dialect) {
+  case smb::native_smb::Dialect::Smb202:
+    return QStringLiteral("SMB 2.0.2");
+  case smb::native_smb::Dialect::Smb210:
+    return QStringLiteral("SMB 2.1");
+  case smb::native_smb::Dialect::Smb300:
+    return QStringLiteral("SMB 3.0");
+  case smb::native_smb::Dialect::Smb302:
+    return QStringLiteral("SMB 3.0.2");
+  case smb::native_smb::Dialect::Smb311:
+    return QStringLiteral("SMB 3.1.1");
+  }
+  return QStringLiteral("SMB unknown");
+}
+
 smb::native_smb::DirectTcpEndpoint endpointForServer(const QString &server);
 
 smb::native_smb::ConnectionConfig nativeConfig(
@@ -261,6 +277,58 @@ NativeSmbClient::NativeSmbClient(int timeoutSeconds,
                                  smb::core::LogSanitizer sanitizer)
     : m_timeoutSeconds(std::max(1, timeoutSeconds)),
       m_sanitizer(std::move(sanitizer)) {}
+
+smb::core::SmbClientCapabilities
+NativeSmbClient::capabilities(const smb::core::Connection &connection) const {
+  (void)connection;
+  const auto metadata = smb::native_smb::NativeMetadataCapabilities{};
+
+  smb::core::SmbClientCapabilities capabilities;
+  capabilities.canSetBasicMetadata = metadata.canSetBasicInformation;
+  capabilities.canReadExtendedAttributes = metadata.canListExtendedAttributes;
+  capabilities.canWriteExtendedAttributes = metadata.canSetExtendedAttributes;
+  capabilities.canReadSecurityDescriptor = metadata.canQuerySecurityDescriptor;
+  capabilities.canWriteSecurityDescriptor = metadata.canSetSecurityDescriptor;
+  capabilities.canWatchDirectory = true;
+  capabilities.canUsePosixMode = metadata.canUsePosixMode;
+  capabilities.canUsePosixOwner =
+      metadata.canUsePosixOwner || metadata.canUsePosixGroup;
+  capabilities.canBrowseShares = false;
+  capabilities.unsupportedAdvancedOperationsReason =
+      QObject::tr("POSIX chmod/chown and share browsing are not supported by "
+                  "the native SMB2/SMB3 backend yet.");
+  return capabilities;
+}
+
+smb::core::Result<smb::core::SmbCapabilityReport>
+NativeSmbClient::probeCapabilities(
+    const smb::core::Connection &connection,
+    const smb::core::CredentialSecret *secret,
+    const smb::core::OperationContext &context) {
+  const auto connected =
+      openNativeConnection(connection, secret, context, m_timeoutSeconds);
+  if (!connected.ok) {
+    return smb::core::Result<smb::core::SmbCapabilityReport>::failure(
+        appError(connected.error, m_sanitizer, secret));
+  }
+
+  smb::core::SmbCapabilityReport report;
+  report.serverAvailable = true;
+  report.shareAvailable = true;
+  report.dialect = dialectName(connected.value.negotiated.dialect);
+  report.signingRequired = connected.value.negotiated.signingRequired;
+  report.encryptionSupported = connected.value.negotiated.encryptionSupported;
+  report.encryptionRequired =
+      connected.value.tree.requiresEncryption || connected.value.session.encryptData;
+  report.dfsSupported =
+      (connected.value.negotiated.capabilities &
+       static_cast<std::uint32_t>(smb::native_smb::GlobalCapability::Dfs)) != 0;
+  report.shareDfs = connected.value.tree.isDfs;
+  report.shareDfsRoot = connected.value.tree.isDfsRoot;
+  report.capabilities = capabilities(connection);
+  return smb::core::Result<smb::core::SmbCapabilityReport>::success(
+      std::move(report));
+}
 
 smb::core::Result<bool> NativeSmbClient::checkConnection(
     const smb::core::Connection &connection,
@@ -546,6 +614,40 @@ smb::core::Result<bool> NativeSmbClient::copy(
   } else if (existing.error.code != smb::native_smb::ErrorCode::FileNotFound) {
     return smb::core::Result<bool>::failure(
         appError(existing.error, m_sanitizer, targetSecret));
+  }
+
+  if (sameRemoteTree(sourceConnection, targetConnection)) {
+    const auto copied = source.value.connection->copyFileServerSide(
+        sourcePath.toStdString(), targetPath.toStdString(), stat.value.size,
+        nativeContext(context, m_timeoutSeconds));
+    if (copied.ok) {
+      return smb::core::Result<bool>::success(true);
+    }
+    if (copied.error.code == smb::native_smb::ErrorCode::Cancelled) {
+      return smb::core::Result<bool>::failure(
+          appError(copied.error, m_sanitizer, sourceSecret));
+    }
+    const auto partial = target.value.connection->statObject(
+        targetPath.toStdString(), nativeContext(context, m_timeoutSeconds));
+    if (partial.ok) {
+      (void)target.value.connection->deleteObject(
+          targetPath.toStdString(), partial.value.directory,
+          nativeContext(context, m_timeoutSeconds));
+    }
+  }
+
+  if (stat.value.size == 0) {
+    const auto write = target.value.connection->writeFileOnce(
+        targetPath.toStdString(), {}, 0,
+        nativeContext(context, m_timeoutSeconds));
+    if (!write.ok) {
+      return smb::core::Result<bool>::failure(
+          appError(write.error, m_sanitizer, targetSecret));
+    }
+    if (context.progressCallback) {
+      context.progressCallback(smb::core::TransferProgress{0, 0});
+    }
+    return smb::core::Result<bool>::success(true);
   }
 
   std::uint64_t offset = 0;

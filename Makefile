@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 BUILD_DIR ?= tmp/build
 NO_SMB_BUILD_DIR ?= tmp/build-no-smb
 NATIVE_BUILD_DIR ?= tmp/build-native-no-legacy
+PERF_BUILD_DIR ?= tmp/build-perf
 PACKAGE_BUILD_DIR ?= tmp/package-linux
 SAMBA_BUILD_DIR ?= tmp/build-samba
 GENERATOR ?= Ninja
@@ -42,6 +43,7 @@ help:
 	@printf '\n%s\n' 'Alternative profiles:'
 	@printf '  %-22s %s\n' 'make no-smb' 'Configure/build/test without libsmb2 backend'
 	@printf '  %-22s %s\n' 'make native-test' 'Run clean-room native SMB unit/protocol tests without libsmb2'
+	@printf '  %-22s %s\n' 'make perf-test' 'Run opt-in native SMB perf/stress tests'
 	@printf '  %-22s %s\n' 'make libsmb2' 'Build libsmb2 into tmp/libsmb2-prefix manually'
 	@printf '  %-22s %s\n' 'make samba-up' 'Start Docker Samba fixture'
 	@printf '  %-22s %s\n' 'make samba-test' 'Run opt-in Docker Samba integration tests'
@@ -155,8 +157,22 @@ native-configure:
 .PHONY: native-test
 native-test: native-configure
 	cmake --build $(NATIVE_BUILD_DIR) \
-		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_direct_tcp_transport test_native_smb_ntlm_messages test_native_smb_ntlm_crypto test_native_smb_spnego_token test_native_smb_signing test_native_smb_ntlm_v2_token_provider test_native_smb_connector test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector test_native_smb_close_exchanger test_native_smb_change_notify_exchanger test_native_smb_read_exchanger test_native_smb_write_exchanger test_native_smb_set_info_exchanger test_native_smb_query_info_exchanger test_native_smb_directory_lister test_native_smb_directory_watcher test_native_smb_file_reader test_native_smb_file_writer test_native_smb_remote_object_operator test_native_smb_remote_stat_reader test_native_smb_session test_native_smb_error_mapper $(JOBS)
+		--target test_native_smb_scaffold test_native_smb_protocol test_native_smb_direct_tcp_transport test_native_smb_ntlm_messages test_native_smb_ntlm_crypto test_native_smb_spnego_token test_native_smb_signing test_native_smb_ntlm_v2_token_provider test_native_smb_connector test_native_smb_negotiator test_native_smb_session_setup test_native_smb_tree_connector test_native_smb_close_exchanger test_native_smb_change_notify_exchanger test_native_smb_read_exchanger test_native_smb_write_exchanger test_native_smb_set_info_exchanger test_native_smb_query_info_exchanger test_native_smb_directory_lister test_native_smb_directory_watcher test_native_smb_file_reader test_native_smb_file_writer test_native_smb_remote_object_operator test_native_smb_remote_stat_reader test_native_smb_remote_metadata_operator test_native_smb_session test_native_smb_error_mapper $(JOBS)
 	ctest --test-dir $(NATIVE_BUILD_DIR) -L native-unit $(CTEST_ARGS)
+
+.PHONY: perf-configure
+perf-configure:
+	cmake -S . -B $(PERF_BUILD_DIR) -G "$(GENERATOR)" \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		-DSMB_BROWSER_WITH_LIBSMB2=OFF \
+		-DSMB_BROWSER_WITH_NATIVE_SMB=ON \
+		-DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF \
+		-DSMB_BROWSER_ENABLE_PERF_TESTS=ON
+
+.PHONY: perf-test
+perf-test: perf-configure
+	cmake --build $(PERF_BUILD_DIR) --target test_native_smb_perf_stress $(JOBS)
+	ctest --test-dir $(PERF_BUILD_DIR) -L perf $(CTEST_ARGS)
 
 .PHONY: libsmb2
 libsmb2:
@@ -191,7 +207,7 @@ sbom:
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) $(NO_SMB_BUILD_DIR) $(NATIVE_BUILD_DIR) $(PACKAGE_BUILD_DIR) $(SAMBA_BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(NO_SMB_BUILD_DIR) $(NATIVE_BUILD_DIR) $(PERF_BUILD_DIR) $(PACKAGE_BUILD_DIR) $(SAMBA_BUILD_DIR)
 
 .PHONY: distclean
 distclean:

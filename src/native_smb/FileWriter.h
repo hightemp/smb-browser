@@ -9,6 +9,7 @@ struct FileWriteResult {
   FileId fileId;
   std::uint32_t bytesWritten = 0;
   std::uint32_t remaining = 0;
+  std::uint64_t messagesUsed = 0;
 };
 
 class FileWriter {

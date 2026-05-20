@@ -54,6 +54,21 @@ CreateRequestOptions openForMutationOptions(const std::string &path,
   return options;
 }
 
+CreateRequestOptions symlinkCreateOptions(const std::string &path,
+                                          bool directory) {
+  CreateRequestOptions options;
+  options.path = path;
+  options.desiredAccess = kFileWriteAttributes | kFileReadAttributes;
+  options.fileAttributes = kFileAttributeReparsePoint |
+                           (directory ? kFileAttributeDirectory : 0);
+  options.shareAccess = kFileShareRead | kFileShareWrite | kFileShareDelete;
+  options.createDisposition = kFileCreate;
+  options.createOptions = kFileOpenReparsePoint |
+                          (directory ? kFileDirectoryFile
+                                     : kFileNonDirectoryFile);
+  return options;
+}
+
 DecodeResult<CreateResponse> openObject(Transport &transport,
                                         const CreateRequestOptions &options,
                                         std::uint64_t messageId,
@@ -87,6 +102,22 @@ closeAndReturn(Transport &transport, const FileId &fileId,
   RemoteObjectResult result;
   result.fileId = fileId;
   return DecodeResult<RemoteObjectResult>::success(result);
+}
+
+DecodeResult<IoctlResponse> ioctl(Transport &transport,
+                                  const IoctlRequestOptions &options,
+                                  std::uint64_t messageId,
+                                  std::uint32_t treeId,
+                                  std::uint64_t sessionId,
+                                  const OperationContext &context) {
+  const auto payload = exchangePayload(
+      transport, buildIoctlRequest(options, messageId, treeId, sessionId),
+      context);
+  if (!payload.ok) {
+    return DecodeResult<IoctlResponse>::failure(payload.error.code,
+                                               payload.error.message);
+  }
+  return decodeIoctlResponse(payload.value);
 }
 
 } // namespace
@@ -184,6 +215,83 @@ DecodeResult<RemoteObjectResult> RemoteObjectOperator::renameObject(
                       sessionId, context);
   if (!setInfoResponse.ok) {
     return failureFrom(setInfoResponse.error);
+  }
+
+  return closeAndReturn(transport, createResponse.value.fileId, messageId + 2,
+                        treeId, sessionId, context);
+}
+
+DecodeResult<RemoteObjectResult> RemoteObjectOperator::createHardLink(
+    Transport &transport, const std::string &existingPath,
+    const std::string &linkPath, bool replaceIfExists,
+    std::uint64_t messageId, std::uint32_t treeId, std::uint64_t sessionId,
+    const OperationContext &context) const {
+  if (isCancelled(context)) {
+    return cancelledResult("SMB hardlink creation was cancelled.");
+  }
+
+  const auto createResponse =
+      openObject(transport, openForMutationOptions(existingPath, false),
+                 messageId, treeId, sessionId, context);
+  if (!createResponse.ok) {
+    return failureFrom(createResponse.error);
+  }
+
+  if (isCancelled(context)) {
+    return cancelledResult("SMB hardlink creation was cancelled.");
+  }
+
+  SetInfoRequestOptions setInfoOptions;
+  setInfoOptions.fileId = createResponse.value.fileId;
+  setInfoOptions.infoType = kInfoTypeFile;
+  setInfoOptions.fileInfoClass = kFileLinkInformation;
+  setInfoOptions.buffer = buildFileLinkInformation(linkPath, replaceIfExists);
+
+  const SetInfoExchanger setInfo;
+  const auto setInfoResponse =
+      setInfo.setInfo(transport, setInfoOptions, messageId + 1, treeId,
+                      sessionId, context);
+  if (!setInfoResponse.ok) {
+    return failureFrom(setInfoResponse.error);
+  }
+
+  return closeAndReturn(transport, createResponse.value.fileId, messageId + 2,
+                        treeId, sessionId, context);
+}
+
+DecodeResult<RemoteObjectResult> RemoteObjectOperator::createSymbolicLink(
+    Transport &transport, const std::string &linkPath,
+    const std::string &targetPath, bool directory, bool relative,
+    std::uint64_t messageId, std::uint32_t treeId, std::uint64_t sessionId,
+    const OperationContext &context) const {
+  if (isCancelled(context)) {
+    return cancelledResult("SMB symlink creation was cancelled.");
+  }
+
+  const auto createResponse =
+      openObject(transport, symlinkCreateOptions(linkPath, directory),
+                 messageId, treeId, sessionId, context);
+  if (!createResponse.ok) {
+    return failureFrom(createResponse.error);
+  }
+
+  if (isCancelled(context)) {
+    return cancelledResult("SMB symlink creation was cancelled.");
+  }
+
+  IoctlRequestOptions ioctlOptions;
+  ioctlOptions.ctlCode = kFsctlSetReparsePoint;
+  ioctlOptions.fileId = createResponse.value.fileId;
+  ioctlOptions.input =
+      buildSymbolicLinkReparseBuffer(targetPath, targetPath, relative);
+  ioctlOptions.maxOutputResponse = 0;
+  ioctlOptions.flags = kIoctlIsFsctl;
+
+  const auto ioctlResponse =
+      ioctl(transport, ioctlOptions, messageId + 1, treeId, sessionId,
+            context);
+  if (!ioctlResponse.ok) {
+    return failureFrom(ioctlResponse.error);
   }
 
   return closeAndReturn(transport, createResponse.value.fileId, messageId + 2,

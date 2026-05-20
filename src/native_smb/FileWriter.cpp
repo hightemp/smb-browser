@@ -70,6 +70,24 @@ FileWriter::writeOnce(Transport &transport, const std::string &path,
     return failureFrom(createResponse.error);
   }
 
+  if (data.empty()) {
+    CloseRequestOptions closeOptions;
+    closeOptions.fileId = createResponse.value.fileId;
+    const CloseExchanger closer;
+    const auto closeResponse = closer.close(
+        transport, closeOptions, messageId + 1, treeId, sessionId, context);
+    if (!closeResponse.ok) {
+      return failureFrom(closeResponse.error);
+    }
+
+    FileWriteResult result;
+    result.fileId = createResponse.value.fileId;
+    result.bytesWritten = 0;
+    result.remaining = 0;
+    result.messagesUsed = 2;
+    return DecodeResult<FileWriteResult>::success(result);
+  }
+
   WriteRequestOptions writeOptions;
   writeOptions.fileId = createResponse.value.fileId;
   writeOptions.data = data;
@@ -95,6 +113,7 @@ FileWriter::writeOnce(Transport &transport, const std::string &path,
   result.fileId = createResponse.value.fileId;
   result.bytesWritten = writeResponse.value.count;
   result.remaining = writeResponse.value.remaining;
+  result.messagesUsed = 3;
   return DecodeResult<FileWriteResult>::success(result);
 }
 

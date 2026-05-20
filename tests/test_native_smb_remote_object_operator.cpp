@@ -109,6 +109,29 @@ smb::native_smb::ByteVector setInfoResponsePayload(
   return bytes;
 }
 
+smb::native_smb::ByteVector ioctlResponsePayload() {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = smb::native_smb::Command::Ioctl;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.messageId = 61;
+  header.treeId = 77;
+  header.sessionId = 34;
+
+  auto bytes = smb::native_smb::encodeSmb2SyncHeader(header);
+  appendU16Le(bytes, smb::native_smb::kIoctlResponseStructureSize);
+  appendU16Le(bytes, 0);
+  appendU32Le(bytes, smb::native_smb::kFsctlSetReparsePoint);
+  appendU64Le(bytes, 0x0102030405060708ULL);
+  appendU64Le(bytes, 0x1112131415161718ULL);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, 0);
+  appendU32Le(bytes, smb::native_smb::kIoctlIsFsctl);
+  appendU32Le(bytes, 0);
+  return bytes;
+}
+
 smb::native_smb::ByteVector closeResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::Close;
@@ -227,6 +250,39 @@ private slots:
     QCOMPARE(setInfoPayload[96], std::uint8_t{1});
     QCOMPARE(readU32Le(setInfoPayload, 112), std::uint32_t{14});
     QCOMPARE(readU16Le(setInfoPayload, 116), std::uint16_t{'n'});
+  }
+
+  void createsSymbolicLinkWithSetReparsePointAndClose() {
+    ScriptedTransport transport({framedSuccess(createResponsePayload()),
+                                 framedSuccess(ioctlResponsePayload()),
+                                 framedSuccess(closeResponsePayload())});
+
+    const smb::native_smb::RemoteObjectOperator objects;
+    const auto result = objects.createSymbolicLink(
+        transport, "link.txt", "target.txt", false, true, 60, 77, 34, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(transport.requestFrames.size(), std::size_t{3});
+    QCOMPARE(static_cast<int>(requestCommand(transport.requestFrames[0])),
+             static_cast<int>(smb::native_smb::Command::Create));
+    QCOMPARE(static_cast<int>(requestCommand(transport.requestFrames[1])),
+             static_cast<int>(smb::native_smb::Command::Ioctl));
+    QCOMPARE(static_cast<int>(requestCommand(transport.requestFrames[2])),
+             static_cast<int>(smb::native_smb::Command::Close));
+
+    const auto createPayload = requestPayload(transport.requestFrames[0]);
+    QCOMPARE(readU32Le(createPayload, 100), smb::native_smb::kFileCreate);
+    QCOMPARE(readU32Le(createPayload, 104),
+             smb::native_smb::kFileOpenReparsePoint |
+                 smb::native_smb::kFileNonDirectoryFile);
+
+    const auto ioctlPayload = requestPayload(transport.requestFrames[1]);
+    QCOMPARE(readU32Le(ioctlPayload, 68),
+             smb::native_smb::kFsctlSetReparsePoint);
+    QCOMPARE(readU32Le(ioctlPayload, 92), std::uint32_t{60});
+    QCOMPARE(readU32Le(ioctlPayload, 112), smb::native_smb::kIoctlIsFsctl);
+    QCOMPARE(readU32Le(ioctlPayload, 120),
+             smb::native_smb::kIoReparseTagSymlink);
   }
 
   void stopsWhenSetInfoResponseIsInvalid() {

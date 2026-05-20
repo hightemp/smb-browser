@@ -247,6 +247,21 @@ private slots:
     runCancellationContract(client, fakeConnection(), nullptr);
   }
 
+  void fakeBackendExposesCapabilityReportContract() {
+    smb::tests::FakeSmbClient client;
+    smb::core::SmbClientCapabilities capabilities;
+    capabilities.canReadExtendedAttributes = true;
+    capabilities.canBrowseShares = false;
+    client.setCapabilities(capabilities);
+
+    const auto report =
+        client.probeCapabilities(fakeConnection(), nullptr, {});
+
+    verifyOk(report, "probeCapabilities");
+    QVERIFY(report.value().capabilities.canReadExtendedAttributes);
+    QVERIFY(!report.value().capabilities.canBrowseShares);
+  }
+
   void nativeBackendPassesMutatingContractWhenConfigured() {
 #ifdef SMB_BROWSER_WITH_NATIVE_SMB
     NativeFixture fixture;

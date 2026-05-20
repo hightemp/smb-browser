@@ -477,6 +477,22 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-fake-transport;native-contract"
     )
 
+    add_executable(test_native_smb_remote_metadata_operator
+        test_native_smb_remote_metadata_operator.cpp
+    )
+
+    target_link_libraries(test_native_smb_remote_metadata_operator
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_remote_metadata_operator
+             COMMAND test_native_smb_remote_metadata_operator)
+    set_tests_properties(native_smb_remote_metadata_operator PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-contract"
+    )
+
     add_executable(test_native_smb_session
         test_native_smb_session.cpp
     )
@@ -491,6 +507,24 @@ if(TARGET smb_browser_native_smb)
     set_tests_properties(native_smb_session PROPERTIES
         LABELS "native-unit;native-fake-transport;native-contract"
     )
+
+    if(SMB_BROWSER_ENABLE_PERF_TESTS)
+        add_executable(test_native_smb_perf_stress
+            test_native_smb_perf_stress.cpp
+        )
+
+        target_link_libraries(test_native_smb_perf_stress
+            PRIVATE
+                smb_browser_native_smb
+                Qt5::Test
+        )
+
+        add_test(NAME native_smb_perf_stress
+                 COMMAND test_native_smb_perf_stress)
+        set_tests_properties(native_smb_perf_stress PROPERTIES
+            LABELS "perf;native-stress;native-unit"
+        )
+    endif()
 
     add_executable(test_native_smb_error_mapper
         test_native_smb_error_mapper.cpp

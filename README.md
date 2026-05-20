@@ -43,10 +43,12 @@ Current native backend status:
   are implemented in the clean-room engine.
 - Basic app operations are wired through `NativeSmbClient`: check, list,
   create folder, delete, rename, download, upload, copy and move.
-- SMB3 encryption, native DFS referrals, Kerberos/current-user auth and
-  advanced metadata APIs are still tracked in `TASKS.md`; current-user auth is
-  reported as unsupported by the native backend instead of falling through to
-  password auth.
+- Advanced metadata APIs cover timestamps/attributes, EA list/set/remove and
+  raw security descriptor query/set. POSIX chmod/chown are capability-gated
+  until a POSIX extension contract is added.
+- SMB3 encryption, native DFS referrals, Kerberos/current-user auth and share
+  browsing are still tracked in `TASKS.md`; current-user auth is reported as
+  unsupported by the native backend instead of falling through to password auth.
 
 Run the app:
 
@@ -114,6 +116,12 @@ make samba-down
 
 `make samba-up` builds the fixture and waits for the container healthcheck
 before returning.
+
+The native SMB perf/stress profile is also opt-in:
+
+```bash
+make perf-test
+```
 
 ## License
 

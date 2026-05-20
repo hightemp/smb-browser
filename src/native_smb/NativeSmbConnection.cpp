@@ -51,6 +51,54 @@ NativeSmbConnection::statObject(const std::string &path,
   return m_session.statObject(path, context);
 }
 
+NativeMetadataCapabilities NativeSmbConnection::metadataCapabilities() const {
+  return m_session.metadataCapabilities();
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::setBasicInformation(const std::string &path,
+                                         const FileBasicInformation &info,
+                                         const OperationContext &context) {
+  return m_session.setBasicInformation(path, info, context);
+}
+
+DecodeResult<NativeExtendedAttributesResult>
+NativeSmbConnection::listExtendedAttributes(const std::string &path,
+                                            const OperationContext &context) {
+  return m_session.listExtendedAttributes(path, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::setExtendedAttributes(
+    const std::string &path,
+    const std::vector<FileFullEaInformation> &entries,
+    const OperationContext &context) {
+  return m_session.setExtendedAttributes(path, entries, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::removeExtendedAttribute(const std::string &path,
+                                             const std::string &name,
+                                             const OperationContext &context) {
+  return m_session.removeExtendedAttribute(path, name, context);
+}
+
+DecodeResult<NativeSecurityDescriptorResult>
+NativeSmbConnection::querySecurityDescriptor(
+    const std::string &path, std::uint32_t securityInformation,
+    const OperationContext &context) {
+  return m_session.querySecurityDescriptor(path, securityInformation, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::setSecurityDescriptor(const std::string &path,
+                                           std::uint32_t securityInformation,
+                                           const ByteVector &descriptor,
+                                           const OperationContext &context) {
+  return m_session.setSecurityDescriptor(path, securityInformation, descriptor,
+                                         context);
+}
+
 DecodeResult<NativeReadResult>
 NativeSmbConnection::readFileOnce(const std::string &path,
                                   std::uint32_t length,
@@ -96,6 +144,32 @@ DecodeResult<NativeObjectMutationResult> NativeSmbConnection::renameObject(
     const std::string &fromPath, const std::string &toPath,
     bool replaceIfExists, const OperationContext &context) {
   return m_session.renameObject(fromPath, toPath, replaceIfExists, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::createHardLink(const std::string &existingPath,
+                                    const std::string &linkPath,
+                                    bool replaceIfExists,
+                                    const OperationContext &context) {
+  return m_session.createHardLink(existingPath, linkPath, replaceIfExists,
+                                  context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::createSymbolicLink(const std::string &linkPath,
+                                        const std::string &targetPath,
+                                        bool directory, bool relative,
+                                        const OperationContext &context) {
+  return m_session.createSymbolicLink(linkPath, targetPath, directory,
+                                      relative, context);
+}
+
+DecodeResult<NativeObjectMutationResult>
+NativeSmbConnection::copyFileServerSide(const std::string &sourcePath,
+                                        const std::string &targetPath,
+                                        std::uint64_t size,
+                                        const OperationContext &context) {
+  return m_session.copyFileServerSide(sourcePath, targetPath, size, context);
 }
 
 DecodeResult<NativeNotifyResult> NativeSmbConnection::watchDirectoryOnce(

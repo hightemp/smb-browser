@@ -23,6 +23,7 @@ class FakeSmbClient final : public smb::core::SmbClient {
 public:
   void setRequirePassword(bool requirePassword);
   void setExpectedSecret(QByteArray expectedSecret);
+  void setCapabilities(smb::core::SmbClientCapabilities capabilities);
   void failOperation(FakeSmbOperation operation, smb::core::ErrorCode code);
   void clearFailures();
 
@@ -34,6 +35,8 @@ public:
   checkConnection(const smb::core::Connection &connection,
                   const smb::core::CredentialSecret *secret,
                   const smb::core::OperationContext &context) override;
+  smb::core::SmbClientCapabilities
+  capabilities(const smb::core::Connection &connection) const override;
   smb::core::Result<QVector<smb::core::RemoteFileEntry>>
   listDirectory(const smb::core::Connection &connection,
                 const smb::core::CredentialSecret *secret,
@@ -95,6 +98,7 @@ private:
 
   QHash<QString, Node> m_nodes;
   QHash<int, smb::core::ErrorCode> m_failures;
+  smb::core::SmbClientCapabilities m_capabilities;
   bool m_requirePassword = false;
   QByteArray m_expectedSecret;
 };

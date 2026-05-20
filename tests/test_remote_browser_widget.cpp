@@ -89,9 +89,11 @@ smb::core::RemoteFileEntry symlink(const QString &name, const QString &path) {
 
 smb::application::OpenConnectionResult
 directoryResult(const QString &path,
-                QVector<smb::core::RemoteFileEntry> entries) {
+                QVector<smb::core::RemoteFileEntry> entries,
+                smb::core::SmbClientCapabilities capabilities = {}) {
   smb::application::OpenConnectionResult result;
   result.connection = connection();
+  result.capabilities = std::move(capabilities);
   result.currentRemotePath = normalizePath(path);
   result.entries = std::move(entries);
   return result;
@@ -125,6 +127,7 @@ public:
 
     smb::application::OpenConnectionResult result;
     result.connection = connection(connectionId);
+    result.capabilities = capabilities;
     result.currentRemotePath = path;
     result.entries = directories.value(path);
     return smb::core::Result<smb::application::OpenConnectionResult>::success(
@@ -312,6 +315,7 @@ public:
   QHash<QString, QVector<smb::core::RemoteFileEntry>> directories;
   QHash<QString, smb::core::AppError> failures;
   QHash<QString, smb::core::AppError> operationFailures;
+  smb::core::SmbClientCapabilities capabilities;
   QVector<QString> requestedPaths;
   QVector<QString> operationPaths;
 };
@@ -945,6 +949,68 @@ private slots:
                                    QItemSelectionModel::ClearAndSelect |
                                        QItemSelectionModel::Rows);
     QTRY_VERIFY(downloadButton->isEnabled());
+  }
+
+  void capabilitiesControlRemoteActionState() {
+    FakeRemoteBrowserUseCase useCase;
+    smb::application::OperationQueue operationQueue(1);
+    FakeRemoteFilePrompter prompter;
+    smb::ui::RemoteBrowserWidget widget(useCase, useCase, useCase,
+                                        operationQueue, prompter);
+
+    smb::core::SmbClientCapabilities capabilities;
+    capabilities.canCreateDirectory = false;
+    capabilities.canUpload = false;
+    capabilities.canDownload = false;
+    capabilities.canCopy = false;
+    capabilities.canMove = false;
+    capabilities.canRemove = false;
+    capabilities.canRename = false;
+    widget.setDirectory(directoryResult(
+        QStringLiteral("/"),
+        {file(QStringLiteral("file.txt"), QStringLiteral("/file.txt"))},
+        capabilities));
+
+    auto *view =
+        widget.findChild<QTableView *>(QStringLiteral("remoteFilesView"));
+    auto *createButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserCreateFolderButton"));
+    auto *uploadButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserUploadButton"));
+    auto *downloadButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserDownloadButton"));
+    auto *copyButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserCopyButton"));
+    auto *moveButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserMoveButton"));
+    auto *deleteButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserDeleteButton"));
+    auto *renameButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserRenameButton"));
+    auto *propertiesButton = widget.findChild<QPushButton *>(
+        QStringLiteral("remoteBrowserPropertiesButton"));
+    QVERIFY(view != nullptr);
+    QVERIFY(createButton != nullptr);
+    QVERIFY(uploadButton != nullptr);
+    QVERIFY(downloadButton != nullptr);
+    QVERIFY(copyButton != nullptr);
+    QVERIFY(moveButton != nullptr);
+    QVERIFY(deleteButton != nullptr);
+    QVERIFY(renameButton != nullptr);
+    QVERIFY(propertiesButton != nullptr);
+
+    view->selectionModel()->select(view->model()->index(0, 0),
+                                   QItemSelectionModel::ClearAndSelect |
+                                       QItemSelectionModel::Rows);
+
+    QTRY_VERIFY(!createButton->isEnabled());
+    QVERIFY(!uploadButton->isEnabled());
+    QVERIFY(!downloadButton->isEnabled());
+    QVERIFY(!copyButton->isEnabled());
+    QVERIFY(!moveButton->isEnabled());
+    QVERIFY(!deleteButton->isEnabled());
+    QVERIFY(!renameButton->isEnabled());
+    QVERIFY(propertiesButton->isEnabled());
   }
 
   void copyAndMoveSelectedEntriesToDestination() {
