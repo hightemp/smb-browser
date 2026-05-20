@@ -7,6 +7,7 @@
 #include "application/TempFileCache.h"
 #include "core/SmbClient.h"
 #include "credentials/QtKeychainCredentialStore.h"
+#include "logging/FileLogger.h"
 #ifdef SMB_BROWSER_WITH_NATIVE_SMB
 #include "smb/DfsResolvingSmbClient.h"
 #include "smb/NativeDfsReferralResolver.h"
@@ -43,6 +44,7 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -148,6 +150,41 @@ QString statusForCheck(
     return QObject::tr("Connection: Available");
   }
   return QObject::tr("Connection: Unavailable");
+}
+
+QString errorDetails(const smb::core::AppError &error) {
+  auto details = QStringLiteral("code=%1 category=%2")
+                     .arg(smb::core::toString(error.code),
+                          smb::core::toString(error.category));
+  if (!error.userMessage.isEmpty()) {
+    details += QStringLiteral(" user_message=\"%1\"").arg(error.userMessage);
+  }
+  if (!error.sanitizedTechnicalDetails.isEmpty()) {
+    details += QStringLiteral(" details=\"%1\"")
+                   .arg(error.sanitizedTechnicalDetails);
+  }
+  return details;
+}
+
+void writeLog(smb::infrastructure::FileLogger &logger,
+              smb::infrastructure::LogLevel level, const QString &category,
+              const QString &message, const QString &technicalDetails = {},
+              const QString &correlationId = {}) {
+  smb::infrastructure::LogRecord record;
+  record.level = level;
+  record.category = category;
+  record.correlationId = correlationId;
+  record.message = message;
+  record.technicalDetails = technicalDetails;
+  (void)logger.log(std::move(record));
+}
+
+void writeErrorLog(smb::infrastructure::FileLogger &logger,
+                   const QString &category, const QString &message,
+                   const smb::core::AppError &error,
+                   const QString &correlationId = {}) {
+  writeLog(logger, smb::infrastructure::LogLevel::Error, category, message,
+           errorDetails(error), correlationId);
 }
 
 int smokeCloseDelayMs(const QStringList &arguments) {
@@ -429,6 +466,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  smb::infrastructure::FileLogger appLogger(
+      smb::infrastructure::FileLogger::defaultLogFilePath());
+  writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+           QStringLiteral("app"), QStringLiteral("Application started."),
+           QStringLiteral("log_file=\"%1\"").arg(appLogger.logFilePath()));
+
   smb::infrastructure::SettingsRepository settingsRepository(
       storage.database());
   smb::application::SettingsService settingsService(settingsRepository);
@@ -489,10 +532,51 @@ int main(int argc, char *argv[]) {
   smb::ui::MessageBoxConnectionActionPrompter connectionPrompter(&window);
   smb::ui::ConnectionManagementController connectionManagementController(
       *window.connectionsPanel(), connectionService, connectionPrompter);
+  QObject::connect(
+      &connectionManagementController,
+      &smb::ui::ConnectionManagementController::connectionsRefreshed, &window,
+      [&appLogger]() {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Debug,
+                 QStringLiteral("connections"),
+                 QStringLiteral("Connections list refreshed."));
+      });
+  QObject::connect(
+      &connectionManagementController,
+      &smb::ui::ConnectionManagementController::connectionAdded, &window,
+      [&appLogger](const QString &connectionId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("connections"),
+                 QStringLiteral("Connection added."),
+                 QStringLiteral("connection_id=%1").arg(connectionId));
+      });
+  QObject::connect(
+      &connectionManagementController,
+      &smb::ui::ConnectionManagementController::connectionUpdated, &window,
+      [&appLogger](const QString &connectionId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("connections"),
+                 QStringLiteral("Connection updated."),
+                 QStringLiteral("connection_id=%1").arg(connectionId));
+      });
+  QObject::connect(
+      &connectionManagementController,
+      &smb::ui::ConnectionManagementController::connectionDeleted, &window,
+      [&appLogger](const QString &connectionId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("connections"),
+                 QStringLiteral("Connection deleted."),
+                 QStringLiteral("connection_id=%1").arg(connectionId));
+      });
   connectionManagementController.refreshConnections();
   QObject::connect(&window, &MainWindow::connectionsImported,
                    &connectionManagementController,
                    &smb::ui::ConnectionManagementController::refreshConnections);
+  QObject::connect(&window, &MainWindow::connectionsImported, &window,
+                   [&appLogger]() {
+                     writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                              QStringLiteral("import_export"),
+                              QStringLiteral("Connections imported."));
+                   });
   smb::ui::ConnectivityCheckController connectivityCheckController(
       *window.connectionsPanel(), connectivityCheckService, operationQueue,
       connectionPrompter);
@@ -512,7 +596,13 @@ int main(int argc, char *argv[]) {
   QObject::connect(
       &connectivityCheckController,
       &smb::ui::ConnectivityCheckController::checkStarted, &window,
-      [&window](const QString &, const QString &) {
+      [&appLogger, &window](const QString &connectionId,
+                            const QString &operationId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("smb.check"),
+                 QStringLiteral("Connection check started."),
+                 QStringLiteral("connection_id=%1").arg(connectionId),
+                 operationId);
         window.statusPanel()->setConnectionStatus(
             QObject::tr("Connection: Checking"));
         window.statusPanel()->clearLastError();
@@ -520,27 +610,49 @@ int main(int argc, char *argv[]) {
   QObject::connect(
       &connectivityCheckController,
       &smb::ui::ConnectivityCheckController::checkCompleted, &window,
-      [&window](const QString &,
+      [&appLogger, &window](const QString &connectionId,
                 const smb::application::ConnectivityCheckResult &result) {
         window.statusPanel()->setConnectionStatus(statusForCheck(result));
         if (result.error.hasError()) {
           window.statusPanel()->setLastError(result.error);
+          writeLog(appLogger, smb::infrastructure::LogLevel::Warning,
+                   QStringLiteral("smb.check"),
+                   QStringLiteral("Connection check completed with error."),
+                   QStringLiteral("connection_id=%1 status=%2 %3")
+                       .arg(connectionId, smb::core::toString(result.status),
+                            errorDetails(result.error)));
         } else {
           window.statusPanel()->clearLastError();
+          writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                   QStringLiteral("smb.check"),
+                   QStringLiteral("Connection check completed."),
+                   QStringLiteral("connection_id=%1 status=%2")
+                       .arg(connectionId, smb::core::toString(result.status)));
         }
       });
   QObject::connect(&connectivityCheckController,
                    &smb::ui::ConnectivityCheckController::checkFailed, &window,
-                   [&window](const QString &, const smb::core::AppError &error) {
+                   [&appLogger, &window](const QString &connectionId,
+                                         const smb::core::AppError &error) {
                      window.statusPanel()->setConnectionStatus(
                          QObject::tr("Connection: Check failed"));
                      window.statusPanel()->setLastError(error);
+                     writeErrorLog(
+                         appLogger, QStringLiteral("smb.check"),
+                         QStringLiteral("Connection check failed."), error,
+                         connectionId);
                    });
 
   QObject::connect(
       &connectionOpenController,
       &smb::ui::ConnectionOpenController::openStarted, &window,
-      [&window](const QString &, const QString &) {
+      [&appLogger, &window](const QString &connectionId,
+                            const QString &operationId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("smb.open"),
+                 QStringLiteral("Connection open started."),
+                 QStringLiteral("connection_id=%1").arg(connectionId),
+                 operationId);
         window.statusPanel()->setConnectionStatus(
             QObject::tr("Connection: Opening"));
         window.statusPanel()->clearLastError();
@@ -548,7 +660,7 @@ int main(int argc, char *argv[]) {
   QObject::connect(
       &connectionOpenController,
       &smb::ui::ConnectionOpenController::connectionOpened, &window,
-      [&remoteBrowser, &window](
+      [&appLogger, &remoteBrowser, &window](
           const smb::application::OpenConnectionResult &result) {
         remoteBrowser.setDirectory(result);
         const auto name = result.connection.name.isEmpty()
@@ -557,26 +669,86 @@ int main(int argc, char *argv[]) {
         window.statusPanel()->setConnectionStatus(
             QObject::tr("Connection: %1").arg(name));
         window.statusPanel()->clearLastError();
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("smb.open"),
+                 QStringLiteral("Connection opened."),
+                 QStringLiteral("connection_id=%1 path=%2 entries=%3")
+                     .arg(result.connection.id, result.currentRemotePath,
+                          QString::number(result.entries.size())));
       });
   QObject::connect(&connectionOpenController,
                    &smb::ui::ConnectionOpenController::connectionOpenFailed,
                    &window,
-                   [&window](const QString &, const smb::core::AppError &error) {
+                   [&appLogger, &window](const QString &connectionId,
+                                         const smb::core::AppError &error) {
                      window.statusPanel()->setConnectionStatus(
                          QObject::tr("Connection: Open failed"));
                      window.statusPanel()->setLastError(error);
+                     writeErrorLog(
+                         appLogger, QStringLiteral("smb.open"),
+                         QStringLiteral("Connection open failed."), error,
+                         connectionId);
+                   });
+  QObject::connect(
+      &remoteBrowser, &smb::ui::RemoteBrowserWidget::directoryLoadStarted,
+      &window, [&appLogger](const QString &connectionId,
+                            const QString &remotePath,
+                            const QString &operationId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Debug,
+                 QStringLiteral("smb.browser"),
+                 QStringLiteral("Directory load started."),
+                 QStringLiteral("connection_id=%1 path=%2")
+                     .arg(connectionId, remotePath),
+                 operationId);
+      });
+  QObject::connect(&remoteBrowser,
+                   &smb::ui::RemoteBrowserWidget::directoryOpened, &window,
+                   [&appLogger](const QString &connectionId,
+                                const QString &remotePath) {
+                     writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                              QStringLiteral("smb.browser"),
+                              QStringLiteral("Directory opened."),
+                              QStringLiteral("connection_id=%1 path=%2")
+                                  .arg(connectionId, remotePath));
                    });
   QObject::connect(
       &remoteBrowser, &smb::ui::RemoteBrowserWidget::directoryOpenFailed,
-      &window, [&window](const QString &, const QString &,
+      &window, [&appLogger, &window](const QString &connectionId,
+                         const QString &remotePath,
                          const smb::core::AppError &error) {
         window.statusPanel()->setLastError(error);
+        writeErrorLog(appLogger, QStringLiteral("smb.browser"),
+                      QStringLiteral("Directory open failed."), error,
+                      QStringLiteral("%1:%2").arg(connectionId, remotePath));
+      });
+  QObject::connect(
+      &remoteBrowser, &smb::ui::RemoteBrowserWidget::remoteOperationStarted,
+      &window, [&appLogger](const QString &operationName,
+                            const QString &operationId) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("smb.operation"),
+                 QStringLiteral("Remote operation started."),
+                 QStringLiteral("operation=%1").arg(operationName),
+                 operationId);
+      });
+  QObject::connect(
+      &remoteBrowser, &smb::ui::RemoteBrowserWidget::remoteOperationCompleted,
+      &window, [&appLogger](const QString &operationName) {
+        writeLog(appLogger, smb::infrastructure::LogLevel::Info,
+                 QStringLiteral("smb.operation"),
+                 QStringLiteral("Remote operation completed."),
+                 QStringLiteral("operation=%1").arg(operationName));
       });
   QObject::connect(&remoteBrowser,
                    &smb::ui::RemoteBrowserWidget::remoteOperationFailed,
                    &window,
-                   [&window](const QString &, const smb::core::AppError &error) {
+                   [&appLogger, &window](const QString &operationName,
+                                         const smb::core::AppError &error) {
                      window.statusPanel()->setLastError(error);
+                     writeErrorLog(
+                         appLogger, QStringLiteral("smb.operation"),
+                         QStringLiteral("Remote operation failed."), error,
+                         operationName);
                    });
 
   window.show();
