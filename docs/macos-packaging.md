@@ -22,8 +22,10 @@ Git, and Xcode command line tools available. The default build must keep
 scripts/package-macos.sh
 ```
 
-The helper configures the native backend, builds, runs `ctest`, attempts
-`macdeployqt`, creates the package and runs `package-smoke-macos.sh`.
+The helper configures the native backend, builds, runs `ctest`, detects Homebrew
+`qt@5`/`qtkeychain` prefixes when available, attempts `macdeployqt`, creates the
+package and runs `package-smoke-macos.sh` against the exact DMG/app it just
+created.
 The app bundle must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg frameworks and platform/image plugins.
@@ -48,9 +50,12 @@ If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
 also runs `smb-browser --smoke-smb-list` and requires a successful directory
 listing through the packaged native backend.
 
-DFS namespace support must be implemented by the native SMB engine. Until the
-native DFS task is complete, DFS limitations should be documented as product
-limitations rather than solved by bundling a helper binary.
+The manual GitHub Actions workflow `.github/workflows/package-smoke.yml` runs
+the same script on a clean macOS runner and uploads the generated package
+artifact.
+
+DFS namespace support is implemented by the native SMB engine and must not be
+solved by bundling a helper binary.
 
 ## Smoke test
 

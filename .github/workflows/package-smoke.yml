@@ -1,0 +1,66 @@
+name: Package Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows portable ZIP smoke
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MSYS2 UCRT64 dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: inherit
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-libsodium
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-svg
+            mingw-w64-ucrt-x86_64-qtkeychain-qt5
+
+      - name: Build package and smoke-test
+        shell: msys2 {0}
+        run: >
+          pwsh -NoProfile -ExecutionPolicy Bypass
+          -File scripts/package-windows.ps1
+          -BuildDir tmp/package-windows
+          -Generator Ninja
+          -BuildType Release
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-browser-windows-portable
+          path: tmp/package-windows/packages/*.zip
+
+  macos:
+    name: macOS DMG smoke
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake ninja pkg-config qt@5 qtkeychain libsodium
+
+      - name: Build package and smoke-test
+        run: scripts/package-macos.sh
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-browser-macos
+          path: tmp/package-macos/packages/*

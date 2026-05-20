@@ -11,6 +11,9 @@ Run on every platform package before publishing:
 - Windows: `pwsh -File scripts/package-smoke-windows.ps1 <package.zip>`
 - macOS: `scripts/package-smoke-macos.sh <package.dmg|smb-browser.app>`
 
+Windows and macOS package smoke can also be started through the manual GitHub
+Actions workflow `.github/workflows/package-smoke.yml`.
+
 Each package smoke must verify:
 
 - app binary exists and starts;

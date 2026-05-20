@@ -1025,6 +1025,12 @@
   - Подготовлен smoke script `scripts/package-smoke-windows.ps1`; выполнить на Windows перед закрытием задачи.
   - Linux workspace note: PowerShell is not installed here, so Windows smoke
     remains manual/on-runner only.
+  - Подготовлен manual GitHub Actions workflow
+    `.github/workflows/package-smoke.yml` для Windows portable ZIP smoke на
+    чистом runner-е.
+  - `scripts/package-windows.ps1` теперь собирает portable ZIP staging из
+    build-tree после `windeployqt` и запускает smoke именно для созданного ZIP.
+  - Workflow syntax проверен через `tmp/bin/actionlint`.
 
 ### [x] T-072: Подготовить Linux packaging
 
@@ -1059,6 +1065,14 @@
   - Подготовлен smoke script `scripts/package-smoke-macos.sh`; выполнить на macOS перед закрытием задачи.
   - Linux workspace note: `bash -n scripts/package-macos.sh
     scripts/package-smoke-macos.sh` passes, but host smoke remains macOS-only.
+  - Подготовлен manual GitHub Actions workflow
+    `.github/workflows/package-smoke.yml` для macOS DMG smoke на чистом
+    runner-е.
+  - `scripts/package-macos.sh` теперь передает в smoke точный DMG/app artifact,
+    созданный текущим запуском, и автоматически добавляет Homebrew `qt@5` /
+    `qtkeychain` prefixes в `CMAKE_PREFIX_PATH`.
+  - Workflow syntax проверен через `tmp/bin/actionlint`; macOS smoke запускается
+    на `macos-15-intel`.
 
 ### [x] T-074: Подготовить release checklist
 

@@ -6,8 +6,8 @@ packaging task complete.
 
 ## Target
 
-- Package formats: ZIP for portable builds, NSIS installer for interactive
-  installation.
+- Package format: portable ZIP produced by `scripts/package-windows.ps1`.
+  NSIS remains a follow-up installer format after the portable smoke is green.
 - Runtime deployment: `windeployqt` for Qt5 runtime files.
 - Secret storage runtime: QtKeychain backed by Windows Credential Manager.
 - SMB backend: built-in clean-room native SMB2/SMB3 engine.
@@ -23,7 +23,8 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
 The helper configures the native backend, builds, runs `ctest`, attempts
-`windeployqt`, creates the package and runs `package-smoke-windows.ps1`.
+`windeployqt`, stages runtime DLL candidates, creates a portable ZIP and runs
+`package-smoke-windows.ps1` against the exact ZIP it just created.
 The package must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg runtime DLLs and platform/image plugins.
@@ -48,9 +49,12 @@ If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
 also runs `smb-browser.exe --smoke-smb-list` and requires a successful directory
 listing through the packaged native backend.
 
-DFS namespace support must be implemented by the native SMB engine. Until the
-native DFS task is complete, DFS limitations should be documented as product
-limitations rather than solved by bundling `smbclient.exe`.
+The manual GitHub Actions workflow `.github/workflows/package-smoke.yml` runs
+the same script on a clean Windows runner and uploads the generated ZIP
+artifact.
+
+DFS namespace support is implemented by the native SMB engine and must not be
+solved by bundling `smbclient.exe`.
 
 ## Smoke test
 

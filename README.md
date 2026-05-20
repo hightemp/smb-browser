@@ -102,7 +102,8 @@ through the built-in native backend.
 
 Windows and macOS packaging plans are documented in `docs/windows-packaging.md`
 and `docs/macos-packaging.md`. Their smoke scripts must be run on the matching
-operating system:
+operating system. A manual GitHub Actions workflow is also available as
+`Package Smoke` in `.github/workflows/package-smoke.yml`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1

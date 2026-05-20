@@ -25,15 +25,63 @@ if (!$SkipTests) {
 }
 
 $Exe = Join-Path $BuildDir "src\app\smb-browser.exe"
+if (!(Test-Path $Exe)) {
+    throw "Built executable not found: $Exe"
+}
+
 $WinDeployQt = Get-Command windeployqt.exe -ErrorAction SilentlyContinue
+if (!$WinDeployQt) {
+    $WinDeployQt = Get-Command windeployqt-qt5.exe -ErrorAction SilentlyContinue
+}
 if ($WinDeployQt -and (Test-Path $Exe)) {
-    & $WinDeployQt.Source --no-translations $Exe
+    & $WinDeployQt.Source --compiler-runtime --no-translations $Exe
 } else {
     Write-Warning "windeployqt.exe not found or app exe missing; ensure Qt runtime files are staged before publishing."
 }
 
-cmake --build $BuildDir --target package --config $BuildType
+function Copy-FirstPathMatch {
+    param(
+        [string[]]$Patterns,
+        [string]$Destination
+    )
+
+    $PathEntries = $env:PATH -split [System.IO.Path]::PathSeparator
+    foreach ($Pattern in $Patterns) {
+        foreach ($Entry in $PathEntries) {
+            if ([string]::IsNullOrWhiteSpace($Entry) -or !(Test-Path $Entry)) {
+                continue
+            }
+            $Match = Get-ChildItem -Path $Entry -File -Filter $Pattern -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($Match) {
+                Copy-Item -LiteralPath $Match.FullName -Destination $Destination -Force
+                break
+            }
+        }
+    }
+}
+
+$AppDir = Split-Path -Parent $Exe
+$I18nDir = Join-Path $AppDir "i18n"
+New-Item -ItemType Directory -Force -Path $I18nDir | Out-Null
+$Translation = Join-Path $BuildDir "i18n\smb-browser_ru.qm"
+if (!(Test-Path $Translation)) {
+    throw "Russian translation file was not built: $Translation"
+}
+Copy-Item -LiteralPath $Translation -Destination $I18nDir -Force
+Copy-Item -LiteralPath (Join-Path $RootDir "LICENSE") -Destination $AppDir -Force
+Copy-Item -LiteralPath (Join-Path $RootDir "NOTICE") -Destination $AppDir -Force
+Copy-FirstPathMatch `
+    -Patterns @("Qt5Keychain.dll", "qt5keychain.dll", "libqt5keychain.dll", "libsodium*.dll", "sodium*.dll") `
+    -Destination $AppDir
+
+$PackagesDir = Join-Path $BuildDir "packages"
+New-Item -ItemType Directory -Force -Path $PackagesDir | Out-Null
+$BuiltPackage = Join-Path $PackagesDir "smb-browser-$BuildType-windows-portable.zip"
+Remove-Item -Force $BuiltPackage -ErrorAction SilentlyContinue
+Compress-Archive -Path (Join-Path $AppDir "*") -DestinationPath $BuiltPackage
 
 if (!$SkipSmoke) {
-    & (Join-Path $PSScriptRoot "package-smoke-windows.ps1")
+    & (Join-Path $PSScriptRoot "package-smoke-windows.ps1") `
+        -PackagePath $BuiltPackage
 }
