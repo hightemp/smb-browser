@@ -179,104 +179,216 @@ QString smokeEnv(const char *name) {
   return QString::fromUtf8(qgetenv(name)).trimmed();
 }
 
-int runSmbListSmoke() {
+bool smokeFlagEnabled(const char *name) {
+  const auto value = smokeEnv(name).toLower();
+  return value == QStringLiteral("1") || value == QStringLiteral("true") ||
+         value == QStringLiteral("yes") || value == QStringLiteral("on");
+}
+
+int smokeMaxEntries() {
+  bool ok = false;
+  const auto value = smokeEnv("SMB_BROWSER_SMOKE_MAX_ENTRIES").toInt(&ok);
+  return ok && value > 0 ? value : 0;
+}
+
+void printSmokeError(QTextStream &stream, const smb::core::AppError &error) {
+  stream << "error_code=" << smb::core::toString(error.code) << '\n'
+         << "error_category=" << smb::core::toString(error.category) << '\n'
+         << "error_message=" << error.userMessage << '\n'
+         << "error_details=" << error.sanitizedTechnicalDetails << '\n';
+}
+
+void printSmokeEntries(const QVector<smb::core::RemoteFileEntry> &entries) {
+  QTextStream output(stdout);
+  output << "entries=" << entries.size() << '\n';
+  if (!smokeFlagEnabled("SMB_BROWSER_SMOKE_PRINT_ENTRIES")) {
+    return;
+  }
+
+  const auto maxEntries = smokeMaxEntries();
+  int printed = 0;
+  for (const auto &entry : entries) {
+    if (maxEntries > 0 && printed >= maxEntries) {
+      break;
+    }
+    output << "entry\t" << smb::core::toString(entry.type) << '\t'
+           << entry.remotePath << '\t' << entry.name << '\n';
+    ++printed;
+  }
+  if (maxEntries > 0 && entries.size() > maxEntries) {
+    output << "entries_omitted=" << (entries.size() - maxEntries) << '\n';
+  }
+}
+
 #ifdef SMB_BROWSER_WITH_NATIVE_SMB
+struct SmbSmokeContext {
+  smb::core::Connection connection = smb::core::Connection::createEmpty();
+  smb::core::CredentialSecret secret;
+  const smb::core::CredentialSecret *secretPtr = nullptr;
+  int timeoutSeconds = 10;
+};
+
+bool loadSmbSmokeContext(SmbSmokeContext &context) {
   const auto server = smokeEnv("SMB_BROWSER_SMOKE_SERVER");
   const auto share = smokeEnv("SMB_BROWSER_SMOKE_SHARE");
   if (server.isEmpty() || share.isEmpty()) {
-    return 2;
+    return false;
   }
 
-  smb::core::Connection connection = smb::core::Connection::createEmpty();
-  connection.id = QStringLiteral("smoke");
-  connection.name = QStringLiteral("Smoke");
-  connection.server = server;
-  connection.share = share;
-  connection.normalizedUri = QStringLiteral("smb://%1/%2").arg(server, share);
-  connection.domain = smokeEnv("SMB_BROWSER_SMOKE_DOMAIN");
-  connection.username = smokeEnv("SMB_BROWSER_SMOKE_USER");
+  context.connection.id = QStringLiteral("smoke");
+  context.connection.name = QStringLiteral("Smoke");
+  context.connection.server = server;
+  context.connection.share = share;
+  context.connection.normalizedUri =
+      QStringLiteral("smb://%1/%2").arg(server, share);
+  context.connection.domain = smokeEnv("SMB_BROWSER_SMOKE_DOMAIN");
+  context.connection.username = smokeEnv("SMB_BROWSER_SMOKE_USER");
 
-  smb::core::CredentialSecret secret;
-  const smb::core::CredentialSecret *secretPtr = nullptr;
   const auto auth = smokeEnv("SMB_BROWSER_SMOKE_AUTH").toLower();
   if (auth == QStringLiteral("guest")) {
-    connection.authType = smb::core::AuthType::Guest;
+    context.connection.authType = smb::core::AuthType::Guest;
   } else if (auth == QStringLiteral("anonymous")) {
-    connection.authType = smb::core::AuthType::Anonymous;
+    context.connection.authType = smb::core::AuthType::Anonymous;
   } else {
     const auto password = qgetenv("SMB_BROWSER_SMOKE_PASSWORD");
     if (password.isEmpty()) {
-      return 2;
+      return false;
     }
-    connection.authType = smb::core::AuthType::Password;
-    secret.bytes = password;
-    secretPtr = &secret;
+    context.connection.authType = smb::core::AuthType::Password;
+    context.secret.bytes = password;
+    context.secretPtr = &context.secret;
   }
 
   bool ok = false;
   const auto timeoutSeconds =
       smokeEnv("SMB_BROWSER_SMOKE_TIMEOUT_SECONDS").toInt(&ok);
-  smb::infrastructure::NativeSmbClient nativeSmbClient(ok ? timeoutSeconds
-                                                          : 10);
+  context.timeoutSeconds = ok ? timeoutSeconds : 10;
+  return true;
+}
+#endif
+
+int runSmbListSmoke() {
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+  SmbSmokeContext context;
+  if (!loadSmbSmokeContext(context)) {
+    return 2;
+  }
+
+  smb::infrastructure::NativeSmbClient nativeSmbClient(context.timeoutSeconds);
   smb::infrastructure::NativeDfsReferralResolver dfsReferralResolver(
-      ok ? timeoutSeconds : 10);
+      context.timeoutSeconds);
   smb::infrastructure::DfsResolvingSmbClient smbClient(nativeSmbClient,
                                                        dfsReferralResolver);
-  const auto result =
-      smbClient.listDirectory(connection, secretPtr,
-                              smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
+  const auto result = smbClient.listDirectory(
+      context.connection, context.secretPtr, smokeEnv("SMB_BROWSER_SMOKE_PATH"),
+      {});
   if (result.ok()) {
-    QTextStream(stdout) << "entries=" << result.value().size() << '\n';
+    printSmokeEntries(result.value());
     return 0;
   }
 
-  const auto &error = result.error();
-  QTextStream(stderr) << "error_code=" << smb::core::toString(error.code)
-                      << '\n'
-                      << "error_category="
-                      << smb::core::toString(error.category) << '\n'
-                      << "error_message=" << error.userMessage << '\n'
-                      << "error_details="
-                      << error.sanitizedTechnicalDetails << '\n';
+  QTextStream errorOutput(stderr);
+  printSmokeError(errorOutput, result.error());
 
   const auto shareTargets =
-      dfsReferralResolver.resolveTargets(connection, secretPtr, {});
+      dfsReferralResolver.resolveTargets(context.connection, context.secretPtr,
+                                         {});
   if (shareTargets.ok()) {
-    QTextStream(stderr) << "dfs_share_targets="
-                        << shareTargets.value().size() << '\n';
+    errorOutput << "dfs_share_targets=" << shareTargets.value().size() << '\n';
     for (const auto &target : shareTargets.value()) {
-      QTextStream(stderr) << "dfs_share_target=smb://"
-                          << target.connection.server << '/'
-                          << target.connection.share << '\n';
+      errorOutput << "dfs_share_target=smb://" << target.connection.server
+                  << '/' << target.connection.share << '\n';
     }
   } else {
     const auto &dfsError = shareTargets.error();
-    QTextStream(stderr) << "dfs_share_error_code="
-                        << smb::core::toString(dfsError.code) << '\n'
-                        << "dfs_share_error_details="
-                        << dfsError.sanitizedTechnicalDetails << '\n';
+    errorOutput << "dfs_share_error_code="
+                << smb::core::toString(dfsError.code) << '\n'
+                << "dfs_share_error_details="
+                << dfsError.sanitizedTechnicalDetails << '\n';
   }
 
   const auto pathTargets = dfsReferralResolver.resolvePathTargets(
-      connection, secretPtr, smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
+      context.connection, context.secretPtr, smokeEnv("SMB_BROWSER_SMOKE_PATH"),
+      {});
   if (pathTargets.ok()) {
-    QTextStream(stderr) << "dfs_path_targets=" << pathTargets.value().size()
-                        << '\n';
+    errorOutput << "dfs_path_targets=" << pathTargets.value().size() << '\n';
     for (const auto &target : pathTargets.value()) {
-      QTextStream(stderr) << "dfs_path_target=smb://"
-                          << target.connection.server << '/'
-                          << target.connection.share
-                          << " original_prefix="
-                          << target.originalPathPrefix << " target_prefix="
-                          << target.targetPathPrefix << '\n';
+      errorOutput << "dfs_path_target=smb://" << target.connection.server
+                  << '/' << target.connection.share << " original_prefix="
+                  << target.originalPathPrefix << " target_prefix="
+                  << target.targetPathPrefix << '\n';
     }
   } else {
     const auto &dfsError = pathTargets.error();
-    QTextStream(stderr) << "dfs_path_error_code="
-                        << smb::core::toString(dfsError.code) << '\n'
-                        << "dfs_path_error_details="
-                        << dfsError.sanitizedTechnicalDetails << '\n';
+    errorOutput << "dfs_path_error_code="
+                << smb::core::toString(dfsError.code) << '\n'
+                << "dfs_path_error_details="
+                << dfsError.sanitizedTechnicalDetails << '\n';
   }
+  return 1;
+#else
+  return 2;
+#endif
+}
+
+int runSmbDownloadSmoke() {
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+  SmbSmokeContext context;
+  if (!loadSmbSmokeContext(context)) {
+    return 2;
+  }
+
+  const auto remotePath = smokeEnv("SMB_BROWSER_SMOKE_PATH");
+  const auto localPath = smokeEnv("SMB_BROWSER_SMOKE_LOCAL_PATH");
+  if (remotePath.isEmpty() || localPath.isEmpty()) {
+    return 2;
+  }
+
+  smb::infrastructure::NativeSmbClient nativeSmbClient(context.timeoutSeconds);
+  smb::infrastructure::NativeDfsReferralResolver dfsReferralResolver(
+      context.timeoutSeconds);
+  smb::infrastructure::DfsResolvingSmbClient smbClient(nativeSmbClient,
+                                                       dfsReferralResolver);
+  const auto warmPath = smokeEnv("SMB_BROWSER_SMOKE_WARM_PATH");
+  if (!warmPath.isEmpty()) {
+    const auto warmResult = smbClient.listDirectory(
+        context.connection, context.secretPtr, warmPath, {});
+    if (!warmResult.ok()) {
+      QTextStream errorOutput(stderr);
+      errorOutput << "warmup_failed=1\n";
+      printSmokeError(errorOutput, warmResult.error());
+      return 1;
+    }
+    QTextStream(stdout) << "warmup_entries=" << warmResult.value().size()
+                        << '\n';
+  }
+
+  smb::core::OperationContext operationContext;
+  qint64 lastReportedBytes = -1;
+  if (smokeFlagEnabled("SMB_BROWSER_SMOKE_PRINT_PROGRESS")) {
+    operationContext.progressCallback =
+        [&lastReportedBytes](const smb::core::TransferProgress &progress) {
+          constexpr qint64 kProgressStep = 10 * 1024 * 1024;
+          if (lastReportedBytes < 0 ||
+              progress.bytesTransferred == progress.totalBytes ||
+              progress.bytesTransferred - lastReportedBytes >= kProgressStep) {
+            QTextStream(stdout)
+                << "progress=" << progress.bytesTransferred << '/'
+                << progress.totalBytes << '\n';
+            lastReportedBytes = progress.bytesTransferred;
+          }
+        };
+  }
+  const auto result = smbClient.downloadFile(
+      context.connection, context.secretPtr, remotePath, localPath,
+      operationContext);
+  if (result.ok()) {
+    QTextStream(stdout) << "download=ok\n";
+    return 0;
+  }
+
+  QTextStream errorOutput(stderr);
+  printSmokeError(errorOutput, result.error());
   return 1;
 #else
   return 2;
@@ -292,6 +404,9 @@ int main(int argc, char *argv[]) {
   QApplication::setQuitOnLastWindowClosed(true);
   if (hasArgument(app.arguments(), QStringLiteral("--smoke-smb-list"))) {
     return runSmbListSmoke();
+  }
+  if (hasArgument(app.arguments(), QStringLiteral("--smoke-smb-download"))) {
+    return runSmbDownloadSmoke();
   }
 
   const auto appDataPath = writableAppDataPath();

@@ -1086,6 +1086,7 @@ ByteVector buildReadRequest(const ReadRequestOptions &options,
     header.creditCharge =
         static_cast<std::uint16_t>(1 + ((options.length - 1) / 65536));
   }
+  header.creditRequest = std::max<std::uint16_t>(1, header.creditCharge);
 
   constexpr std::uint16_t kChannelInfoOffset = kSmb2HeaderSize + 48;
   const auto channelInfoOffset =
@@ -1192,6 +1193,7 @@ ByteVector buildWriteRequest(const WriteRequestOptions &options,
     header.creditCharge =
         static_cast<std::uint16_t>(1 + ((options.data.size() - 1) / 65536));
   }
+  header.creditRequest = std::max<std::uint16_t>(1, header.creditCharge);
 
   constexpr std::uint16_t kDataOffset = kSmb2HeaderSize + 48;
   const auto dataOffset = options.data.empty() ? 0 : kDataOffset;

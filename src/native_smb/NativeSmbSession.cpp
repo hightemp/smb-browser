@@ -1,6 +1,7 @@
 #include "NativeSmbSession.h"
 
 #include "CloseExchanger.h"
+#include "ReadExchanger.h"
 
 #include <algorithm>
 #include <cctype>
@@ -158,6 +159,24 @@ CreateRequestOptions copySourceOptions(const std::string &path) {
   return options;
 }
 
+CreateRequestOptions readFileOptions(const std::string &path) {
+  CreateRequestOptions options;
+  options.path = path;
+  options.desiredAccess = kFileReadData | kFileReadEa | kFileReadAttributes;
+  options.fileAttributes = kFileAttributeNormal;
+  options.shareAccess = kFileShareRead | kFileShareWrite | kFileShareDelete;
+  options.createDisposition = kFileOpen;
+  options.createOptions = kFileNonDirectoryFile;
+  return options;
+}
+
+std::uint64_t creditChargeForPayload(std::uint64_t size) {
+  if (size == 0) {
+    return 1;
+  }
+  return 1 + ((size - 1) / 65536);
+}
+
 CreateRequestOptions copyTargetOptions(const std::string &path) {
   CreateRequestOptions options;
   options.path = path;
@@ -245,6 +264,9 @@ NativeSmbSession::listDirectory(const std::string &path,
   NativeDirectoryListing listing;
   listing.entries.reserve(result.value.entries.size());
   for (const auto &entry : result.value.entries) {
+    if (isDotEntry(entry.name)) {
+      continue;
+    }
     listing.entries.push_back(toNativeEntry(entry));
   }
   return DecodeResult<NativeDirectoryListing>::success(std::move(listing));
@@ -267,6 +289,53 @@ NativeSmbSession::readFileOnce(const std::string &path, std::uint32_t length,
   read.data = result.value.data;
   read.dataRemaining = result.value.dataRemaining;
   return DecodeResult<NativeReadResult>::success(std::move(read));
+}
+
+DecodeResult<NativeFileHandle>
+NativeSmbSession::openFileForRead(const std::string &path,
+                                  const OperationContext &context) {
+  const auto messageId = allocateMessageIds(1);
+  const auto response = openFile(m_transport, readFileOptions(path), messageId,
+                                 m_treeId, m_sessionId, context);
+  if (!response.ok) {
+    return DecodeResult<NativeFileHandle>::failure(response.error.code,
+                                                   response.error.message);
+  }
+
+  NativeFileHandle handle;
+  handle.fileId = response.value.fileId;
+  handle.size = response.value.endOfFile;
+  return DecodeResult<NativeFileHandle>::success(handle);
+}
+
+DecodeResult<NativeReadResult>
+NativeSmbSession::readFileChunk(const FileId &fileId, std::uint32_t length,
+                                std::uint64_t offset,
+                                const OperationContext &context) {
+  const auto messageId = allocateMessageIds(creditChargeForPayload(length));
+  ReadRequestOptions readOptions;
+  readOptions.fileId = fileId;
+  readOptions.length = length;
+  readOptions.offset = offset;
+  const ReadExchanger reader;
+  const auto response = reader.read(m_transport, readOptions, messageId,
+                                    m_treeId, m_sessionId, context);
+  if (!response.ok) {
+    return readFailureFrom(response.error);
+  }
+
+  NativeReadResult read;
+  read.data = response.value.data;
+  read.dataRemaining = response.value.dataRemaining;
+  return DecodeResult<NativeReadResult>::success(std::move(read));
+}
+
+DecodeResult<bool>
+NativeSmbSession::closeFileHandle(const FileId &fileId,
+                                  const OperationContext &context) {
+  const auto messageId = allocateMessageIds(1);
+  return closeFile(m_transport, fileId, messageId, m_treeId, m_sessionId,
+                   context);
 }
 
 DecodeResult<NativeWriteResult>

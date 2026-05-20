@@ -107,6 +107,25 @@ NativeSmbConnection::readFileOnce(const std::string &path,
   return m_session.readFileOnce(path, length, offset, context);
 }
 
+DecodeResult<NativeFileHandle>
+NativeSmbConnection::openFileForRead(const std::string &path,
+                                     const OperationContext &context) {
+  return m_session.openFileForRead(path, context);
+}
+
+DecodeResult<NativeReadResult>
+NativeSmbConnection::readFileChunk(const FileId &fileId, std::uint32_t length,
+                                   std::uint64_t offset,
+                                   const OperationContext &context) {
+  return m_session.readFileChunk(fileId, length, offset, context);
+}
+
+DecodeResult<bool>
+NativeSmbConnection::closeFileHandle(const FileId &fileId,
+                                     const OperationContext &context) {
+  return m_session.closeFileHandle(fileId, context);
+}
+
 DecodeResult<NativeWriteResult>
 NativeSmbConnection::writeFileOnce(const std::string &path,
                                    const ByteVector &data,

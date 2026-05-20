@@ -39,6 +39,11 @@ struct NativeReadResult {
   std::uint32_t dataRemaining = 0;
 };
 
+struct NativeFileHandle {
+  FileId fileId;
+  std::uint64_t size = 0;
+};
+
 struct NativeWriteResult {
   std::uint32_t bytesWritten = 0;
   std::uint32_t remaining = 0;
@@ -107,6 +112,13 @@ public:
   DecodeResult<NativeReadResult>
   readFileOnce(const std::string &path, std::uint32_t length,
                std::uint64_t offset, const OperationContext &context);
+  DecodeResult<NativeFileHandle>
+  openFileForRead(const std::string &path, const OperationContext &context);
+  DecodeResult<NativeReadResult>
+  readFileChunk(const FileId &fileId, std::uint32_t length,
+                std::uint64_t offset, const OperationContext &context);
+  DecodeResult<bool> closeFileHandle(const FileId &fileId,
+                                     const OperationContext &context);
 
   DecodeResult<NativeWriteResult>
   writeFileOnce(const std::string &path, const ByteVector &data,

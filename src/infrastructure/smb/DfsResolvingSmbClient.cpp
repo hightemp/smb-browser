@@ -3,6 +3,7 @@
 #include <QMutexLocker>
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 
 namespace smb::infrastructure {
@@ -145,6 +146,12 @@ bool looksLikeDfsReferralFailure(const smb::core::AppError &error) {
          looksLikePathDfsReferralFailure(error);
 }
 
+bool mayHavePathDfsReferral(const smb::core::AppError &error) {
+  return looksLikeDfsReferralFailure(error) ||
+         error.code == smb::core::ErrorCode::ShareUnavailable ||
+         error.code == smb::core::ErrorCode::PermissionDenied;
+}
+
 bool sameResolvedTarget(const DfsPathMapping &left,
                         const DfsPathMapping &right) {
   return left.targetConnection.server.compare(right.targetConnection.server,
@@ -269,16 +276,96 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
     const smb::core::OperationContext &context, Operation operation,
     Rebase rebase) {
   const auto normalizedPath = normalizeRemotePath(remotePath);
+  std::function<std::optional<smb::core::Result<T>>(
+      const DfsPathMapping &, const QString &, const smb::core::AppError &, int)>
+      tryNestedPathMappings =
+          [this, secret, &context, &operation, &rebase,
+           &tryNestedPathMappings](const DfsPathMapping &outerMapping,
+                                   const QString &mappedPath,
+                                   const smb::core::AppError &triggerError,
+                                   int depth)
+      -> std::optional<smb::core::Result<T>> {
+    constexpr int kMaxNestedDfsDepth = 4;
+    if (!mayHavePathDfsReferral(triggerError)) {
+      return std::nullopt;
+    }
+    if (depth >= kMaxNestedDfsDepth) {
+      return std::nullopt;
+    }
+
+    auto nestedMappings =
+        cachedResolvedPathMappings(outerMapping.targetConnection, mappedPath);
+    if (nestedMappings.isEmpty()) {
+      nestedMappings = resolvePathAndCache(outerMapping.targetConnection,
+                                           secret, mappedPath, context);
+    }
+    if (nestedMappings.isEmpty()) {
+      return std::nullopt;
+    }
+
+    std::optional<smb::core::AppError> lastFailoverError;
+    for (const auto &nestedMapping : nestedMappings) {
+      if (sameResolvedTarget(nestedMapping, outerMapping)) {
+        continue;
+      }
+      if (!isPathPrefix(nestedMapping.originalPrefix, mappedPath)) {
+        continue;
+      }
+      const auto nestedMappedPath = targetPathForMapping(nestedMapping,
+                                                         mappedPath);
+      auto nestedResult =
+          operation(nestedMapping.targetConnection, nestedMappedPath);
+      if (nestedResult.ok()) {
+        auto composedMapping = nestedMapping;
+        composedMapping.connectionKey = outerMapping.connectionKey;
+        composedMapping.originalPrefix =
+            originalPathForMapping(outerMapping, nestedMapping.originalPrefix);
+        return smb::core::Result<T>::success(
+            rebase(std::move(nestedResult.value()), composedMapping));
+      }
+      auto deeperResult = tryNestedPathMappings(
+          nestedMapping, nestedMappedPath, nestedResult.error(), depth + 1);
+      if (deeperResult.has_value()) {
+        if (deeperResult->ok()) {
+          return smb::core::Result<T>::success(
+              rebase(std::move(deeperResult->value()), outerMapping));
+        }
+        if (!isTargetFailoverError(deeperResult->error())) {
+          return std::move(deeperResult.value());
+        }
+        lastFailoverError = deeperResult->error();
+      }
+      if (!isTargetFailoverError(nestedResult.error())) {
+        return smb::core::Result<T>::failure(nestedResult.error());
+      }
+      lastFailoverError = nestedResult.error();
+    }
+
+    if (lastFailoverError.has_value()) {
+      return smb::core::Result<T>::failure(
+          std::move(lastFailoverError.value()));
+    }
+    return std::nullopt;
+  };
+
   auto cachedMappings = cachedResolvedPathMappings(connection, normalizedPath);
   if (!cachedMappings.isEmpty()) {
     std::optional<smb::core::AppError> lastFailoverError;
     for (const auto &mapping : cachedMappings) {
+      const auto mappedPath = targetPathForMapping(mapping, normalizedPath);
       auto cachedResult =
-          operation(mapping.targetConnection,
-                    targetPathForMapping(mapping, normalizedPath));
+          operation(mapping.targetConnection, mappedPath);
       if (cachedResult.ok()) {
         return smb::core::Result<T>::success(
             rebase(std::move(cachedResult.value()), mapping));
+      }
+      auto nestedResult =
+          tryNestedPathMappings(mapping, mappedPath, cachedResult.error(), 0);
+      if (nestedResult.has_value()) {
+        if (nestedResult->ok() || !isTargetFailoverError(nestedResult->error())) {
+          return std::move(nestedResult.value());
+        }
+        lastFailoverError = nestedResult->error();
       }
       if (looksLikeDfsReferralFailure(cachedResult.error())) {
         forgetCachedPathMapping(connection, mapping.originalPrefix);
@@ -300,7 +387,7 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
       [&operation, &normalizedPath](const smb::core::Connection &candidate) {
         return operation(candidate, normalizedPath);
       });
-  if (result.ok() || !looksLikeDfsReferralFailure(result.error())) {
+  if (result.ok() || !mayHavePathDfsReferral(result.error())) {
     return result;
   }
 
@@ -312,12 +399,20 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
 
   std::optional<smb::core::AppError> lastFailoverError;
   for (const auto &mapping : mappings) {
+    const auto mappedPath = targetPathForMapping(mapping, normalizedPath);
     auto resolvedResult =
-        operation(mapping.targetConnection,
-                  targetPathForMapping(mapping, normalizedPath));
+        operation(mapping.targetConnection, mappedPath);
     if (resolvedResult.ok()) {
       return smb::core::Result<T>::success(
           rebase(std::move(resolvedResult.value()), mapping));
+    }
+    auto nestedResult =
+        tryNestedPathMappings(mapping, mappedPath, resolvedResult.error(), 0);
+    if (nestedResult.has_value()) {
+      if (nestedResult->ok() || !isTargetFailoverError(nestedResult->error())) {
+        return std::move(nestedResult.value());
+      }
+      lastFailoverError = nestedResult->error();
     }
     if (!isTargetFailoverError(resolvedResult.error())) {
       return resolvedResult;

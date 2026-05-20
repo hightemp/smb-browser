@@ -438,6 +438,62 @@ private slots:
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{113});
   }
 
+  void listDirectorySkipsDotEntries() {
+    ScriptedTransport transport({
+        framedSuccess(createResponsePayload(
+            smb::native_smb::Command::Create,
+            smb::native_smb::kFileAttributeDirectory)),
+        framedSuccess(queryDirectoryResponsePayload({
+            directoryEntryFor(".", smb::native_smb::kFileAttributeDirectory),
+            directoryEntryFor("..", smb::native_smb::kFileAttributeDirectory),
+            directoryEntryFor("folder",
+                              smb::native_smb::kFileAttributeDirectory),
+        })),
+        framedSuccess(queryDirectoryNoMoreFilesPayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto listing = session.listDirectory("docs", {});
+
+    QVERIFY(listing.ok);
+    QCOMPARE(listing.value.entries.size(), std::size_t{1});
+    QCOMPARE(QString::fromStdString(listing.value.entries.front().name),
+             QStringLiteral("folder"));
+  }
+
+  void readFileChunkUsesMultiCreditMessageIdWindow() {
+    ScriptedTransport transport({
+        framedSuccess(readResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 20;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    smb::native_smb::FileId fileId;
+    fileId.persistent = 0x0102030405060708ULL;
+    fileId.volatileId = 0x1112131415161718ULL;
+
+    const auto read = session.readFileChunk(fileId, 256 * 1024, 0, {});
+
+    QVERIFY(read.ok);
+    QCOMPARE(transport.requestFrames.size(), std::size_t{1});
+    const auto header = requestHeader(transport.requestFrames.front());
+    QCOMPARE(static_cast<int>(header.command),
+             static_cast<int>(smb::native_smb::Command::Read));
+    QCOMPARE(header.messageId, std::uint64_t{20});
+    QCOMPARE(header.creditCharge, std::uint16_t{4});
+    QCOMPARE(header.creditRequest, std::uint16_t{4});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{24});
+  }
+
   void routesStatObject() {
     ScriptedTransport transport({
         framedSuccess(createResponsePayload()),

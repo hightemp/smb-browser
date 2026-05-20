@@ -402,6 +402,7 @@ NativeDfsReferralResolver::resolvePathTargets(
       if (referrals.error.code == smb::native_smb::ErrorCode::FileNotFound ||
           referrals.error.code ==
               smb::native_smb::ErrorCode::ShareUnavailable ||
+          referrals.error.code == smb::native_smb::ErrorCode::InvalidPath ||
           referrals.error.code == smb::native_smb::ErrorCode::NetworkError) {
         continue;
       }

@@ -21,6 +21,7 @@ namespace {
 
 constexpr std::uint64_t kUnixEpochAsFiletime = 116444736000000000ULL;
 constexpr std::uint32_t kChunkSize = 64 * 1024;
+constexpr std::uint32_t kDownloadChunkSize = 64 * 1024;
 
 smb::core::AppError localIoError(const QString &details) {
   return smb::core::AppError::fromCode(smb::core::ErrorCode::LocalIoError,
@@ -523,46 +524,57 @@ smb::core::Result<bool> NativeSmbClient::downloadFile(
   }
 
   const auto path = normalizeRemotePath(remotePath);
-  const auto stat = connected.value.connection->statObject(
+  const auto opened = connected.value.connection->openFileForRead(
       path.toStdString(), nativeContext(context, m_timeoutSeconds));
-  if (!stat.ok) {
+  if (!opened.ok) {
     return smb::core::Result<bool>::failure(
-        appError(stat.error, m_sanitizer, secret));
+        appError(opened.error, m_sanitizer, secret));
   }
+
+  const auto closeRemoteFile = [&]() {
+    (void)connected.value.connection->closeFileHandle(
+        opened.value.fileId, nativeContext(context, m_timeoutSeconds));
+  };
 
   QFile file(localPath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    closeRemoteFile();
     return smb::core::Result<bool>::failure(localIoError(file.errorString()));
   }
 
   std::uint64_t offset = 0;
-  while (offset < stat.value.size) {
+  while (offset < opened.value.size) {
     if (isCancelled(context)) {
+      closeRemoteFile();
       return cancelledFailure();
     }
     const auto length = static_cast<std::uint32_t>(
-        std::min<std::uint64_t>(kChunkSize, stat.value.size - offset));
-    const auto read = connected.value.connection->readFileOnce(
-        path.toStdString(), length, offset,
+        std::min<std::uint64_t>(kDownloadChunkSize,
+                                opened.value.size - offset));
+    const auto read = connected.value.connection->readFileChunk(
+        opened.value.fileId, length, offset,
         nativeContext(context, m_timeoutSeconds));
     if (!read.ok) {
+      closeRemoteFile();
       return smb::core::Result<bool>::failure(
           appError(read.error, m_sanitizer, secret));
     }
     if (file.write(reinterpret_cast<const char *>(read.value.data.data()),
                    static_cast<qint64>(read.value.data.size())) !=
         static_cast<qint64>(read.value.data.size())) {
+      closeRemoteFile();
       return smb::core::Result<bool>::failure(localIoError(file.errorString()));
     }
     offset += read.value.data.size();
     if (context.progressCallback) {
       context.progressCallback(smb::core::TransferProgress{
-          static_cast<qint64>(offset), static_cast<qint64>(stat.value.size)});
+          static_cast<qint64>(offset), static_cast<qint64>(opened.value.size)});
     }
     if (read.value.data.empty()) {
       break;
     }
   }
+  closeRemoteFile();
   return smb::core::Result<bool>::success(true);
 }
 
