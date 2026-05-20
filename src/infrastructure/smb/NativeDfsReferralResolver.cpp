@@ -243,7 +243,8 @@ openIpcConnection(const smb::core::Connection &connection,
   options.negotiateOptions.dialects = {smb::native_smb::Dialect::Smb202,
                                        smb::native_smb::Dialect::Smb210,
                                        smb::native_smb::Dialect::Smb300,
-                                       smb::native_smb::Dialect::Smb302};
+                                       smb::native_smb::Dialect::Smb302,
+                                       smb::native_smb::Dialect::Smb311};
 
   const smb::native_smb::NativeSmbConnector connector;
   return connector.connect(std::move(transport), tokenProvider, options,

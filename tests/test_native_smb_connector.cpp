@@ -171,6 +171,69 @@ smb::native_smb::ByteVector treeConnectResponsePayload(
   return bytes;
 }
 
+smb::native_smb::DecodeResult<smb::native_smb::ByteVector>
+preauthHashForSmb311ConnectorFlow(
+    const smb::native_smb::NativeSmbConnectorOptions &options,
+    const smb::native_smb::ByteVector &negotiateResponse,
+    const smb::native_smb::ByteVector &challengeResponse,
+    const smb::native_smb::ByteVector &finalSessionResponse) {
+  smb::native_smb::NegotiateRequestOptions negotiateOptions =
+      options.negotiateOptions;
+  negotiateOptions.signing = options.config.signing;
+  negotiateOptions.capabilities |= smb::native_smb::capabilityMask(
+      {smb::native_smb::GlobalCapability::Dfs,
+       smb::native_smb::GlobalCapability::LargeMtu});
+  if (options.config.encryption != smb::native_smb::SecurityPolicy::Disabled) {
+    negotiateOptions.capabilities |= smb::native_smb::capabilityMask(
+        {smb::native_smb::GlobalCapability::Encryption});
+  }
+
+  auto hash = smb::native_smb::initialSmb311PreauthHash();
+  auto updated = smb::native_smb::updateSmb311PreauthHash(
+      hash, smb::native_smb::buildNegotiateRequest(negotiateOptions, 0));
+  if (!updated.ok) {
+    return updated;
+  }
+  updated = smb::native_smb::updateSmb311PreauthHash(updated.value,
+                                                     negotiateResponse);
+  if (!updated.ok) {
+    return updated;
+  }
+
+  smb::native_smb::SessionSetupRequestOptions firstSetup;
+  firstSetup.signing = options.config.signing;
+  firstSetup.capabilities = smb::native_smb::capabilityMask(
+      {smb::native_smb::GlobalCapability::Dfs,
+       smb::native_smb::GlobalCapability::LargeMtu,
+       smb::native_smb::GlobalCapability::Encryption});
+  firstSetup.securityBuffer = {'i'};
+  updated = smb::native_smb::updateSmb311PreauthHash(
+      updated.value,
+      smb::native_smb::buildSessionSetupRequest(
+          firstSetup, options.firstSessionMessageId, 0));
+  if (!updated.ok) {
+    return updated;
+  }
+  updated = smb::native_smb::updateSmb311PreauthHash(updated.value,
+                                                     challengeResponse);
+  if (!updated.ok) {
+    return updated;
+  }
+
+  smb::native_smb::SessionSetupRequestOptions secondSetup = firstSetup;
+  secondSetup.securityBuffer = {'n'};
+  updated = smb::native_smb::updateSmb311PreauthHash(
+      updated.value,
+      smb::native_smb::buildSessionSetupRequest(
+          secondSetup, options.firstSessionMessageId + 1,
+          0x0102030405060708ULL));
+  if (!updated.ok) {
+    return updated;
+  }
+  return smb::native_smb::updateSmb311PreauthHash(updated.value,
+                                                 finalSessionResponse);
+}
+
 smb::native_smb::ByteVector emptyStructureResponsePayload(
     smb::native_smb::Command command, std::uint16_t structureSize) {
   smb::native_smb::Smb2SyncHeader header;
@@ -353,6 +416,60 @@ private slots:
 
     QVERIFY(result.ok);
     QCOMPARE(transportPtr->requestFrames.size(), std::size_t{4});
+    const auto treeHeader = requestHeader(transportPtr->requestFrames[3]);
+    QCOMPARE(static_cast<int>(treeHeader.command),
+             static_cast<int>(smb::native_smb::Command::TreeConnect));
+    QVERIFY((treeHeader.flags & smb::native_smb::kFlagSigned) != 0);
+    QVERIFY(std::any_of(treeHeader.signature.begin(),
+                       treeHeader.signature.end(),
+                       [](std::uint8_t byte) { return byte != 0; }));
+  }
+
+  void derivesSmb311SigningKeyWhenSigningIsRequired() {
+    ScriptedTokenProvider tokenProvider;
+
+    smb::native_smb::NativeSmbConnectorOptions options;
+    options.config.server = "server";
+    options.config.share = "share";
+    options.config.signing = smb::native_smb::SecurityPolicy::Required;
+    options.firstSessionMessageId = 10;
+
+    const auto negotiateResponse =
+        negotiateResponsePayload(smb::native_smb::Dialect::Smb311, 0x0003);
+    const auto challengeResponse = sessionSetupResponsePayload(
+        smb::native_smb::kStatusMoreProcessingRequired,
+        0x0102030405060708ULL, {'c'});
+    const auto finalSessionResponse = sessionSetupResponsePayload(
+        smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {});
+    const auto preauthHash = preauthHashForSmb311ConnectorFlow(
+        options, negotiateResponse, challengeResponse, finalSessionResponse);
+    QVERIFY(preauthHash.ok);
+    const auto signingKey = smb::native_smb::deriveSmb311SigningKey(
+        tokenProvider.sessionKey, preauthHash.value);
+    QVERIFY(signingKey.ok);
+    const auto signedTreeResponse =
+        signedFrame(treeConnectResponsePayload(), signingKey.value,
+                    smb::native_smb::Dialect::Smb311);
+    QVERIFY(signedTreeResponse.ok);
+
+    auto transport = std::make_unique<ScriptedTransport>(
+        std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
+            framedSuccess(negotiateResponse),
+            framedSuccess(challengeResponse),
+            framedSuccess(finalSessionResponse),
+            smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
+                success(signedTreeResponse.value),
+        });
+    auto *transportPtr = transport.get();
+
+    const smb::native_smb::NativeSmbConnector connector;
+    auto result =
+        connector.connect(std::move(transport), tokenProvider, options, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(transportPtr->requestFrames.size(), std::size_t{4});
+    QCOMPARE(static_cast<int>(result.value.negotiated.dialect),
+             static_cast<int>(smb::native_smb::Dialect::Smb311));
     const auto treeHeader = requestHeader(transportPtr->requestFrames[3]);
     QCOMPARE(static_cast<int>(treeHeader.command),
              static_cast<int>(smb::native_smb::Command::TreeConnect));

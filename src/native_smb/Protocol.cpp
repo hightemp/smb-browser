@@ -65,6 +65,58 @@ bool isOfferedDialect(Dialect dialect, const std::vector<Dialect> &offered) {
   return std::find(offered.begin(), offered.end(), dialect) != offered.end();
 }
 
+bool hasDialect(const std::vector<Dialect> &dialects, Dialect dialect) {
+  return std::find(dialects.begin(), dialects.end(), dialect) != dialects.end();
+}
+
+void appendPadding(ByteVector &bytes, std::size_t alignment) {
+  const auto remainder = bytes.size() % alignment;
+  if (remainder == 0) {
+    return;
+  }
+  bytes.insert(bytes.end(), alignment - remainder, 0);
+}
+
+ByteVector negotiateContextSalt(
+    const std::array<std::uint8_t, 16> &clientGuid) {
+  ByteVector salt;
+  salt.reserve(32);
+  salt.insert(salt.end(), clientGuid.begin(), clientGuid.end());
+  salt.insert(salt.end(), clientGuid.begin(), clientGuid.end());
+  return salt;
+}
+
+void appendNegotiateContext(ByteVector &bytes, std::uint16_t type,
+                            const ByteVector &data) {
+  appendU16Le(bytes, type);
+  appendU16Le(bytes, static_cast<std::uint16_t>(data.size()));
+  appendU32Le(bytes, 0);
+  bytes.insert(bytes.end(), data.begin(), data.end());
+  appendPadding(bytes, 8);
+}
+
+ByteVector buildPreauthIntegrityContext(
+    const std::array<std::uint8_t, 16> &clientGuid) {
+  constexpr std::uint16_t kHashSha512 = 0x0001;
+  const auto salt = negotiateContextSalt(clientGuid);
+
+  ByteVector data;
+  appendU16Le(data, 1);
+  appendU16Le(data, static_cast<std::uint16_t>(salt.size()));
+  appendU16Le(data, kHashSha512);
+  data.insert(data.end(), salt.begin(), salt.end());
+  return data;
+}
+
+ByteVector buildEncryptionCapabilitiesContext() {
+  constexpr std::uint16_t kCipherAes128Ccm = 0x0001;
+
+  ByteVector data;
+  appendU16Le(data, 1);
+  appendU16Le(data, kCipherAes128Ccm);
+  return data;
+}
+
 std::string uncPath(const TreeConnectRequestOptions &options) {
   if (options.server.empty() || options.share.empty()) {
     throw std::invalid_argument("SMB tree connect requires server and share.");
@@ -237,7 +289,7 @@ std::string ntStatusName(std::uint32_t status) {
 
 std::vector<Dialect> defaultInitialDialects() {
   return {Dialect::Smb202, Dialect::Smb210, Dialect::Smb300,
-          Dialect::Smb302};
+          Dialect::Smb302, Dialect::Smb311};
 }
 
 ByteVector encodeUtf16Le(std::string_view text) {
@@ -414,6 +466,10 @@ ByteVector buildNegotiateRequest(const NegotiateRequestOptions &options,
   header.creditRequest = 1;
 
   auto bytes = encodeSmb2SyncHeader(header);
+  const auto includeSmb311Contexts = hasDialect(dialects, Dialect::Smb311);
+  const auto includeEncryptionContext =
+      (options.capabilities &
+       static_cast<std::uint32_t>(GlobalCapability::Encryption)) != 0;
   appendU16Le(bytes, kNegotiateRequestStructureSize);
   appendU16Le(bytes, static_cast<std::uint16_t>(dialects.size()));
   appendU16Le(bytes, securityModeForPolicy(options.signing));
@@ -421,9 +477,31 @@ ByteVector buildNegotiateRequest(const NegotiateRequestOptions &options,
   appendU32Le(bytes, options.capabilities);
   bytes.insert(bytes.end(), options.clientGuid.begin(),
                options.clientGuid.end());
-  appendU64Le(bytes, 0);
+  const auto contextCount =
+      includeSmb311Contexts ? static_cast<std::uint16_t>(
+                                  includeEncryptionContext ? 2 : 1)
+                            : 0;
+  const auto contextOffset =
+      includeSmb311Contexts
+          ? static_cast<std::uint32_t>(
+                ((kSmb2HeaderSize + kNegotiateRequestStructureSize +
+                  dialects.size() * sizeof(std::uint16_t) + 7) /
+                 8) *
+                8)
+          : 0;
+  appendU32Le(bytes, contextOffset);
+  appendU16Le(bytes, contextCount);
+  appendU16Le(bytes, 0);
   for (const auto dialect : dialects) {
     appendU16Le(bytes, static_cast<std::uint16_t>(dialect));
+  }
+  if (includeSmb311Contexts) {
+    appendPadding(bytes, 8);
+    appendNegotiateContext(bytes, 0x0001,
+                           buildPreauthIntegrityContext(options.clientGuid));
+    if (includeEncryptionContext) {
+      appendNegotiateContext(bytes, 0x0002, buildEncryptionCapabilitiesContext());
+    }
   }
   return bytes;
 }

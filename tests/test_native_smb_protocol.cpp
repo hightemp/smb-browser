@@ -2,6 +2,7 @@
 
 #include <QtTest/QtTest>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -482,10 +483,10 @@ private slots:
 
     const auto bytes = smb::native_smb::buildNegotiateRequest(options, 7);
 
-    QCOMPARE(bytes.size(), std::size_t{108});
+    QCOMPARE(bytes.size(), std::size_t{176});
     QCOMPARE(bytes[64], std::uint8_t{36});
     QCOMPARE(bytes[65], std::uint8_t{0});
-    QCOMPARE(bytes[66], std::uint8_t{4});
+    QCOMPARE(bytes[66], std::uint8_t{5});
     QCOMPARE(bytes[67], std::uint8_t{0});
     QCOMPARE(bytes[68], std::uint8_t{3});
     QCOMPARE(bytes[69], std::uint8_t{0});
@@ -493,6 +494,10 @@ private slots:
     QCOMPARE(bytes[73], std::uint8_t{0});
     QCOMPARE(bytes[76], std::uint8_t{1});
     QCOMPARE(bytes[91], std::uint8_t{16});
+    QCOMPARE(bytes[92], std::uint8_t{0x70});
+    QCOMPARE(bytes[93], std::uint8_t{0});
+    QCOMPARE(bytes[96], std::uint8_t{2});
+    QCOMPARE(bytes[97], std::uint8_t{0});
     QCOMPARE(bytes[100], std::uint8_t{0x02});
     QCOMPARE(bytes[101], std::uint8_t{0x02});
     QCOMPARE(bytes[102], std::uint8_t{0x10});
@@ -501,9 +506,28 @@ private slots:
     QCOMPARE(bytes[105], std::uint8_t{0x03});
     QCOMPARE(bytes[106], std::uint8_t{0x02});
     QCOMPARE(bytes[107], std::uint8_t{0x03});
+    QCOMPARE(bytes[108], std::uint8_t{0x11});
+    QCOMPARE(bytes[109], std::uint8_t{0x03});
+    QCOMPARE(bytes[112], std::uint8_t{0x01});
+    QCOMPARE(bytes[113], std::uint8_t{0x00});
+    QCOMPARE(bytes[114], std::uint8_t{38});
+    QCOMPARE(bytes[120], std::uint8_t{1});
+    QCOMPARE(bytes[122], std::uint8_t{32});
+    QCOMPARE(bytes[124], std::uint8_t{1});
+    QCOMPARE(bytes[126], std::uint8_t{1});
+    QCOMPARE(bytes[141], std::uint8_t{16});
+    QCOMPARE(bytes[142], std::uint8_t{1});
+    QCOMPARE(bytes[157], std::uint8_t{16});
+    QCOMPARE(bytes[160], std::uint8_t{0x02});
+    QCOMPARE(bytes[162], std::uint8_t{4});
+    QCOMPARE(bytes[168], std::uint8_t{1});
+    QCOMPARE(bytes[170], std::uint8_t{1});
 
     const auto defaultDialects = smb::native_smb::defaultInitialDialects();
     QVERIFY(!smb::native_smb::containsSmb1Dialect(defaultDialects));
+    QVERIFY(std::find(defaultDialects.begin(), defaultDialects.end(),
+                      smb::native_smb::Dialect::Smb311) !=
+            defaultDialects.end());
   }
 
   void decodesNegotiateResponse() {

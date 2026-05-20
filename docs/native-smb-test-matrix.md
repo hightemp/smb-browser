@@ -174,7 +174,8 @@ A `Must` native library feature is not complete until:
   raw NTLM passthrough and malformed DER rejection.
 - `native_smb_signing`: clean-room SHA-256, HMAC-SHA256, AES-128,
   AES-128-CMAC, SMB2.0.2/2.1 HMAC signing, SMB3.0/3.0.2 AES-CMAC signing-key
-  derivation and signed response verification over Direct TCP frames.
+  derivation, SMB3.1.1 preauth-derived signing-key derivation and signed
+  response verification over Direct TCP frames.
 - `native_smb_error_mapper`: backend-neutral native error to `AppError`
   mapping, retryable classification and sanitized technical details.
 - `native_smb_ntlm_v2_token_provider`: NTLMv2 token provider over raw NTLM and

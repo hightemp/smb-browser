@@ -13,6 +13,7 @@ struct NegotiatedConnection {
   std::uint32_t maxReadSize = 0;
   std::uint32_t maxWriteSize = 0;
   ByteVector securityBuffer;
+  ByteVector preauthIntegrityHash;
 };
 
 class Negotiator {

@@ -38,9 +38,13 @@ build does not require `libsmb2-dev`, a checked-out `libsmb2` source tree,
 Current native backend status:
 
 - SMB2 Direct TCP transport is built into the application.
+- SMB2.0.2/2.1/3.0/3.0.2/3.1.1 dialect negotiation is implemented without
+  SMB1/NetBIOS fallback. SMB 3.1.1 NEGOTIATE includes preauth integrity and
+  AES-128-CCM encryption capability contexts.
 - NTLMv2 password/domain auth, guest/anonymous auth handling, SPNEGO token
-  wrapping, SMB2.0.2/2.1 HMAC-SHA256 signing and SMB3.0/3.0.2 AES-CMAC signing
-  are implemented in the clean-room engine.
+  wrapping, SMB2.0.2/2.1 HMAC-SHA256 signing, SMB3.0/3.0.2 AES-CMAC signing
+  and SMB3.1.1 preauth-derived AES-CMAC signing are implemented in the
+  clean-room engine.
 - Basic app operations are wired through `NativeSmbClient`: check, list,
   create folder, delete, rename, download, upload, copy and move.
 - Share browsing is implemented through native `IPC$` + DCE/RPC/SRVSVC

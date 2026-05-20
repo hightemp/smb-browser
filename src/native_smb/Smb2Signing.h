@@ -16,6 +16,12 @@ Block16 aes128EncryptBlock(const Block16 &key, const Block16 &plaintext);
 DecodeResult<Block16> aes128Cmac(const ByteVector &key, const ByteVector &data);
 DecodeResult<ByteVector> deriveSmb3SigningKey(const ByteVector &sessionKey,
                                               Dialect dialect);
+ByteVector initialSmb311PreauthHash();
+DecodeResult<ByteVector> updateSmb311PreauthHash(const ByteVector &currentHash,
+                                                 const ByteVector &message);
+DecodeResult<ByteVector>
+deriveSmb311SigningKey(const ByteVector &sessionKey,
+                       const ByteVector &preauthIntegrityHash);
 bool supportsHmacSha256Signing(Dialect dialect);
 bool supportsAesCmacSigning(Dialect dialect);
 bool supportsSigning(Dialect dialect);

@@ -143,6 +143,8 @@ struct SessionSetupResponse {
   std::uint64_t sessionId = 0;
   std::uint16_t sessionFlags = 0;
   ByteVector securityBuffer;
+  ByteVector requestPayload;
+  ByteVector responsePayload;
   bool moreProcessingRequired = false;
   bool guestSession = false;
   bool nullSession = false;

@@ -161,6 +161,20 @@ private slots:
     QVERIFY(key.value == hexBytes("6234814cbb8ea9227440ebfeb5eacbe1"));
   }
 
+  void derivesSmb311SigningKeyFromPreauthHash() {
+    auto preauthHash = smb::native_smb::initialSmb311PreauthHash();
+    const auto updated =
+        smb::native_smb::updateSmb311PreauthHash(preauthHash, {'N', 'E', 'G'});
+    QVERIFY(updated.ok);
+
+    const auto key = smb::native_smb::deriveSmb311SigningKey(
+        hexBytes("000102030405060708090a0b0c0d0e0f"), updated.value);
+
+    QVERIFY(key.ok);
+    QCOMPARE(key.value.size(), std::size_t{16});
+    QVERIFY(key.value != smb::native_smb::ByteVector(16, 0));
+  }
+
   void signsSmb2FrameWithHmacSha256() {
     const smb::native_smb::ByteVector sessionKey(16, 0x11);
     const auto signedFrame = smb::native_smb::signSmb2DirectTcpFrame(
@@ -221,6 +235,28 @@ private slots:
 
     const auto verified = smb::native_smb::verifySmb2DirectTcpFrameSignature(
         signedFrame.value, signingKey.value, smb::native_smb::Dialect::Smb302);
+    QVERIFY(verified.ok);
+    QVERIFY(verified.value);
+  }
+
+  void signsSmb311FrameWithAesCmacSigningKey() {
+    auto preauthHash = smb::native_smb::initialSmb311PreauthHash();
+    auto updated =
+        smb::native_smb::updateSmb311PreauthHash(preauthHash, {'n'});
+    QVERIFY(updated.ok);
+    updated = smb::native_smb::updateSmb311PreauthHash(updated.value, {'r'});
+    QVERIFY(updated.ok);
+    const auto signingKey = smb::native_smb::deriveSmb311SigningKey(
+        smb::native_smb::ByteVector(16, 0x44), updated.value);
+    QVERIFY(signingKey.ok);
+
+    const auto signedFrame = smb::native_smb::signSmb2DirectTcpFrame(
+        smb2Frame(smb::native_smb::Command::TreeConnect, 7), signingKey.value,
+        smb::native_smb::Dialect::Smb311);
+
+    QVERIFY(signedFrame.ok);
+    const auto verified = smb::native_smb::verifySmb2DirectTcpFrameSignature(
+        signedFrame.value, signingKey.value, smb::native_smb::Dialect::Smb311);
     QVERIFY(verified.ok);
     QVERIFY(verified.value);
   }

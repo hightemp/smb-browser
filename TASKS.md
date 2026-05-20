@@ -2097,7 +2097,8 @@ Samba в проект запрещено.
   - Unit tests для crypto/signature state machine на synthetic vectors.
   - Docker Samba fixtures с required signing/encryption, если поддерживаются.
   - Manual Windows Server validation с signing/encryption policy.
-  - Реализовано: SMB2/2.1 HMAC-SHA256 signing and SMB3 AES-CMAC signing.
+  - Реализовано: SMB2/2.1 HMAC-SHA256 signing, SMB3.0/3.0.2 AES-CMAC signing
+    and SMB3.1.1 preauth-derived AES-CMAC signing.
   - Реализовано: clean-room SMB3 AES-128-CCM transform header,
     encrypt/decrypt, client/server encryption key derivation and transport
     wrapper for SMB 3.0/3.0.2.

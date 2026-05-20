@@ -90,6 +90,11 @@ target_compile_definitions(smb_browser_native_smb
         SMB_BROWSER_NATIVE_SMB_CLEAN_ROOM=1
 )
 
+target_link_libraries(smb_browser_native_smb
+    PUBLIC
+        PkgConfig::SODIUM
+)
+
 if(WIN32)
     target_link_libraries(smb_browser_native_smb
         PUBLIC

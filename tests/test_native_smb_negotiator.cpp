@@ -122,6 +122,37 @@ private slots:
              static_cast<int>(smb::native_smb::Command::Negotiate));
   }
 
+  void negotiatesSmb311WhenServerSelectsIt() {
+    ScriptedTransport transport(
+        smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::success(
+            smb::native_smb::encodeDirectTcpFrame(negotiateResponsePayload(
+                0x0001, smb::native_smb::Dialect::Smb311))));
+
+    smb::native_smb::NegotiateRequestOptions options;
+    options.signing = smb::native_smb::SecurityPolicy::Preferred;
+    options.capabilities = smb::native_smb::capabilityMask(
+        {smb::native_smb::GlobalCapability::Encryption});
+
+    const smb::native_smb::Negotiator negotiator;
+    const auto result = negotiator.negotiate(transport, options, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(static_cast<int>(result.value.dialect),
+             static_cast<int>(smb::native_smb::Dialect::Smb311));
+    QVERIFY(!result.value.signingRequired);
+
+    const auto payload =
+        smb::native_smb::decodeDirectTcpPayload(transport.lastRequestFrame);
+    QVERIFY(payload.ok);
+    QCOMPARE(payload.value[66], std::uint8_t{5});
+    QCOMPARE(payload.value[92], std::uint8_t{0x70});
+    QCOMPARE(payload.value[96], std::uint8_t{2});
+    QCOMPARE(payload.value[108], std::uint8_t{0x11});
+    QCOMPARE(payload.value[109], std::uint8_t{0x03});
+    QCOMPARE(payload.value[112], std::uint8_t{0x01});
+    QCOMPARE(payload.value[160], std::uint8_t{0x02});
+  }
+
   void returnsCancelledBeforeTransportCall() {
     ScriptedTransport transport(
         smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::success(

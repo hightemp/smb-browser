@@ -142,8 +142,11 @@ engine без Samba/libsmb2 source input.
   Linux and macOS system GSS/Kerberos frameworks. UI must keep current-user auth
   feature-gated until the backend reports support.
 - SMB2.0.2/2.1 signing is implemented with HMAC-SHA256. SMB3.0/3.0.2 signing
-  is implemented with AES-CMAC and SMB3 signing-key derivation. SMB3
-  encryption and SMB3.1.1 preauth-integrity signing remain open work.
+  is implemented with AES-CMAC and SMB3 signing-key derivation. SMB3.1.1
+  negotiation sends preauth integrity/encryption capability contexts, tracks
+  the SHA-512 preauth hash through session setup and supports preauth-derived
+  AES-CMAC signing. SMB3.1.1 encryption key derivation remains open work for
+  encrypted shares.
 - Application default build uses `NativeSmbClient`; legacy libsmb2 can be
   enabled only with explicit CMake flags.
 - `OperationQueue` cancellation is bridged into the native `OperationContext`,

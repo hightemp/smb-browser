@@ -29,8 +29,9 @@ SessionSetupExchanger::exchange(Transport &transport,
     return cancelledResult();
   }
 
-  const auto requestFrame = encodeDirectTcpFrame(
-      buildSessionSetupRequest(options, messageId, sessionId));
+  const auto requestPayload =
+      buildSessionSetupRequest(options, messageId, sessionId);
+  const auto requestFrame = encodeDirectTcpFrame(requestPayload);
   const auto responseFrame = transport.exchange(requestFrame, context);
   if (!responseFrame.ok) {
     return failureFrom(responseFrame.error);
@@ -45,10 +46,12 @@ SessionSetupExchanger::exchange(Transport &transport,
     return failureFrom(payload.error);
   }
 
-  const auto response = decodeSessionSetupResponse(payload.value);
+  auto response = decodeSessionSetupResponse(payload.value);
   if (!response.ok) {
     return failureFrom(response.error);
   }
+  response.value.requestPayload = requestPayload;
+  response.value.responsePayload = payload.value;
   return response;
 }
 

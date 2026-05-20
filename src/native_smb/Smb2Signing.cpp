@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <sodium/crypto_hash_sha512.h>
 #include <sstream>
 #include <utility>
 
@@ -9,6 +10,7 @@ namespace smb::native_smb {
 namespace {
 
 constexpr std::size_t kSha256BlockSize = 64;
+constexpr std::size_t kSha512DigestSize = crypto_hash_sha512_BYTES;
 constexpr std::size_t kSmb2SignatureOffset = 48;
 constexpr std::size_t kSmb2FlagsOffset = 16;
 constexpr std::uint8_t kAesBlockSize = 16;
@@ -264,6 +266,41 @@ ByteVector asciiWithNull(const char *text) {
   return bytes;
 }
 
+ByteVector asciiBytes(const char *text) {
+  ByteVector bytes;
+  while (*text != '\0') {
+    bytes.push_back(static_cast<std::uint8_t>(*text++));
+  }
+  return bytes;
+}
+
+DecodeResult<ByteVector> deriveSmb311Key(const ByteVector &sessionKey,
+                                         const char *label,
+                                         const ByteVector &context) {
+  if (sessionKey.empty()) {
+    return DecodeResult<ByteVector>::failure(
+        ErrorCode::AuthenticationFailed,
+        "Cannot derive SMB 3.1.1 key without a session key.");
+  }
+  if (context.size() != kSha512DigestSize) {
+    return DecodeResult<ByteVector>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB 3.1.1 key derivation requires a 64-byte preauth hash.");
+  }
+
+  const auto labelBytes = asciiBytes(label);
+  ByteVector input;
+  appendU32Be(input, 1);
+  input.insert(input.end(), labelBytes.begin(), labelBytes.end());
+  input.push_back(0);
+  input.insert(input.end(), context.begin(), context.end());
+  appendU32Be(input, 128);
+
+  const auto digest = hmacSha256(sessionKey, input);
+  return DecodeResult<ByteVector>::success(
+      ByteVector(digest.begin(), digest.begin() + kAesBlockSize));
+}
+
 } // namespace
 
 Digest32 sha256(const ByteVector &data) {
@@ -461,12 +498,39 @@ DecodeResult<ByteVector> deriveSmb3SigningKey(const ByteVector &sessionKey,
       ByteVector(digest.begin(), digest.begin() + kAesBlockSize));
 }
 
+ByteVector initialSmb311PreauthHash() {
+  return ByteVector(kSha512DigestSize, 0);
+}
+
+DecodeResult<ByteVector> updateSmb311PreauthHash(const ByteVector &currentHash,
+                                                 const ByteVector &message) {
+  if (currentHash.size() != kSha512DigestSize) {
+    return DecodeResult<ByteVector>::failure(
+        ErrorCode::ProtocolUnsupported,
+        "SMB 3.1.1 preauth hash state must be 64 bytes.");
+  }
+
+  ByteVector input = currentHash;
+  input.insert(input.end(), message.begin(), message.end());
+  ByteVector digest(kSha512DigestSize);
+  crypto_hash_sha512(digest.data(), input.data(),
+                     static_cast<unsigned long long>(input.size()));
+  return DecodeResult<ByteVector>::success(std::move(digest));
+}
+
+DecodeResult<ByteVector>
+deriveSmb311SigningKey(const ByteVector &sessionKey,
+                       const ByteVector &preauthIntegrityHash) {
+  return deriveSmb311Key(sessionKey, "SMBSigningKey", preauthIntegrityHash);
+}
+
 bool supportsHmacSha256Signing(Dialect dialect) {
   return dialect == Dialect::Smb202 || dialect == Dialect::Smb210;
 }
 
 bool supportsAesCmacSigning(Dialect dialect) {
-  return dialect == Dialect::Smb300 || dialect == Dialect::Smb302;
+  return dialect == Dialect::Smb300 || dialect == Dialect::Smb302 ||
+         dialect == Dialect::Smb311;
 }
 
 bool supportsSigning(Dialect dialect) {

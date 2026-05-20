@@ -90,6 +90,7 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
   const SessionSetupExchanger sessionSetup;
   SessionSetupResponse session;
   std::uint64_t sessionId = 0;
+  auto preauthIntegrityHash = negotiated.value.preauthIntegrityHash;
   auto messageId =
       options.firstSessionMessageId == 0 ? 1 : options.firstSessionMessageId;
   const auto maxRounds =
@@ -104,6 +105,21 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
     }
 
     session = setupResponse.value;
+    if (negotiated.value.dialect == Dialect::Smb311) {
+      auto updated = updateSmb311PreauthHash(preauthIntegrityHash,
+                                             session.requestPayload);
+      if (!updated.ok) {
+        return DecodeResult<NativeSmbConnectedState>::failure(
+            updated.error.code, updated.error.message);
+      }
+      updated =
+          updateSmb311PreauthHash(updated.value, session.responsePayload);
+      if (!updated.ok) {
+        return DecodeResult<NativeSmbConnectedState>::failure(
+            updated.error.code, updated.error.message);
+      }
+      preauthIntegrityHash = updated.value;
+    }
     sessionId = session.sessionId;
     if (!session.moreProcessingRequired) {
       break;
@@ -153,7 +169,15 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
     }
 
     auto signingKey = sessionKey;
-    if (supportsAesCmacSigning(negotiated.value.dialect)) {
+    if (negotiated.value.dialect == Dialect::Smb311) {
+      const auto derivedKey =
+          deriveSmb311SigningKey(sessionKey, preauthIntegrityHash);
+      if (!derivedKey.ok) {
+        return DecodeResult<NativeSmbConnectedState>::failure(
+            derivedKey.error.code, derivedKey.error.message);
+      }
+      signingKey = derivedKey.value;
+    } else if (supportsAesCmacSigning(negotiated.value.dialect)) {
       const auto derivedKey =
           deriveSmb3SigningKey(sessionKey, negotiated.value.dialect);
       if (!derivedKey.ok) {

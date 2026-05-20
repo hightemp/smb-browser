@@ -1,5 +1,7 @@
 #include "Negotiator.h"
 
+#include "Smb2Signing.h"
+
 #include <algorithm>
 
 namespace smb::native_smb {
@@ -35,8 +37,8 @@ Negotiator::negotiate(Transport &transport,
 
   const auto dialects =
       options.dialects.empty() ? defaultInitialDialects() : options.dialects;
-  const auto requestFrame =
-      encodeDirectTcpFrame(buildNegotiateRequest(options, 0));
+  const auto requestPayload = buildNegotiateRequest(options, 0);
+  const auto requestFrame = encodeDirectTcpFrame(requestPayload);
   const auto responseFrame = transport.exchange(requestFrame, context);
   if (!responseFrame.ok) {
     return failureFrom(responseFrame.error);
@@ -67,6 +69,20 @@ Negotiator::negotiate(Transport &transport,
   connection.maxReadSize = negotiateResponse.value.maxReadSize;
   connection.maxWriteSize = negotiateResponse.value.maxWriteSize;
   connection.securityBuffer = negotiateResponse.value.securityBuffer;
+  if (connection.dialect == Dialect::Smb311) {
+    auto preauthHash = initialSmb311PreauthHash();
+    auto updated = updateSmb311PreauthHash(preauthHash, requestPayload);
+    if (!updated.ok) {
+      return DecodeResult<NegotiatedConnection>::failure(
+          updated.error.code, updated.error.message);
+    }
+    updated = updateSmb311PreauthHash(updated.value, payload.value);
+    if (!updated.ok) {
+      return DecodeResult<NegotiatedConnection>::failure(
+          updated.error.code, updated.error.message);
+    }
+    connection.preauthIntegrityHash = updated.value;
+  }
   return DecodeResult<NegotiatedConnection>::success(connection);
 }
 
