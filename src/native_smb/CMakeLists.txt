@@ -5,6 +5,10 @@ add_library(smb_browser_native_smb STATIC
     CloseExchanger.h
     DirectTcpTransport.cpp
     DirectTcpTransport.h
+    Dcerpc.cpp
+    Dcerpc.h
+    DfsReferral.cpp
+    DfsReferral.h
     DirectoryLister.cpp
     DirectoryLister.h
     DirectoryWatcher.cpp
@@ -35,8 +39,12 @@ add_library(smb_browser_native_smb STATIC
     ReadExchanger.h
     RemoteMetadataOperator.cpp
     RemoteMetadataOperator.h
+    RemoteDfsReferralFetcher.cpp
+    RemoteDfsReferralFetcher.h
     RemoteObjectOperator.cpp
     RemoteObjectOperator.h
+    RemoteShareEnumerator.cpp
+    RemoteShareEnumerator.h
     RemoteStatReader.cpp
     RemoteStatReader.h
     SetInfoExchanger.cpp
@@ -49,6 +57,8 @@ add_library(smb_browser_native_smb STATIC
     SmbNative.h
     SpnegoToken.cpp
     SpnegoToken.h
+    SrvsRpc.cpp
+    SrvsRpc.h
     Transport.h
     TreeConnector.cpp
     TreeConnector.h

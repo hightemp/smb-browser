@@ -104,6 +104,9 @@ cmake --build tmp/build-samba
 ctest --test-dir tmp/build-samba -L docker-samba --output-on-failure
 ```
 
+- [ ] Docker Samba profile covers native `IPC$`/SRVSVC share browsing in
+      addition to list/read/write/copy/move flows.
+
 - [ ] Stop the fixture:
 
 ```bash

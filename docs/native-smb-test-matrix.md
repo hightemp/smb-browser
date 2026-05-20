@@ -155,6 +155,14 @@ A `Must` native library feature is not complete until:
   behavior, SMB2 IOCTL request/response, SRV_COPYCHUNK payloads and no-SMB1
   initial dialect policy, plus FileRenameInformation and FileLinkInformation
   payload builders.
+- `native_smb_dcerpc`: DCE/RPC bind/request/response PDU builders and parsers
+  used for SRVSVC over SMB named pipes.
+- `native_smb_dfs_referral`: `FSCTL_DFS_GET_REFERRALS` request builder and DFS
+  referral response parser for v2/v3/v4 root/link referrals, including
+  multiple target referrals and unsupported-version failures.
+- `native_smb_srvs_rpc`: SRVSVC `NetrShareEnum` level 1 request stub and
+  `SHARE_INFO_1` response parser, including `ERROR_MORE_DATA` resume handle
+  handling.
 - `native_smb_direct_tcp_transport`: loopback Direct TCP transport exchange,
   split response frame handling, timeout/cancellation-aware socket path and
   cancellation before socket open.
@@ -241,6 +249,12 @@ A `Must` native library feature is not complete until:
   `CREATE -> QUERY/SET_INFO(Security) -> CLOSE` raw security descriptor
   routing. POSIX chmod/chown remain capability-gated as unsupported until a
   POSIX SMB extension contract is added.
+- `native_smb_remote_dfs_referral_fetcher`: scripted SMB2 IOCTL
+  `FSCTL_DFS_GET_REFERRALS` flow, all-ones FileId routing, referral output
+  parsing and message-id accounting.
+- `native_smb_remote_share_enumerator`: scripted `CREATE srvsvc -> DCE/RPC
+  bind -> NetrShareEnum -> CLOSE` share browsing flow over `IPC$`, share type
+  mapping, hidden/special share mapping and cleanup after RPC decode failure.
 - `native_smb_session`: baseline C++ facade over native primitives, operation
   routing for list/stat/read/write/delete/create-directory/rename, recursive
   delete, wildcard delete, server-side same-share copy through
@@ -252,18 +266,20 @@ A `Must` native library feature is not complete until:
   exposing raw packet buffers to callers.
 - `smb_client_contract`: application-level `SmbClient` contract. Default run
   covers FakeSmbClient check/list/upload/download/mkdir/delete/rename/copy/move,
-  capability report contract, symlink listing, timeout and cancellation. Native
-  real-server contract is opt-in with environment variables and covers the same
-  mutating flow plus optional symlink/DFS fixture checks when configured.
+  capability report/list-shares contract, symlink listing, timeout and
+  cancellation. Native real-server contract is opt-in with environment
+  variables and covers the same mutating flow plus optional symlink/DFS fixture
+  checks when configured.
 - `connection_open_service` and `remote_browser_widget`: service/UI capability
   propagation, toolbar enabled state for supported operations, unsupported
   advanced-operation gating and lightweight properties/details display from the
   current remote model metadata.
 - `docker_samba_integration`: opt-in real-wire Docker Samba profile for the
   clean-room native backend. Covers password and guest auth, root/nested
-  listing, metadata fixture visibility, large-file download progress,
-  large-file upload progress, overwrite verification, rename/delete and
-  same-share copy plus cross-share stream copy using synthetic credentials.
+  listing, native `IPC$`/SRVSVC share browsing, metadata fixture visibility,
+  large-file download progress, large-file upload progress, overwrite
+  verification, rename/delete and same-share copy plus cross-share stream copy
+  using synthetic credentials.
 - `native_smb_perf_stress`: optional `make perf-test` profile. Covers large
   directory parser/state-machine pressure, chunked server-side copy progress
   and cancellation cleanup between copy chunks without requiring a real network

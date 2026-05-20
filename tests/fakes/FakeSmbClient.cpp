@@ -78,6 +78,11 @@ void FakeSmbClient::setCapabilities(
   m_capabilities = std::move(capabilities);
 }
 
+void FakeSmbClient::addShare(smb::core::SmbShareInfo share) {
+  m_capabilities.canBrowseShares = true;
+  m_shares.push_back(std::move(share));
+}
+
 void FakeSmbClient::failOperation(FakeSmbOperation operation,
                                   smb::core::ErrorCode code) {
   m_failures.insert(static_cast<int>(operation), code);
@@ -123,6 +128,18 @@ smb::core::SmbClientCapabilities
 FakeSmbClient::capabilities(const smb::core::Connection &connection) const {
   (void)connection;
   return m_capabilities;
+}
+
+smb::core::Result<QVector<smb::core::SmbShareInfo>>
+FakeSmbClient::listShares(const smb::core::Connection &,
+                          const smb::core::CredentialSecret *secret,
+                          const smb::core::OperationContext &context) {
+  const auto error = preflight(FakeSmbOperation::ListShares, secret, context);
+  if (error.hasError()) {
+    return smb::core::Result<QVector<smb::core::SmbShareInfo>>::failure(error);
+  }
+
+  return smb::core::Result<QVector<smb::core::SmbShareInfo>>::success(m_shares);
 }
 
 smb::core::Result<QVector<smb::core::RemoteFileEntry>>

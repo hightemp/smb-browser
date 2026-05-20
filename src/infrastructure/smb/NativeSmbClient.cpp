@@ -239,6 +239,16 @@ smb::core::RemoteFileEntry toCoreEntry(
   return result;
 }
 
+smb::core::SmbShareInfo
+toCoreShare(const smb::native_smb::NativeShareInfo &share) {
+  smb::core::SmbShareInfo result;
+  result.name = QString::fromStdString(share.name);
+  result.type = QString::fromStdString(share.type);
+  result.comment = QString::fromStdString(share.comment);
+  result.hidden = share.hidden;
+  return result;
+}
+
 smb::native_smb::DecodeResult<smb::native_smb::NativeSmbConnectedState>
 openNativeConnection(const smb::core::Connection &connection,
                      const smb::core::CredentialSecret *secret,
@@ -293,10 +303,10 @@ NativeSmbClient::capabilities(const smb::core::Connection &connection) const {
   capabilities.canUsePosixMode = metadata.canUsePosixMode;
   capabilities.canUsePosixOwner =
       metadata.canUsePosixOwner || metadata.canUsePosixGroup;
-  capabilities.canBrowseShares = false;
+  capabilities.canBrowseShares = true;
   capabilities.unsupportedAdvancedOperationsReason =
-      QObject::tr("POSIX chmod/chown and share browsing are not supported by "
-                  "the native SMB2/SMB3 backend yet.");
+      QObject::tr("POSIX chmod/chown are not supported by the native "
+                  "SMB2/SMB3 backend yet.");
   return capabilities;
 }
 
@@ -328,6 +338,44 @@ NativeSmbClient::probeCapabilities(
   report.capabilities = capabilities(connection);
   return smb::core::Result<smb::core::SmbCapabilityReport>::success(
       std::move(report));
+}
+
+smb::core::Result<QVector<smb::core::SmbShareInfo>>
+NativeSmbClient::listShares(const smb::core::Connection &connection,
+                            const smb::core::CredentialSecret *secret,
+                            const smb::core::OperationContext &context) {
+  if (isCancelled(context)) {
+    return smb::core::Result<QVector<smb::core::SmbShareInfo>>::failure(
+        cancelledFailure().error());
+  }
+
+  auto ipcConnection = connection;
+  ipcConnection.share = QStringLiteral("IPC$");
+  ipcConnection.normalizedUri =
+      QStringLiteral("smb://%1/IPC$").arg(connection.server);
+
+  auto connected =
+      openNativeConnection(ipcConnection, secret, context, m_timeoutSeconds);
+  if (!connected.ok) {
+    return smb::core::Result<QVector<smb::core::SmbShareInfo>>::failure(
+        appError(connected.error, m_sanitizer, secret));
+  }
+
+  const auto endpoint = endpointForServer(connection.server);
+  const auto shares = connected.value.connection->listShares(
+      endpoint.host, nativeContext(context, m_timeoutSeconds));
+  if (!shares.ok) {
+    return smb::core::Result<QVector<smb::core::SmbShareInfo>>::failure(
+        appError(shares.error, m_sanitizer, secret));
+  }
+
+  QVector<smb::core::SmbShareInfo> result;
+  result.reserve(static_cast<int>(shares.value.shares.size()));
+  for (const auto &share : shares.value.shares) {
+    result.push_back(toCoreShare(share));
+  }
+  return smb::core::Result<QVector<smb::core::SmbShareInfo>>::success(
+      std::move(result));
 }
 
 smb::core::Result<bool> NativeSmbClient::checkConnection(

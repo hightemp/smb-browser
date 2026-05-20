@@ -4,8 +4,10 @@
 #include "DirectoryWatcher.h"
 #include "FileReader.h"
 #include "FileWriter.h"
+#include "RemoteDfsReferralFetcher.h"
 #include "RemoteMetadataOperator.h"
 #include "RemoteObjectOperator.h"
+#include "RemoteShareEnumerator.h"
 #include "RemoteStatReader.h"
 #include "Transport.h"
 
@@ -179,6 +181,13 @@ public:
   DecodeResult<NativeNotifyResult>
   watchDirectoryOnce(const std::string &path, std::uint32_t completionFilter,
                      bool watchTree, const OperationContext &context);
+
+  DecodeResult<NativeShareList>
+  listShares(const std::string &serverName, const OperationContext &context);
+
+  DecodeResult<NativeDfsReferralResult>
+  getDfsReferrals(const std::string &requestPath,
+                  const OperationContext &context);
 
   std::uint32_t treeId() const;
   std::uint64_t sessionId() const;

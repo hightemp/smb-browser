@@ -179,6 +179,18 @@ DecodeResult<NativeNotifyResult> NativeSmbConnection::watchDirectoryOnce(
                                       context);
 }
 
+DecodeResult<NativeShareList>
+NativeSmbConnection::listShares(const std::string &serverName,
+                                const OperationContext &context) {
+  return m_session.listShares(serverName, context);
+}
+
+DecodeResult<NativeDfsReferralResult>
+NativeSmbConnection::getDfsReferrals(const std::string &requestPath,
+                                     const OperationContext &context) {
+  return m_session.getDfsReferrals(requestPath, context);
+}
+
 DecodeResult<bool>
 NativeSmbConnection::disconnect(const OperationContext &context) {
   if (m_disconnected) {

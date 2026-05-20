@@ -473,6 +473,7 @@ constexpr std::uint32_t kFileWriteAttributes = 0x00000100;
 constexpr std::uint32_t kReadControlAccess = 0x00020000;
 constexpr std::uint32_t kWriteDacAccess = 0x00040000;
 constexpr std::uint32_t kWriteOwnerAccess = 0x00080000;
+constexpr std::uint32_t kSynchronizeAccess = 0x00100000;
 constexpr std::uint32_t kAccessSystemSecurity = 0x01000000;
 constexpr std::uint32_t kFileAttributeDirectory = 0x00000010;
 constexpr std::uint32_t kFileAttributeNormal = 0x00000080;

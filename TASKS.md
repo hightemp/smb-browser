@@ -2039,6 +2039,14 @@ Samba в проект запрещено.
   - Integration tests с Samba DFS fixture или dedicated test server.
   - Regression check на корпоративный пример из `tmp/mylist.json` без логов
     credentials.
+  - Частично реализовано: добавлены clean-room `FSCTL_DFS_GET_REFERRALS`
+    request builder, DFS referral response parser v2/v3/v4 и SMB2 IOCTL
+    fetcher with all-ones FileId для IPC$/DFS referral requests.
+  - Covered by `native_smb_dfs_referral` and
+    `native_smb_remote_dfs_referral_fetcher`.
+  - Остаётся: application-level native resolver, TTL cache/failover,
+    integration fixture and removal/disablement of legacy `smbclient` resolver
+    outside the legacy libsmb2 path.
 
 ### [ ] T-122: Реализовать SMB signing и encryption
 
@@ -2066,7 +2074,7 @@ Samba в проект запрещено.
   - `native_smb_connector` covers required encryption policy, server session
     encryption and share encryption fail-closed behavior.
 
-### [ ] T-097: Реализовать share browsing и capability probing
+### [x] T-097: Реализовать share browsing и capability probing
 
 - Приоритет: Should.
 - Зависимости: T-093.
@@ -2081,11 +2089,16 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Docker Samba integration для share list.
   - Unit tests capability formatting/sanitization.
-  - Частично реализовано: добавлен `SmbCapabilityReport` contract,
+  - Реализовано: добавлен `SmbCapabilityReport` contract,
     `NativeSmbClient::probeCapabilities()` returns negotiated dialect,
     signing/encryption flags, DFS support and tree DFS/encryption flags without
-    SMB1/NetBIOS. `smb_client_contract` covers the report contract with fake
-    backend. Остаётся: IPC$/SRVSVC share enumeration and real-server tests.
+    SMB1/NetBIOS.
+  - Реализовано: `SmbClient::listShares()` contract, fake backend support,
+    native `IPC$` + DCE/RPC bind/request/response + SRVSVC `NetrShareEnum`
+    level 1 implementation, no `smbclient`/SMB1/NetBIOS fallback.
+  - Covered by `native_smb_dcerpc`, `native_smb_srvs_rpc`,
+    `native_smb_remote_share_enumerator`, `smb_client_contract` and Docker
+    Samba `shareBrowsingListsConfiguredShares`.
 
 ## Этап 18. Native SMB file operation parity
 
@@ -2340,7 +2353,7 @@ Samba в проект запрещено.
   - Unit tests view-model mapping.
   - Добавлен `SmbClientCapabilities` contract, `ConnectionOpenService`
     прокидывает capabilities в `OpenConnectionResult`, `NativeSmbClient`
-    сообщает native metadata/watch support and unsupported POSIX/share browsing
+    сообщает native metadata/watch/share-browsing support and unsupported POSIX
     reason.
   - `RemoteBrowserWidget` uses capabilities for toolbar enabled state and
     exposes a lightweight Properties dialog from current model metadata.

@@ -18,6 +18,11 @@ public:
                     const smb::core::CredentialSecret *secret,
                     const smb::core::OperationContext &context) override;
 
+  smb::core::Result<QVector<smb::core::SmbShareInfo>>
+  listShares(const smb::core::Connection &connection,
+             const smb::core::CredentialSecret *secret,
+             const smb::core::OperationContext &context) override;
+
   smb::core::Result<bool>
   checkConnection(const smb::core::Connection &connection,
                   const smb::core::CredentialSecret *secret,

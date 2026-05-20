@@ -68,6 +68,14 @@ struct SmbCapabilityReport {
   SmbClientCapabilities capabilities;
 };
 
+struct SmbShareInfo {
+  QString name;
+  QString type;
+  QString comment;
+  bool hidden = false;
+  bool dfs = false;
+};
+
 class SmbClient {
 public:
   virtual ~SmbClient() = default;
@@ -87,6 +95,18 @@ public:
     SmbCapabilityReport report;
     report.capabilities = capabilities(connection);
     return Result<SmbCapabilityReport>::success(std::move(report));
+  }
+
+  virtual Result<QVector<SmbShareInfo>>
+  listShares(const Connection &connection, const CredentialSecret *secret,
+             const OperationContext &context) {
+    (void)connection;
+    (void)secret;
+    (void)context;
+    return Result<QVector<SmbShareInfo>>::failure(AppError::fromCode(
+        ErrorCode::ProtocolUnsupported, ErrorCategory::Smb,
+        QStringLiteral("Share browsing is not supported by this SMB backend."),
+        false));
   }
 
   virtual Result<bool> checkConnection(const Connection &connection,

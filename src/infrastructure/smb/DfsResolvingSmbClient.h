@@ -21,6 +21,16 @@ public:
   DfsResolvingSmbClient(smb::core::SmbClient &delegate,
                         smb::core::DfsReferralResolver &resolver);
 
+  smb::core::SmbClientCapabilities
+  capabilities(const smb::core::Connection &connection) const override;
+  smb::core::Result<smb::core::SmbCapabilityReport>
+  probeCapabilities(const smb::core::Connection &connection,
+                    const smb::core::CredentialSecret *secret,
+                    const smb::core::OperationContext &context) override;
+  smb::core::Result<QVector<smb::core::SmbShareInfo>>
+  listShares(const smb::core::Connection &connection,
+             const smb::core::CredentialSecret *secret,
+             const smb::core::OperationContext &context) override;
   smb::core::Result<bool>
   checkConnection(const smb::core::Connection &connection,
                   const smb::core::CredentialSecret *secret,

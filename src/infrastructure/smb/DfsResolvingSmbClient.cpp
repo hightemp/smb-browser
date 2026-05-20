@@ -163,6 +163,27 @@ DfsResolvingSmbClient::DfsResolvingSmbClient(
     smb::core::SmbClient &delegate, smb::core::DfsReferralResolver &resolver)
     : m_delegate(delegate), m_resolver(resolver) {}
 
+smb::core::SmbClientCapabilities
+DfsResolvingSmbClient::capabilities(
+    const smb::core::Connection &connection) const {
+  return m_delegate.capabilities(connection);
+}
+
+smb::core::Result<smb::core::SmbCapabilityReport>
+DfsResolvingSmbClient::probeCapabilities(
+    const smb::core::Connection &connection,
+    const smb::core::CredentialSecret *secret,
+    const smb::core::OperationContext &context) {
+  return m_delegate.probeCapabilities(connection, secret, context);
+}
+
+smb::core::Result<QVector<smb::core::SmbShareInfo>>
+DfsResolvingSmbClient::listShares(const smb::core::Connection &connection,
+                                  const smb::core::CredentialSecret *secret,
+                                  const smb::core::OperationContext &context) {
+  return m_delegate.listShares(connection, secret, context);
+}
+
 template <typename T, typename Operation>
 smb::core::Result<T> DfsResolvingSmbClient::runWithDfsFallback(
     const smb::core::Connection &connection,

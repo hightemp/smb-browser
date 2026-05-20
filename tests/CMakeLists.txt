@@ -128,6 +128,51 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-protocol"
     )
 
+    add_executable(test_native_smb_dcerpc
+        test_native_smb_dcerpc.cpp
+    )
+
+    target_link_libraries(test_native_smb_dcerpc
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_dcerpc COMMAND test_native_smb_dcerpc)
+    set_tests_properties(native_smb_dcerpc PROPERTIES
+        LABELS "native-unit;native-protocol;native-share-browsing"
+    )
+
+    add_executable(test_native_smb_dfs_referral
+        test_native_smb_dfs_referral.cpp
+    )
+
+    target_link_libraries(test_native_smb_dfs_referral
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_dfs_referral COMMAND test_native_smb_dfs_referral)
+    set_tests_properties(native_smb_dfs_referral PROPERTIES
+        LABELS "native-unit;native-protocol;native-dfs"
+    )
+
+    add_executable(test_native_smb_srvs_rpc
+        test_native_smb_srvs_rpc.cpp
+    )
+
+    target_link_libraries(test_native_smb_srvs_rpc
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_srvs_rpc COMMAND test_native_smb_srvs_rpc)
+    set_tests_properties(native_smb_srvs_rpc PROPERTIES
+        LABELS "native-unit;native-protocol;native-share-browsing"
+    )
+
     add_executable(test_native_smb_direct_tcp_transport
         test_native_smb_direct_tcp_transport.cpp
     )
@@ -493,6 +538,38 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-fake-transport;native-contract"
     )
 
+    add_executable(test_native_smb_remote_dfs_referral_fetcher
+        test_native_smb_remote_dfs_referral_fetcher.cpp
+    )
+
+    target_link_libraries(test_native_smb_remote_dfs_referral_fetcher
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_remote_dfs_referral_fetcher
+             COMMAND test_native_smb_remote_dfs_referral_fetcher)
+    set_tests_properties(native_smb_remote_dfs_referral_fetcher PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-dfs;native-contract"
+    )
+
+    add_executable(test_native_smb_remote_share_enumerator
+        test_native_smb_remote_share_enumerator.cpp
+    )
+
+    target_link_libraries(test_native_smb_remote_share_enumerator
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_remote_share_enumerator
+             COMMAND test_native_smb_remote_share_enumerator)
+    set_tests_properties(native_smb_remote_share_enumerator PROPERTIES
+        LABELS "native-unit;native-fake-transport;native-share-browsing;native-contract"
+    )
+
     add_executable(test_native_smb_session
         test_native_smb_session.cpp
     )
@@ -684,7 +761,7 @@ if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND
         LABELS "docker-samba;integration"
         RUN_SERIAL TRUE
         ENVIRONMENT
-            "SMB_BROWSER_SAMBA_SERVER=127.0.0.1:1445;SMB_BROWSER_SAMBA_SHARE=public;SMB_BROWSER_SAMBA_USER=smbtest;SMB_BROWSER_SAMBA_PASSWORD=synthetic-password"
+            "SMB_BROWSER_SAMBA_SERVER=127.0.0.1:1445;SMB_BROWSER_SAMBA_SHARE=public;SMB_BROWSER_SAMBA_USER=smbtest;SMB_BROWSER_SAMBA_PASSWORD=synthetic-password;SMB_BROWSER_DOCKER_SAMBA_NATIVE_WIRE=1"
     )
 elseif(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS)
     message(WARNING

@@ -99,6 +99,13 @@ public:
   watchDirectoryOnce(const std::string &path, std::uint32_t completionFilter,
                      bool watchTree, const OperationContext &context);
 
+  DecodeResult<NativeShareList>
+  listShares(const std::string &serverName, const OperationContext &context);
+
+  DecodeResult<NativeDfsReferralResult>
+  getDfsReferrals(const std::string &requestPath,
+                  const OperationContext &context);
+
   DecodeResult<bool> disconnect(const OperationContext &context);
 
 private:

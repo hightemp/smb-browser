@@ -45,6 +45,16 @@ bool containsEntry(const QVector<smb::core::RemoteFileEntry> &entries,
   return false;
 }
 
+bool containsShare(const QVector<smb::core::SmbShareInfo> &shares,
+                   const QString &name, const QString &type, bool hidden) {
+  for (const auto &share : shares) {
+    if (share.name == name && share.type == type && share.hidden == hidden) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void writeLocalFile(const QString &path, const QByteArray &payload) {
   QFile file(path);
   QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -260,6 +270,67 @@ private slots:
     verifyOk(report, "probeCapabilities");
     QVERIFY(report.value().capabilities.canReadExtendedAttributes);
     QVERIFY(!report.value().capabilities.canBrowseShares);
+  }
+
+  void fakeBackendListsSharesThroughContract() {
+    smb::tests::FakeSmbClient client;
+
+    smb::core::SmbShareInfo publicShare;
+    publicShare.name = QStringLiteral("public");
+    publicShare.type = QStringLiteral("disk");
+    publicShare.comment = QStringLiteral("Public files");
+    client.addShare(publicShare);
+
+    smb::core::SmbShareInfo ipcShare;
+    ipcShare.name = QStringLiteral("IPC$");
+    ipcShare.type = QStringLiteral("ipc");
+    ipcShare.hidden = true;
+    client.addShare(ipcShare);
+
+    const auto listed = client.listShares(fakeConnection(), nullptr, {});
+
+    verifyOk(listed, "listShares");
+    QVERIFY(containsShare(listed.value(), QStringLiteral("public"),
+                          QStringLiteral("disk"), false));
+    QVERIFY(containsShare(listed.value(), QStringLiteral("IPC$"),
+                          QStringLiteral("ipc"), true));
+
+    const auto report =
+        client.probeCapabilities(fakeConnection(), nullptr, {});
+    verifyOk(report, "probeCapabilities after share setup");
+    QVERIFY(report.value().capabilities.canBrowseShares);
+  }
+
+  void fakeBackendDoesNotLeakSecretsFromShareListFailures() {
+    smb::tests::FakeSmbClient client;
+    client.setRequirePassword(true);
+    client.setExpectedSecret(QByteArrayLiteral("expected-secret"));
+
+    const auto wrongSecret =
+        smb::core::CredentialSecret{QByteArrayLiteral("wrong-secret")};
+    const auto listed = client.listShares(fakeConnection(), &wrongSecret, {});
+
+    QVERIFY(!listed.ok());
+    QCOMPARE(static_cast<int>(listed.error().code),
+             static_cast<int>(smb::core::ErrorCode::AuthenticationFailed));
+    QVERIFY(!listed.error().sanitizedTechnicalDetails.contains(
+        QStringLiteral("expected-secret")));
+    QVERIFY(!listed.error().sanitizedTechnicalDetails.contains(
+        QStringLiteral("wrong-secret")));
+  }
+
+  void nativeCapabilitiesExposeShareBrowsingSupport() {
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+    smb::infrastructure::NativeSmbClient client(1);
+
+    const auto capabilities = client.capabilities(fakeConnection());
+
+    QVERIFY(capabilities.canBrowseShares);
+    QVERIFY(!capabilities.unsupportedAdvancedOperationsReason.contains(
+        QStringLiteral("share browsing"), Qt::CaseInsensitive));
+#else
+    QSKIP("Native SMB backend is disabled.");
+#endif
   }
 
   void nativeBackendPassesMutatingContractWhenConfigured() {

@@ -91,6 +91,16 @@ bool containsEntry(const QVector<smb::core::RemoteFileEntry> &entries,
   return false;
 }
 
+bool containsShare(const QVector<smb::core::SmbShareInfo> &shares,
+                   const QString &name) {
+  for (const auto &share : shares) {
+    if (share.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 QByteArray deterministicBytes(int size) {
   QByteArray bytes;
   bytes.resize(size);
@@ -174,6 +184,27 @@ private slots:
     QVERIFY2(guest.ok(), qPrintable(guest.error().sanitizedTechnicalDetails));
     QVERIFY(containsEntry(guest.value(), QStringLiteral("guest.txt"),
                           smb::core::RemoteFileType::File));
+  }
+
+  void shareBrowsingListsConfiguredShares() {
+    if (!nativeWireOptIn()) {
+      QSKIP("Native Docker Samba wire validation is opt-in. Set "
+            "SMB_BROWSER_DOCKER_SAMBA_NATIVE_WIRE=1 to run it explicitly.");
+    }
+    const auto client = createClient();
+    QVERIFY(client != nullptr);
+    const auto connection = sambaConnection();
+    const auto secret = sambaSecret();
+
+    const auto shares = client->listShares(connection, &secret, {});
+    QVERIFY2(shares.ok(), qPrintable(shares.error().sanitizedTechnicalDetails));
+    QVERIFY(containsShare(shares.value(), QStringLiteral("public")));
+    QVERIFY(containsShare(shares.value(), QStringLiteral("archive")));
+    QVERIFY(containsShare(shares.value(), QStringLiteral("guest")));
+
+    const auto report = client->probeCapabilities(connection, &secret, {});
+    QVERIFY2(report.ok(), qPrintable(report.error().sanitizedTechnicalDetails));
+    QVERIFY(report.value().capabilities.canBrowseShares);
   }
 
   void connectListUploadDownloadRenameAndDelete() {

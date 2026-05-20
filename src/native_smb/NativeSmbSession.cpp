@@ -716,6 +716,38 @@ DecodeResult<NativeNotifyResult> NativeSmbSession::watchDirectoryOnce(
   return DecodeResult<NativeNotifyResult>::success(std::move(notify));
 }
 
+DecodeResult<NativeShareList>
+NativeSmbSession::listShares(const std::string &serverName,
+                             const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteShareEnumerator shares;
+  const auto result = shares.listShares(m_transport, serverName, messageId,
+                                        m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return DecodeResult<NativeShareList>::failure(result.error.code,
+                                                  result.error.message);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+  return result;
+}
+
+DecodeResult<NativeDfsReferralResult>
+NativeSmbSession::getDfsReferrals(const std::string &requestPath,
+                                  const OperationContext &context) {
+  const auto messageId = m_nextMessageId;
+  const RemoteDfsReferralFetcher referrals;
+  const auto result = referrals.getReferrals(
+      m_transport, requestPath, messageId, m_treeId, m_sessionId, context);
+  if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
+    return DecodeResult<NativeDfsReferralResult>::failure(result.error.code,
+                                                          result.error.message);
+  }
+  m_nextMessageId += result.value.messagesUsed;
+  return result;
+}
+
 DecodeResult<NativeObjectMutationResult>
 NativeSmbSession::deleteTreeInternal(const std::string &path,
                                      const OperationContext &context) {
