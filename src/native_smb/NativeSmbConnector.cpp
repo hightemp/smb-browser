@@ -1,6 +1,7 @@
 #include "NativeSmbConnector.h"
 
 #include "Smb2Signing.h"
+#include "Smb3Encryption.h"
 
 #include <utility>
 
@@ -23,12 +24,19 @@ unsupportedEncryption(std::string message) {
       ErrorCode::UnsupportedCapability, std::move(message));
 }
 
+bool supportsAesCcmEncryption(Dialect dialect) {
+  return dialect == Dialect::Smb300 || dialect == Dialect::Smb302;
+}
+
 NegotiateRequestOptions negotiateOptionsFrom(
     const NativeSmbConnectorOptions &options) {
   auto negotiate = options.negotiateOptions;
   negotiate.signing = options.config.signing;
   negotiate.capabilities |=
       capabilityMask({GlobalCapability::Dfs, GlobalCapability::LargeMtu});
+  if (options.config.encryption != SecurityPolicy::Disabled) {
+    negotiate.capabilities |= capabilityMask({GlobalCapability::Encryption});
+  }
   return negotiate;
 }
 
@@ -38,6 +46,9 @@ SessionSetupRequestOptions sessionSetupOptionsFrom(
   setup.signing = options.config.signing;
   setup.capabilities =
       capabilityMask({GlobalCapability::Dfs, GlobalCapability::LargeMtu});
+  if (options.config.encryption != SecurityPolicy::Disabled) {
+    setup.capabilities |= capabilityMask({GlobalCapability::Encryption});
+  }
   setup.securityBuffer = token;
   return setup;
 }
@@ -59,9 +70,16 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
     return failureFrom(negotiated.error);
   }
   if (options.config.encryption == SecurityPolicy::Required) {
-    return unsupportedEncryption(
-        "SMB encryption is required by policy, but clean-room SMB encryption is "
-        "not implemented yet.");
+    if (!negotiated.value.encryptionSupported) {
+      return unsupportedEncryption(
+          "SMB encryption is required by policy, but the server did not "
+          "advertise SMB3 encryption support.");
+    }
+    if (!supportsAesCcmEncryption(negotiated.value.dialect)) {
+      return unsupportedEncryption(
+          "SMB encryption is required by policy, but the negotiated dialect is "
+          "not supported by the clean-room AES-CCM transform layer.");
+    }
   }
 
   auto token = tokenProvider.initialToken(negotiated.value, options.config);
@@ -104,27 +122,40 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
   if (sessionId == 0) {
     return internalFailure("SMB SESSION_SETUP completed without a session id.");
   }
-  if (session.encryptData) {
+  const bool sessionCanEncrypt =
+      negotiated.value.encryptionSupported &&
+      supportsAesCcmEncryption(negotiated.value.dialect) &&
+      !session.guestSession && !session.nullSession;
+  if ((session.encryptData ||
+       options.config.encryption == SecurityPolicy::Required) &&
+      !sessionCanEncrypt) {
     return unsupportedEncryption(
-        "SMB encryption is required by the server session, but clean-room SMB "
-        "encryption is not implemented yet.");
+        "SMB encryption is required, but the negotiated "
+        "connection does not support the clean-room AES-CCM transform layer.");
   }
 
-  if (negotiated.value.signingRequired) {
-    const auto sessionKey = tokenProvider.sessionBaseKey();
-    if (!sessionKey.ok) {
-      return failureFrom(sessionKey.error);
+  ByteVector sessionKey;
+  const bool needsSessionKey =
+      negotiated.value.signingRequired || session.encryptData ||
+      options.config.encryption == SecurityPolicy::Required;
+  if (needsSessionKey) {
+    const auto derivedSessionKey = tokenProvider.sessionBaseKey();
+    if (!derivedSessionKey.ok) {
+      return failureFrom(derivedSessionKey.error);
     }
+    sessionKey = derivedSessionKey.value;
+  }
+  if (negotiated.value.signingRequired) {
     if (!supportsSigning(negotiated.value.dialect)) {
       return DecodeResult<NativeSmbConnectedState>::failure(
           ErrorCode::UnsupportedCapability,
           "Clean-room SMB signing is not implemented for the negotiated dialect.");
     }
 
-    auto signingKey = sessionKey.value;
+    auto signingKey = sessionKey;
     if (supportsAesCmacSigning(negotiated.value.dialect)) {
       const auto derivedKey =
-          deriveSmb3SigningKey(sessionKey.value, negotiated.value.dialect);
+          deriveSmb3SigningKey(sessionKey, negotiated.value.dialect);
       if (!derivedKey.ok) {
         return DecodeResult<NativeSmbConnectedState>::failure(
             derivedKey.error.code, derivedKey.error.message);
@@ -137,20 +168,88 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
         negotiated.value.dialect, true);
   }
 
+  bool connectionEncrypted = false;
+  auto enableEncryption = [&]() -> DecodeResult<bool> {
+    if (connectionEncrypted) {
+      return DecodeResult<bool>::success(true);
+    }
+    if (!sessionCanEncrypt) {
+      return DecodeResult<bool>::failure(
+          ErrorCode::UnsupportedCapability,
+          "SMB encryption is required, but the negotiated connection does not "
+          "support the clean-room AES-CCM transform layer.");
+    }
+    if (sessionKey.empty()) {
+      const auto derivedSessionKey = tokenProvider.sessionBaseKey();
+      if (!derivedSessionKey.ok) {
+        return DecodeResult<bool>::failure(derivedSessionKey.error.code,
+                                           derivedSessionKey.error.message);
+      }
+      sessionKey = derivedSessionKey.value;
+    }
+
+    const auto encryptionKey = deriveSmb3EncryptionKey(
+        sessionKey, negotiated.value.dialect,
+        Smb3KeyDirection::ClientToServer);
+    if (!encryptionKey.ok) {
+      return DecodeResult<bool>::failure(encryptionKey.error.code,
+                                         encryptionKey.error.message);
+    }
+    const auto decryptionKey = deriveSmb3EncryptionKey(
+        sessionKey, negotiated.value.dialect,
+        Smb3KeyDirection::ServerToClient);
+    if (!decryptionKey.ok) {
+      return DecodeResult<bool>::failure(decryptionKey.error.code,
+                                         decryptionKey.error.message);
+    }
+
+    transport = std::make_unique<Smb3EncryptionTransport>(
+        std::move(transport), encryptionKey.value, decryptionKey.value,
+        sessionId, negotiated.value.dialect);
+    connectionEncrypted = true;
+    return DecodeResult<bool>::success(true);
+  };
+
+  if (session.encryptData ||
+      options.config.encryption == SecurityPolicy::Required) {
+    const auto encrypted = enableEncryption();
+    if (!encrypted.ok) {
+      return DecodeResult<NativeSmbConnectedState>::failure(
+          encrypted.error.code, encrypted.error.message);
+    }
+  }
+
   TreeConnectRequestOptions treeOptions;
   treeOptions.server = options.config.server;
   treeOptions.share = options.config.share;
   const TreeConnector treeConnector;
-  const auto tree =
+  auto tree =
       treeConnector.connect(*transport, treeOptions, messageId++, sessionId,
                             context);
+  if (!tree.ok &&
+      tree.error.code == ErrorCode::PermissionDenied &&
+      options.config.encryption == SecurityPolicy::Preferred &&
+      sessionCanEncrypt && !connectionEncrypted) {
+    const auto encrypted = enableEncryption();
+    if (!encrypted.ok) {
+      return DecodeResult<NativeSmbConnectedState>::failure(
+          encrypted.error.code, encrypted.error.message);
+    }
+    tree = treeConnector.connect(*transport, treeOptions, messageId++,
+                                 sessionId, context);
+  }
   if (!tree.ok) {
     return failureFrom(tree.error);
   }
-  if (tree.value.requiresEncryption) {
-    return unsupportedEncryption(
-        "SMB encryption is required by the share, but clean-room SMB encryption "
-        "is not implemented yet.");
+  const bool shouldEncrypt =
+      session.encryptData || tree.value.requiresEncryption ||
+      options.config.encryption == SecurityPolicy::Required;
+  if (shouldEncrypt && !connectionEncrypted) {
+    const auto encrypted = enableEncryption();
+    if (!encrypted.ok) {
+      return DecodeResult<NativeSmbConnectedState>::failure(
+          encrypted.error.code, encrypted.error.message);
+    }
   }
 
   NativeSmbSessionConfig sessionConfig;

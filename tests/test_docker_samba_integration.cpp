@@ -201,10 +201,32 @@ private slots:
     QVERIFY(containsShare(shares.value(), QStringLiteral("public")));
     QVERIFY(containsShare(shares.value(), QStringLiteral("archive")));
     QVERIFY(containsShare(shares.value(), QStringLiteral("guest")));
+    QVERIFY(containsShare(shares.value(), QStringLiteral("encrypted")));
 
     const auto report = client->probeCapabilities(connection, &secret, {});
     QVERIFY2(report.ok(), qPrintable(report.error().sanitizedTechnicalDetails));
     QVERIFY(report.value().capabilities.canBrowseShares);
+  }
+
+  void encryptedShareListsThroughNativeTransform() {
+    if (!nativeWireOptIn()) {
+      QSKIP("Native Docker Samba wire validation is opt-in. Set "
+            "SMB_BROWSER_DOCKER_SAMBA_NATIVE_WIRE=1 to run it explicitly.");
+    }
+    const auto client = createClient();
+    QVERIFY(client != nullptr);
+    const auto connection = sambaConnectionForShare(QStringLiteral("encrypted"));
+    const auto secret = sambaSecret();
+
+    const auto entries = client->listDirectory(connection, &secret,
+                                              QStringLiteral("/"), {});
+    QVERIFY2(entries.ok(), qPrintable(entries.error().sanitizedTechnicalDetails));
+    QVERIFY(containsEntry(entries.value(), QStringLiteral("encrypted.txt"),
+                          smb::core::RemoteFileType::File));
+
+    const auto report = client->probeCapabilities(connection, &secret, {});
+    QVERIFY2(report.ok(), qPrintable(report.error().sanitizedTechnicalDetails));
+    QVERIFY(report.value().encryptionRequired);
   }
 
   void connectListUploadDownloadRenameAndDelete() {

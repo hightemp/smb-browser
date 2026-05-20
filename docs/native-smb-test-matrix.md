@@ -64,9 +64,9 @@ library. Возможность считается готовой только �
 | Guest/anonymous auth | Must | Must | Must | Should | Fixture must cover success and failure |
 | Current user/Kerberos/SSO | Must | Should | Could | Must | Platform-specific, feature-gated |
 | Signing | Must | Must | Should | Must | Include required/preferred/policy mismatch |
-| Encryption | Must | Must | Should | Must | Include required/preferred/policy mismatch |
+| Encryption | Must | Must | Must | Must | AES-128-CCM transform, required/preferred/policy mismatch and encrypted-share retry |
 | Tree connect/disconnect | Must | Must | Must | Must | Share unavailable vs permission denied |
-| DFS referrals | Must | Must | Should | Must | Nested referrals, multiple targets, failover, TTL |
+| DFS referrals | Must | Must | Could | Must | Unit-covered builder/parser/fetcher, TTL cache, nested namespace rebase and multiple-target failover; real namespace validation belongs to Windows Server/manual runner unless Docker uses a proper 445/tcp network |
 | Directory listing | Must | Must | Must | Must | Large directory and cancellation cases |
 | Stat/all-info | Must | Must | Must | Must | Timestamps, size, attributes, reparse flags |
 | Download/read | Must | Must | Must | Must | Progress, cancellation, resume, cache safety |
@@ -252,6 +252,8 @@ A `Must` native library feature is not complete until:
 - `native_smb_remote_dfs_referral_fetcher`: scripted SMB2 IOCTL
   `FSCTL_DFS_GET_REFERRALS` flow, all-ones FileId routing, referral output
   parsing and message-id accounting.
+- `native_dfs_referral_resolver`: native infrastructure DFS target UNC parsing
+  and path-prefix mapping helpers used by the `IPC$` referral resolver.
 - `native_smb_remote_share_enumerator`: scripted `CREATE srvsvc -> DCE/RPC
   bind -> NetrShareEnum -> CLOSE` share browsing flow over `IPC$`, share type
   mapping, hidden/special share mapping and cleanup after RPC decode failure.
@@ -270,6 +272,9 @@ A `Must` native library feature is not complete until:
   cancellation. Native real-server contract is opt-in with environment
   variables and covers the same mutating flow plus optional symlink/DFS fixture
   checks when configured.
+- `dfs_resolving_smb_client`: backend-agnostic DFS wrapper cache/rebase
+  behavior for share-level and path-level referrals, including original
+  namespace rebasing during nested navigation.
 - `connection_open_service` and `remote_browser_widget`: service/UI capability
   propagation, toolbar enabled state for supported operations, unsupported
   advanced-operation gating and lightweight properties/details display from the

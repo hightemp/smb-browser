@@ -8,6 +8,8 @@
 #include "core/SmbClient.h"
 #include "credentials/QtKeychainCredentialStore.h"
 #ifdef SMB_BROWSER_WITH_NATIVE_SMB
+#include "smb/DfsResolvingSmbClient.h"
+#include "smb/NativeDfsReferralResolver.h"
 #include "smb/NativeSmbClient.h"
 #elif defined(SMB_BROWSER_WITH_LIBSMB2)
 #include "smb/DfsResolvingSmbClient.h"
@@ -213,7 +215,12 @@ int runSmbListSmoke() {
   bool ok = false;
   const auto timeoutSeconds =
       smokeEnv("SMB_BROWSER_SMOKE_TIMEOUT_SECONDS").toInt(&ok);
-  smb::infrastructure::NativeSmbClient smbClient(ok ? timeoutSeconds : 10);
+  smb::infrastructure::NativeSmbClient nativeSmbClient(ok ? timeoutSeconds
+                                                          : 10);
+  smb::infrastructure::NativeDfsReferralResolver dfsReferralResolver(
+      ok ? timeoutSeconds : 10);
+  smb::infrastructure::DfsResolvingSmbClient smbClient(nativeSmbClient,
+                                                       dfsReferralResolver);
   const auto result =
       smbClient.listDirectory(connection, secretPtr,
                               smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
@@ -288,8 +295,12 @@ int main(int argc, char *argv[]) {
   smb::ui::DialogImportExportActionPrompter importExportPrompter(&window);
   window.attachImportExport(importExportService, importExportPrompter);
 #ifdef SMB_BROWSER_WITH_NATIVE_SMB
-  smb::infrastructure::NativeSmbClient smbClient(
+  smb::infrastructure::NativeSmbClient nativeSmbClient(
       qMax(1, settings.operationTimeoutMs / 1000));
+  smb::infrastructure::NativeDfsReferralResolver dfsReferralResolver(
+      qMax(1, settings.operationTimeoutMs / 1000));
+  smb::infrastructure::DfsResolvingSmbClient smbClient(nativeSmbClient,
+                                                       dfsReferralResolver);
 #elif defined(SMB_BROWSER_WITH_LIBSMB2)
   smb::infrastructure::Libsmb2SmbClient libsmb2Client(
       qMax(1, settings.operationTimeoutMs / 1000));

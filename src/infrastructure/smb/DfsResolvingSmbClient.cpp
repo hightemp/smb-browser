@@ -2,6 +2,7 @@
 
 #include <QMutexLocker>
 
+#include <algorithm>
 #include <utility>
 
 namespace smb::infrastructure {
@@ -157,6 +158,27 @@ bool sameResolvedTarget(const DfsPathMapping &left,
          left.targetConnection.authType == right.targetConnection.authType;
 }
 
+QDateTime expiresAtForTtl(int ttlSeconds) {
+  return QDateTime::currentDateTimeUtc().addSecs(std::max(1, ttlSeconds));
+}
+
+bool isCacheFresh(const QDateTime &expiresAtUtc) {
+  return !expiresAtUtc.isValid() ||
+         QDateTime::currentDateTimeUtc() < expiresAtUtc;
+}
+
+bool isTargetFailoverError(const smb::core::AppError &error) {
+  switch (error.code) {
+  case smb::core::ErrorCode::ServerUnavailable:
+  case smb::core::ErrorCode::ShareUnavailable:
+  case smb::core::ErrorCode::Timeout:
+  case smb::core::ErrorCode::NetworkError:
+    return true;
+  default:
+    return false;
+  }
+}
+
 } // namespace
 
 DfsResolvingSmbClient::DfsResolvingSmbClient(
@@ -189,14 +211,27 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithDfsFallback(
     const smb::core::Connection &connection,
     const smb::core::CredentialSecret *secret,
     const smb::core::OperationContext &context, Operation operation) {
-  if (const auto cached = cachedResolvedConnection(connection);
-      cached.has_value()) {
-    auto cachedResult = operation(cached.value());
-    if (cachedResult.ok() ||
-        !looksLikeShareDfsReferralFailure(cachedResult.error())) {
-      return cachedResult;
+  auto cachedTargets = cachedResolvedConnections(connection);
+  if (!cachedTargets.isEmpty()) {
+    std::optional<smb::core::AppError> lastFailoverError;
+    for (const auto &cached : cachedTargets) {
+      auto cachedResult = operation(cached);
+      if (cachedResult.ok()) {
+        return cachedResult;
+      }
+      if (looksLikeShareDfsReferralFailure(cachedResult.error())) {
+        forgetCachedConnection(connection);
+        cachedTargets.clear();
+        break;
+      }
+      if (!isTargetFailoverError(cachedResult.error())) {
+        return cachedResult;
+      }
+      lastFailoverError = cachedResult.error();
     }
-    forgetCachedConnection(connection);
+    if (!cachedTargets.isEmpty() && lastFailoverError.has_value()) {
+      return smb::core::Result<T>::failure(std::move(lastFailoverError.value()));
+    }
   }
 
   auto result = operation(connection);
@@ -204,12 +239,27 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithDfsFallback(
     return result;
   }
 
-  const auto resolved = resolveAndCache(connection, secret, context);
-  if (!resolved.has_value()) {
+  const auto targets = resolveAndCache(connection, secret, context);
+  if (targets.isEmpty()) {
     return result;
   }
 
-  return operation(resolved.value());
+  std::optional<smb::core::AppError> lastFailoverError;
+  for (const auto &target : targets) {
+    auto resolvedResult = operation(target);
+    if (resolvedResult.ok()) {
+      return resolvedResult;
+    }
+    if (!isTargetFailoverError(resolvedResult.error())) {
+      return resolvedResult;
+    }
+    lastFailoverError = resolvedResult.error();
+  }
+
+  if (lastFailoverError.has_value()) {
+    return smb::core::Result<T>::failure(std::move(lastFailoverError.value()));
+  }
+  return result;
 }
 
 template <typename T, typename Operation, typename Rebase>
@@ -219,19 +269,30 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
     const smb::core::OperationContext &context, Operation operation,
     Rebase rebase) {
   const auto normalizedPath = normalizeRemotePath(remotePath);
-  if (const auto mapping = cachedResolvedPathMapping(connection, normalizedPath);
-      mapping.has_value()) {
-    auto cachedResult =
-        operation(mapping->targetConnection,
-                  targetPathForMapping(mapping.value(), normalizedPath));
-    if (cachedResult.ok()) {
-      return smb::core::Result<T>::success(
-          rebase(std::move(cachedResult.value()), mapping.value()));
+  auto cachedMappings = cachedResolvedPathMappings(connection, normalizedPath);
+  if (!cachedMappings.isEmpty()) {
+    std::optional<smb::core::AppError> lastFailoverError;
+    for (const auto &mapping : cachedMappings) {
+      auto cachedResult =
+          operation(mapping.targetConnection,
+                    targetPathForMapping(mapping, normalizedPath));
+      if (cachedResult.ok()) {
+        return smb::core::Result<T>::success(
+            rebase(std::move(cachedResult.value()), mapping));
+      }
+      if (looksLikeDfsReferralFailure(cachedResult.error())) {
+        forgetCachedPathMapping(connection, mapping.originalPrefix);
+        cachedMappings.clear();
+        break;
+      }
+      if (!isTargetFailoverError(cachedResult.error())) {
+        return cachedResult;
+      }
+      lastFailoverError = cachedResult.error();
     }
-    if (!looksLikeDfsReferralFailure(cachedResult.error())) {
-      return cachedResult;
+    if (!cachedMappings.isEmpty() && lastFailoverError.has_value()) {
+      return smb::core::Result<T>::failure(std::move(lastFailoverError.value()));
     }
-    forgetCachedPathMapping(connection, mapping->originalPrefix);
   }
 
   auto result = runWithDfsFallback<T>(
@@ -243,20 +304,31 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
     return result;
   }
 
-  const auto mapping =
+  const auto mappings =
       resolvePathAndCache(connection, secret, normalizedPath, context);
-  if (!mapping.has_value()) {
+  if (mappings.isEmpty()) {
     return result;
   }
 
-  auto resolvedResult =
-      operation(mapping->targetConnection,
-                targetPathForMapping(mapping.value(), normalizedPath));
-  if (!resolvedResult.ok()) {
-    return resolvedResult;
+  std::optional<smb::core::AppError> lastFailoverError;
+  for (const auto &mapping : mappings) {
+    auto resolvedResult =
+        operation(mapping.targetConnection,
+                  targetPathForMapping(mapping, normalizedPath));
+    if (resolvedResult.ok()) {
+      return smb::core::Result<T>::success(
+          rebase(std::move(resolvedResult.value()), mapping));
+    }
+    if (!isTargetFailoverError(resolvedResult.error())) {
+      return resolvedResult;
+    }
+    lastFailoverError = resolvedResult.error();
   }
-  return smb::core::Result<T>::success(
-      rebase(std::move(resolvedResult.value()), mapping.value()));
+
+  if (lastFailoverError.has_value()) {
+    return smb::core::Result<T>::failure(std::move(lastFailoverError.value()));
+  }
+  return result;
 }
 
 smb::core::Result<bool> DfsResolvingSmbClient::checkConnection(
@@ -355,18 +427,18 @@ DfsResolvingSmbClient::rename(const smb::core::Connection &connection,
     return result;
   }
 
-  const auto mapping = resolvePathAndCache(connection, secret, sourcePath,
-                                           context);
-  if (!mapping.has_value()) {
+  const auto mappings = resolvePathAndCache(connection, secret, sourcePath,
+                                            context);
+  if (mappings.isEmpty()) {
     return result;
   }
+  const auto mapping = mappings.first();
 
-  const auto mappedTargetPath = isPathPrefix(mapping->originalPrefix, targetPath)
-                                    ? targetPathForMapping(mapping.value(),
-                                                           targetPath)
+  const auto mappedTargetPath = isPathPrefix(mapping.originalPrefix, targetPath)
+                                    ? targetPathForMapping(mapping, targetPath)
                                     : targetPath;
-  return m_delegate.rename(mapping->targetConnection, secret,
-                           targetPathForMapping(mapping.value(), sourcePath),
+  return m_delegate.rename(mapping.targetConnection, secret,
+                           targetPathForMapping(mapping, sourcePath),
                            mappedTargetPath, context);
 }
 
@@ -437,18 +509,20 @@ DfsResolvingSmbClient::copy(const smb::core::Connection &sourceConnection,
   }
 
   if (looksLikePathDfsReferralFailure(result.error())) {
-    if (const auto mapping = resolvePathAndCache(
-            sourceConnection, sourceSecret, originalSourcePath, context);
-        mapping.has_value()) {
-      source = mapping->targetConnection;
-      sourcePath = targetPathForMapping(mapping.value(), originalSourcePath);
+    const auto sourceMappings = resolvePathAndCache(
+        sourceConnection, sourceSecret, originalSourcePath, context);
+    if (!sourceMappings.isEmpty()) {
+      const auto mapping = sourceMappings.first();
+      source = mapping.targetConnection;
+      sourcePath = targetPathForMapping(mapping, originalSourcePath);
     }
-    if (const auto mapping = resolvePathAndCache(
-            targetConnection, targetSecret, parentRemotePath(originalTargetPath),
-            context);
-        mapping.has_value()) {
-      target = mapping->targetConnection;
-      targetPath = targetPathForMapping(mapping.value(), originalTargetPath);
+    const auto targetMappings = resolvePathAndCache(
+        targetConnection, targetSecret, parentRemotePath(originalTargetPath),
+        context);
+    if (!targetMappings.isEmpty()) {
+      const auto mapping = targetMappings.first();
+      target = mapping.targetConnection;
+      targetPath = targetPathForMapping(mapping, originalTargetPath);
     }
     return m_delegate.copy(source, sourceSecret, sourcePath, target,
                            targetSecret, targetPath, context);
@@ -458,10 +532,12 @@ DfsResolvingSmbClient::copy(const smb::core::Connection &sourceConnection,
     return result;
   }
 
-  source = resolveAndCache(sourceConnection, sourceSecret, context)
-               .value_or(sourceConnection);
-  target = resolveAndCache(targetConnection, targetSecret, context)
-               .value_or(targetConnection);
+  const auto resolvedSources =
+      resolveAndCache(sourceConnection, sourceSecret, context);
+  const auto resolvedTargets =
+      resolveAndCache(targetConnection, targetSecret, context);
+  source = resolvedSources.isEmpty() ? sourceConnection : resolvedSources.first();
+  target = resolvedTargets.isEmpty() ? targetConnection : resolvedTargets.first();
   return m_delegate.copy(source, sourceSecret, originalSourcePath, target,
                          targetSecret, originalTargetPath, context);
 }
@@ -503,18 +579,20 @@ DfsResolvingSmbClient::move(const smb::core::Connection &sourceConnection,
   }
 
   if (looksLikePathDfsReferralFailure(result.error())) {
-    if (const auto mapping = resolvePathAndCache(
-            sourceConnection, sourceSecret, originalSourcePath, context);
-        mapping.has_value()) {
-      source = mapping->targetConnection;
-      sourcePath = targetPathForMapping(mapping.value(), originalSourcePath);
+    const auto sourceMappings = resolvePathAndCache(
+        sourceConnection, sourceSecret, originalSourcePath, context);
+    if (!sourceMappings.isEmpty()) {
+      const auto mapping = sourceMappings.first();
+      source = mapping.targetConnection;
+      sourcePath = targetPathForMapping(mapping, originalSourcePath);
     }
-    if (const auto mapping = resolvePathAndCache(
-            targetConnection, targetSecret, parentRemotePath(originalTargetPath),
-            context);
-        mapping.has_value()) {
-      target = mapping->targetConnection;
-      targetPath = targetPathForMapping(mapping.value(), originalTargetPath);
+    const auto targetMappings = resolvePathAndCache(
+        targetConnection, targetSecret, parentRemotePath(originalTargetPath),
+        context);
+    if (!targetMappings.isEmpty()) {
+      const auto mapping = targetMappings.first();
+      target = mapping.targetConnection;
+      targetPath = targetPathForMapping(mapping, originalTargetPath);
     }
     return m_delegate.move(source, sourceSecret, sourcePath, target,
                            targetSecret, targetPath, context);
@@ -524,40 +602,52 @@ DfsResolvingSmbClient::move(const smb::core::Connection &sourceConnection,
     return result;
   }
 
-  source = resolveAndCache(sourceConnection, sourceSecret, context)
-               .value_or(sourceConnection);
-  target = resolveAndCache(targetConnection, targetSecret, context)
-               .value_or(targetConnection);
+  const auto resolvedSources =
+      resolveAndCache(sourceConnection, sourceSecret, context);
+  const auto resolvedTargets =
+      resolveAndCache(targetConnection, targetSecret, context);
+  source = resolvedSources.isEmpty() ? sourceConnection : resolvedSources.first();
+  target = resolvedTargets.isEmpty() ? targetConnection : resolvedTargets.first();
   return m_delegate.move(source, sourceSecret, originalSourcePath, target,
                          targetSecret, originalTargetPath, context);
 }
 
-std::optional<smb::core::Connection>
-DfsResolvingSmbClient::cachedResolvedConnection(
+QVector<smb::core::Connection>
+DfsResolvingSmbClient::cachedResolvedConnections(
     const smb::core::Connection &connection) const {
   const QMutexLocker locker(&m_cacheMutex);
   const auto it = m_resolvedConnections.constFind(cacheKey(connection));
-  if (it == m_resolvedConnections.cend()) {
-    return std::nullopt;
+  if (it == m_resolvedConnections.cend() ||
+      !isCacheFresh(it.value().expiresAtUtc)) {
+    return {};
   }
-  return it.value();
+  return it.value().targets;
 }
 
-std::optional<smb::core::Connection> DfsResolvingSmbClient::resolveAndCache(
+QVector<smb::core::Connection> DfsResolvingSmbClient::resolveAndCache(
     const smb::core::Connection &connection,
     const smb::core::CredentialSecret *secret,
     const smb::core::OperationContext &context) {
-  const auto resolved = m_resolver.resolve(connection, secret, context);
-  if (!resolved.ok() || !resolved.value().has_value()) {
-    return std::nullopt;
+  const auto resolved = m_resolver.resolveTargets(connection, secret, context);
+  if (!resolved.ok() || resolved.value().isEmpty()) {
+    return {};
   }
 
-  const auto target = resolved.value().value();
+  QVector<smb::core::Connection> targets;
+  auto expiresAtUtc = QDateTime();
+  for (const auto &target : resolved.value()) {
+    targets.push_back(target.connection);
+    const auto targetExpiresAt = expiresAtForTtl(target.ttlSeconds);
+    if (!expiresAtUtc.isValid() || targetExpiresAt < expiresAtUtc) {
+      expiresAtUtc = targetExpiresAt;
+    }
+  }
   {
     const QMutexLocker locker(&m_cacheMutex);
-    m_resolvedConnections.insert(cacheKey(connection), target);
+    m_resolvedConnections.insert(cacheKey(connection),
+                                 DfsConnectionCacheEntry{targets, expiresAtUtc});
   }
-  return target;
+  return targets;
 }
 
 void DfsResolvingSmbClient::forgetCachedConnection(
@@ -566,55 +656,90 @@ void DfsResolvingSmbClient::forgetCachedConnection(
   m_resolvedConnections.remove(cacheKey(connection));
 }
 
+std::optional<smb::core::Connection>
+DfsResolvingSmbClient::cachedResolvedConnection(
+    const smb::core::Connection &connection) const {
+  const auto targets = cachedResolvedConnections(connection);
+  if (targets.isEmpty()) {
+    return std::nullopt;
+  }
+  return targets.first();
+}
+
 std::optional<DfsPathMapping> DfsResolvingSmbClient::cachedResolvedPathMapping(
+    const smb::core::Connection &connection, const QString &remotePath) const {
+  const auto mappings = cachedResolvedPathMappings(connection, remotePath);
+  if (mappings.isEmpty()) {
+    return std::nullopt;
+  }
+  return mappings.first();
+}
+
+QVector<DfsPathMapping> DfsResolvingSmbClient::cachedResolvedPathMappings(
     const smb::core::Connection &connection, const QString &remotePath) const {
   const auto sourceKey = cacheKey(connection);
   const auto normalizedPath = normalizeRemotePath(remotePath);
   const QMutexLocker locker(&m_cacheMutex);
 
-  std::optional<DfsPathMapping> best;
+  std::optional<DfsPathMappingCacheEntry> best;
   for (auto it = m_resolvedPathMappings.cbegin();
        it != m_resolvedPathMappings.cend(); ++it) {
-    const auto &mapping = it.value();
-    if (mapping.connectionKey != sourceKey ||
-        !isPathPrefix(mapping.originalPrefix, normalizedPath)) {
+    const auto &entry = it.value();
+    if (!isCacheFresh(entry.expiresAtUtc) || entry.mappings.isEmpty()) {
+      continue;
+    }
+    const auto &firstMapping = entry.mappings.first();
+    if (firstMapping.connectionKey != sourceKey ||
+        !isPathPrefix(firstMapping.originalPrefix, normalizedPath)) {
       continue;
     }
     if (!best.has_value() ||
-        mapping.originalPrefix.size() > best->originalPrefix.size()) {
-      best = mapping;
+        firstMapping.originalPrefix.size() >
+            best->mappings.first().originalPrefix.size()) {
+      best = entry;
     }
   }
-  return best;
+  return best.has_value() ? best->mappings : QVector<DfsPathMapping>{};
 }
 
-std::optional<DfsPathMapping> DfsResolvingSmbClient::resolvePathAndCache(
+QVector<DfsPathMapping> DfsResolvingSmbClient::resolvePathAndCache(
     const smb::core::Connection &connection,
     const smb::core::CredentialSecret *secret, const QString &remotePath,
     const smb::core::OperationContext &context) {
   const auto resolved =
-      m_resolver.resolvePath(connection, secret, remotePath, context);
-  if (!resolved.ok() || !resolved.value().has_value()) {
-    return std::nullopt;
+      m_resolver.resolvePathTargets(connection, secret, remotePath, context);
+  if (!resolved.ok() || resolved.value().isEmpty()) {
+    return {};
   }
 
-  const auto &resolvedPath = resolved.value().value();
-  DfsPathMapping mapping;
-  mapping.connectionKey = cacheKey(connection);
-  mapping.originalPrefix = normalizeRemotePath(
-      resolvedPath.originalPathPrefix.isEmpty() ? remotePath
-                                                : resolvedPath.originalPathPrefix);
-  mapping.targetConnection = resolvedPath.connection;
-  mapping.targetPrefix = normalizeRemotePath(
-      resolvedPath.targetPathPrefix.isEmpty() ? QStringLiteral("/")
-                                              : resolvedPath.targetPathPrefix);
+  QVector<DfsPathMapping> mappings;
+  auto expiresAtUtc = QDateTime();
+  for (const auto &resolvedPath : resolved.value()) {
+    DfsPathMapping mapping;
+    mapping.connectionKey = cacheKey(connection);
+    mapping.originalPrefix = normalizeRemotePath(
+        resolvedPath.originalPathPrefix.isEmpty()
+            ? remotePath
+            : resolvedPath.originalPathPrefix);
+    mapping.targetConnection = resolvedPath.connection;
+    mapping.targetPrefix =
+        normalizeRemotePath(resolvedPath.targetPathPrefix.isEmpty()
+                                ? QStringLiteral("/")
+                                : resolvedPath.targetPathPrefix);
+    mapping.expiresAtUtc = expiresAtForTtl(resolvedPath.ttlSeconds);
+    if (!expiresAtUtc.isValid() || mapping.expiresAtUtc < expiresAtUtc) {
+      expiresAtUtc = mapping.expiresAtUtc;
+    }
+    mappings.push_back(std::move(mapping));
+  }
 
   {
     const QMutexLocker locker(&m_cacheMutex);
-    m_resolvedPathMappings.insert(pathCacheKey(connection, mapping.originalPrefix),
-                                  mapping);
+    m_resolvedPathMappings.insert(
+        pathCacheKey(connection, mappings.first().originalPrefix),
+        DfsPathMappingCacheEntry{mappings, expiresAtUtc});
   }
-  return mapping;
+  return mappings;
 }
 
 void DfsResolvingSmbClient::forgetCachedPathMapping(

@@ -3,17 +3,29 @@
 #include "core/DfsReferralResolver.h"
 #include "core/SmbClient.h"
 
+#include <QDateTime>
 #include <QHash>
 #include <QMutex>
 #include <optional>
 
 namespace smb::infrastructure {
 
+struct DfsConnectionCacheEntry {
+  QVector<smb::core::Connection> targets;
+  QDateTime expiresAtUtc;
+};
+
 struct DfsPathMapping {
   QString connectionKey;
   QString originalPrefix;
   smb::core::Connection targetConnection;
   QString targetPrefix;
+  QDateTime expiresAtUtc;
+};
+
+struct DfsPathMappingCacheEntry {
+  QVector<DfsPathMapping> mappings;
+  QDateTime expiresAtUtc;
 };
 
 class DfsResolvingSmbClient final : public smb::core::SmbClient {
@@ -96,17 +108,22 @@ private:
                          const smb::core::OperationContext &context,
                          Operation operation, Rebase rebase);
 
-  std::optional<smb::core::Connection>
-  cachedResolvedConnection(const smb::core::Connection &connection) const;
-  std::optional<smb::core::Connection>
+  QVector<smb::core::Connection>
+  cachedResolvedConnections(const smb::core::Connection &connection) const;
+  QVector<smb::core::Connection>
   resolveAndCache(const smb::core::Connection &connection,
                   const smb::core::CredentialSecret *secret,
                   const smb::core::OperationContext &context);
   void forgetCachedConnection(const smb::core::Connection &connection);
+  std::optional<smb::core::Connection>
+  cachedResolvedConnection(const smb::core::Connection &connection) const;
   std::optional<DfsPathMapping>
   cachedResolvedPathMapping(const smb::core::Connection &connection,
                             const QString &remotePath) const;
-  std::optional<DfsPathMapping>
+  QVector<DfsPathMapping>
+  cachedResolvedPathMappings(const smb::core::Connection &connection,
+                             const QString &remotePath) const;
+  QVector<DfsPathMapping>
   resolvePathAndCache(const smb::core::Connection &connection,
                       const smb::core::CredentialSecret *secret,
                       const QString &remotePath,
@@ -117,8 +134,8 @@ private:
   smb::core::SmbClient &m_delegate;
   smb::core::DfsReferralResolver &m_resolver;
   mutable QMutex m_cacheMutex;
-  QHash<QString, smb::core::Connection> m_resolvedConnections;
-  QHash<QString, DfsPathMapping> m_resolvedPathMappings;
+  QHash<QString, DfsConnectionCacheEntry> m_resolvedConnections;
+  QHash<QString, DfsPathMappingCacheEntry> m_resolvedPathMappings;
 };
 
 } // namespace smb::infrastructure

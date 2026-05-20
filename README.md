@@ -48,9 +48,15 @@ Current native backend status:
 - Advanced metadata APIs cover timestamps/attributes, EA list/set/remove and
   raw security descriptor query/set. POSIX chmod/chown are capability-gated
   until a POSIX extension contract is added.
-- SMB3 encryption, native DFS referrals and Kerberos/current-user auth are
-  still tracked in `TASKS.md`; current-user auth is reported as unsupported by
-  the native backend instead of falling through to password auth.
+- Native DFS referral resolution uses `FSCTL_DFS_GET_REFERRALS`, caches
+  referrals with TTL and supports nested namespace rebase plus multiple target
+  failover. Real Windows DFS namespace validation remains tracked in
+  `TASKS.md`.
+- SMB3 AES-128-CCM transform encryption is implemented for SMB 3.0/3.0.2,
+  including encrypted-share retry and Docker Samba encrypted-share smoke.
+  Kerberos/current-user auth is still tracked in `TASKS.md`; current-user auth
+  is reported as unsupported by the native backend instead of falling through to
+  password auth.
 
 Run the app:
 

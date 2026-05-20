@@ -8,7 +8,7 @@ RUN apt-get update \
 
 RUN useradd --no-create-home --shell /usr/sbin/nologin smbtest \
     && useradd --no-create-home --shell /usr/sbin/nologin smbguest \
-    && mkdir -p /srv/samba/public/nested /srv/samba/public/private /srv/samba/archive /srv/samba/guest \
+    && mkdir -p /srv/samba/public/nested /srv/samba/public/private /srv/samba/archive /srv/samba/guest /srv/samba/encrypted \
     && printf 'root fixture\n' > /srv/samba/public/root.txt \
     && printf 'nested fixture\n' > /srv/samba/public/nested/readme.txt \
     && printf 'metadata fixture\n' > /srv/samba/public/metadata.txt \
@@ -16,7 +16,9 @@ RUN useradd --no-create-home --shell /usr/sbin/nologin smbtest \
     && ln -s nested/readme.txt /srv/samba/public/link-to-readme.txt \
     && printf 'archive fixture\n' > /srv/samba/archive/archive.txt \
     && printf 'guest fixture\n' > /srv/samba/guest/guest.txt \
+    && printf 'encrypted fixture\n' > /srv/samba/encrypted/encrypted.txt \
     && chown -R smbtest:smbtest /srv/samba/public /srv/samba/archive \
+    && chown -R smbtest:smbtest /srv/samba/encrypted \
     && chown -R smbguest:smbguest /srv/samba/guest \
     && chmod 700 /srv/samba/public/private \
     && setfacl -m u:smbtest:rw /srv/samba/public/metadata.txt \

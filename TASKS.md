@@ -2019,7 +2019,7 @@ Samba в проект запрещено.
   - Manual domain environment tests.
   - Unit tests на availability reporting.
 
-### [ ] T-096: Реализовать native DFS referral resolution
+### [x] T-096: Реализовать native DFS referral resolution
 
 - Приоритет: Must.
 - Зависимости: T-093, T-094, T-122.
@@ -2042,13 +2042,21 @@ Samba в проект запрещено.
   - Частично реализовано: добавлены clean-room `FSCTL_DFS_GET_REFERRALS`
     request builder, DFS referral response parser v2/v3/v4 и SMB2 IOCTL
     fetcher with all-ones FileId для IPC$/DFS referral requests.
-  - Covered by `native_smb_dfs_referral` and
-    `native_smb_remote_dfs_referral_fetcher`.
-  - Остаётся: application-level native resolver, TTL cache/failover,
-    integration fixture and removal/disablement of legacy `smbclient` resolver
-    outside the legacy libsmb2 path.
+  - Частично реализовано: добавлен `NativeDfsReferralResolver`, native app path
+    теперь использует `DfsResolvingSmbClient` + native resolver; legacy
+    `SmbclientDfsReferralResolver` остаётся только в legacy libsmb2 build path.
+  - Реализовано: `DfsReferralResolver` может возвращать несколько targets и
+    referral TTL; `DfsResolvingSmbClient` кэширует targets с TTL, пробует
+    failover targets по очереди и сохраняет original namespace path при
+    nested DFS navigation.
+  - Covered by `native_smb_dfs_referral`,
+    `native_smb_remote_dfs_referral_fetcher`, `native_dfs_referral_resolver`
+    and backend-agnostic `dfs_resolving_smb_client`.
+  - Dedicated Windows Server validation для реального DFS namespace остаётся
+    release/manual gate; Docker Samba через host port mapping не является
+    надежной проверкой DFS target UNC без отдельной сетевой схемы на 445/tcp.
 
-### [ ] T-122: Реализовать SMB signing и encryption
+### [x] T-122: Реализовать SMB signing и encryption
 
 - Приоритет: Must.
 - Зависимости: T-093, T-094.
@@ -2067,12 +2075,17 @@ Samba в проект запрещено.
   - Unit tests для crypto/signature state machine на synthetic vectors.
   - Docker Samba fixtures с required signing/encryption, если поддерживаются.
   - Manual Windows Server validation с signing/encryption policy.
-  - Частично реализовано: SMB2/2.1 HMAC-SHA256 signing and SMB3 AES-CMAC
-    signing are implemented; connector now enforces encryption policy and
-    fails closed when user policy, session flags or share flags require SMB
-    encryption until transform encryption/decryption is implemented.
-  - `native_smb_connector` covers required encryption policy, server session
-    encryption and share encryption fail-closed behavior.
+  - Реализовано: SMB2/2.1 HMAC-SHA256 signing and SMB3 AES-CMAC signing.
+  - Реализовано: clean-room SMB3 AES-128-CCM transform header,
+    encrypt/decrypt, client/server encryption key derivation and transport
+    wrapper for SMB 3.0/3.0.2.
+  - Реализовано: connector advertises encryption capability, supports required
+    session/share encryption, retries encrypted `TREE_CONNECT` when an
+    encryption-capable server denies the unencrypted attempt, and fails closed
+    when policy/server requires encryption but negotiated dialect/capability
+    cannot support it.
+  - Covered by `native_smb_signing`, `native_smb_encryption`,
+    `native_smb_connector` and Docker Samba encrypted-share integration.
 
 ### [x] T-097: Реализовать share browsing и capability probing
 

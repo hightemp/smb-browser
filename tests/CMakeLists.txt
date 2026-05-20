@@ -252,6 +252,21 @@ if(TARGET smb_browser_native_smb)
         LABELS "native-unit;native-auth;native-protocol"
     )
 
+    add_executable(test_native_smb_encryption
+        test_native_smb_encryption.cpp
+    )
+
+    target_link_libraries(test_native_smb_encryption
+        PRIVATE
+            smb_browser_native_smb
+            Qt5::Test
+    )
+
+    add_test(NAME native_smb_encryption COMMAND test_native_smb_encryption)
+    set_tests_properties(native_smb_encryption PROPERTIES
+        LABELS "native-unit;native-auth;native-protocol"
+    )
+
     add_executable(test_native_smb_ntlm_v2_token_provider
         test_native_smb_ntlm_v2_token_provider.cpp
     )
@@ -618,6 +633,22 @@ if(TARGET smb_browser_native_smb)
     set_tests_properties(native_smb_error_mapper PROPERTIES
         LABELS "native-unit;native-contract"
     )
+
+    add_executable(test_native_dfs_referral_resolver
+        test_native_dfs_referral_resolver.cpp
+    )
+
+    target_link_libraries(test_native_dfs_referral_resolver
+        PRIVATE
+            smb_browser_infrastructure
+            Qt5::Test
+    )
+
+    add_test(NAME native_dfs_referral_resolver
+             COMMAND test_native_dfs_referral_resolver)
+    set_tests_properties(native_dfs_referral_resolver PROPERTIES
+        LABELS "native-unit;native-dfs;native-contract"
+    )
 endif()
 
 add_executable(test_log_sanitizer
@@ -706,18 +737,6 @@ if(SMB_BROWSER_WITH_LIBSMB2)
     add_test(NAME smbclient_dfs_referral_resolver
              COMMAND test_smbclient_dfs_referral_resolver)
 
-    add_executable(test_dfs_resolving_smb_client
-        test_dfs_resolving_smb_client.cpp
-    )
-
-    target_link_libraries(test_dfs_resolving_smb_client
-        PRIVATE
-            smb_browser_infrastructure
-            Qt5::Test
-    )
-
-    add_test(NAME dfs_resolving_smb_client COMMAND test_dfs_resolving_smb_client)
-
     add_executable(test_libsmb2_error_mapper
         test_libsmb2_error_mapper.cpp
     )
@@ -742,6 +761,21 @@ if(SMB_BROWSER_WITH_LIBSMB2)
 
     add_test(NAME libsmb2_smb_client COMMAND test_libsmb2_smb_client)
 endif()
+
+add_executable(test_dfs_resolving_smb_client
+    test_dfs_resolving_smb_client.cpp
+)
+
+target_link_libraries(test_dfs_resolving_smb_client
+    PRIVATE
+        smb_browser_infrastructure
+        Qt5::Test
+)
+
+add_test(NAME dfs_resolving_smb_client COMMAND test_dfs_resolving_smb_client)
+set_tests_properties(dfs_resolving_smb_client PROPERTIES
+    LABELS "native-dfs;native-contract"
+)
 
 if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND
    (SMB_BROWSER_WITH_NATIVE_SMB OR SMB_BROWSER_WITH_LIBSMB2))

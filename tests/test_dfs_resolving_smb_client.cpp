@@ -156,6 +156,76 @@ public:
   }
 };
 
+class MultiTargetDfsResolver final : public smb::core::DfsReferralResolver {
+public:
+  QVector<smb::core::DfsResolvedConnection> targets;
+  QVector<smb::core::DfsResolvedPath> pathTargets;
+  int targetCalls = 0;
+  int pathTargetCalls = 0;
+
+  smb::core::Result<std::optional<smb::core::Connection>>
+  resolve(const smb::core::Connection &, const smb::core::CredentialSecret *,
+          const smb::core::OperationContext &) override {
+    if (targets.isEmpty()) {
+      return smb::core::Result<std::optional<smb::core::Connection>>::success(
+          std::nullopt);
+    }
+    return smb::core::Result<std::optional<smb::core::Connection>>::success(
+        targets.first().connection);
+  }
+
+  smb::core::Result<QVector<smb::core::DfsResolvedConnection>>
+  resolveTargets(const smb::core::Connection &,
+                 const smb::core::CredentialSecret *,
+                 const smb::core::OperationContext &) override {
+    ++targetCalls;
+    return smb::core::Result<QVector<smb::core::DfsResolvedConnection>>::
+        success(targets);
+  }
+
+  smb::core::Result<std::optional<smb::core::DfsResolvedPath>>
+  resolvePath(const smb::core::Connection &,
+              const smb::core::CredentialSecret *, const QString &,
+              const smb::core::OperationContext &) override {
+    if (pathTargets.isEmpty()) {
+      return smb::core::Result<
+          std::optional<smb::core::DfsResolvedPath>>::success(std::nullopt);
+    }
+    return smb::core::Result<std::optional<smb::core::DfsResolvedPath>>::
+        success(pathTargets.first());
+  }
+
+  smb::core::Result<QVector<smb::core::DfsResolvedPath>>
+  resolvePathTargets(const smb::core::Connection &,
+                     const smb::core::CredentialSecret *, const QString &,
+                     const smb::core::OperationContext &) override {
+    ++pathTargetCalls;
+    return smb::core::Result<QVector<smb::core::DfsResolvedPath>>::success(
+        pathTargets);
+  }
+};
+
+smb::core::DfsResolvedConnection resolvedConnection(QString server,
+                                                    int ttlSeconds = 300) {
+  smb::core::DfsResolvedConnection result;
+  result.connection = connection(std::move(server), QStringLiteral("RU"));
+  result.ttlSeconds = ttlSeconds;
+  return result;
+}
+
+smb::core::DfsResolvedPath resolvedPath(QString server,
+                                        QString originalPrefix,
+                                        QString targetPrefix,
+                                        int ttlSeconds = 300) {
+  smb::core::DfsResolvedPath result;
+  result.connection = connection(std::move(server), QStringLiteral("RU"));
+  result.originalPathPrefix = std::move(originalPrefix);
+  result.targetPathPrefix = std::move(targetPrefix);
+  result.remotePath = QStringLiteral("/");
+  result.ttlSeconds = ttlSeconds;
+  return result;
+}
+
 } // namespace
 
 class DfsResolvingSmbClientTest final : public QObject {
@@ -269,6 +339,78 @@ private slots:
     QCOMPARE(nested.value().size(), 1);
     QCOMPARE(nested.value().at(0).remotePath,
              QStringLiteral("/Finance/Budget/2026"));
+  }
+
+  void triesNextResolvedShareTargetWhenFirstTargetFails() {
+    RecordingSmbClient delegate;
+    delegate.targetServer = QStringLiteral("target2.example.com");
+    MultiTargetDfsResolver resolver;
+    resolver.targets = {resolvedConnection(QStringLiteral("target1.example.com")),
+                        resolvedConnection(QStringLiteral("target2.example.com"))};
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+
+    const auto result = client.checkConnection(
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru")),
+        nullptr, {});
+
+    QVERIFY(result.ok());
+    QCOMPARE(resolver.targetCalls, 1);
+    QCOMPARE(delegate.checkedServers.size(), 3);
+    QCOMPARE(delegate.checkedServers.at(0), QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.checkedServers.at(1), QStringLiteral("target1.example.com"));
+    QCOMPARE(delegate.checkedServers.at(2), QStringLiteral("target2.example.com"));
+  }
+
+  void expiresShareTargetCacheByReferralTtl() {
+    RecordingSmbClient delegate;
+    MultiTargetDfsResolver resolver;
+    resolver.targets = {resolvedConnection(QStringLiteral("target.example.com"), 1)};
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+    const auto original =
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru"));
+
+    QVERIFY(client.checkConnection(original, nullptr, {}).ok());
+    QTest::qWait(1100);
+    QVERIFY(client.checkConnection(original, nullptr, {}).ok());
+
+    QCOMPARE(resolver.targetCalls, 2);
+    QCOMPARE(delegate.checkedServers.size(), 4);
+    QCOMPARE(delegate.checkedServers.at(0), QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.checkedServers.at(1), QStringLiteral("target.example.com"));
+    QCOMPARE(delegate.checkedServers.at(2), QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.checkedServers.at(3), QStringLiteral("target.example.com"));
+  }
+
+  void triesNextResolvedPathTargetWhenFirstTargetFails() {
+    RecordingSmbClient delegate;
+    delegate.failOriginalListWithPathReferral = true;
+    delegate.targetServer = QStringLiteral("target2.example.com");
+    delegate.targetDirectoryEntries.insert(
+        QStringLiteral("/"),
+        {remoteEntry(QStringLiteral("Budget"), QStringLiteral("/Budget"))});
+    MultiTargetDfsResolver resolver;
+    resolver.pathTargets = {
+        resolvedPath(QStringLiteral("target1.example.com"),
+                     QStringLiteral("/Finance"), QStringLiteral("/")),
+        resolvedPath(QStringLiteral("target2.example.com"),
+                     QStringLiteral("/Finance"), QStringLiteral("/"))};
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+
+    const auto result = client.listDirectory(
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru")),
+        nullptr, QStringLiteral("/Finance"), {});
+
+    QVERIFY(result.ok());
+    QCOMPARE(resolver.pathTargetCalls, 1);
+    QCOMPARE(delegate.listedPaths.size(), 3);
+    QCOMPARE(delegate.listedPaths.at(0).first,
+             QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.listedPaths.at(1).first,
+             QStringLiteral("target1.example.com"));
+    QCOMPARE(delegate.listedPaths.at(2).first,
+             QStringLiteral("target2.example.com"));
+    QCOMPARE(result.value().at(0).remotePath,
+             QStringLiteral("/Finance/Budget"));
   }
 };
 

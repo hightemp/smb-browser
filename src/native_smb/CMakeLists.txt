@@ -53,6 +53,8 @@ add_library(smb_browser_native_smb STATIC
     SessionSetupExchanger.h
     Smb2Signing.cpp
     Smb2Signing.h
+    Smb3Encryption.cpp
+    Smb3Encryption.h
     SmbNative.cpp
     SmbNative.h
     SpnegoToken.cpp

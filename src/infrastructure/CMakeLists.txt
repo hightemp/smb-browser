@@ -13,12 +13,12 @@ set(SMB_BROWSER_INFRASTRUCTURE_SOURCES
     storage/SettingsRepository.h
     storage/SqliteStorage.cpp
     storage/SqliteStorage.h
+    smb/DfsResolvingSmbClient.cpp
+    smb/DfsResolvingSmbClient.h
 )
 
 if(SMB_BROWSER_WITH_LIBSMB2)
     list(APPEND SMB_BROWSER_INFRASTRUCTURE_SOURCES
-        smb/DfsResolvingSmbClient.cpp
-        smb/DfsResolvingSmbClient.h
         smb/Libsmb2ErrorMapper.cpp
         smb/Libsmb2ErrorMapper.h
         smb/Libsmb2SmbClient.cpp
@@ -30,6 +30,8 @@ endif()
 
 if(SMB_BROWSER_WITH_NATIVE_SMB)
     list(APPEND SMB_BROWSER_INFRASTRUCTURE_SOURCES
+        smb/NativeDfsReferralResolver.cpp
+        smb/NativeDfsReferralResolver.h
         smb/NativeSmbClient.cpp
         smb/NativeSmbClient.h
         smb/NativeSmbErrorMapper.cpp
