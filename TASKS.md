@@ -1031,6 +1031,10 @@
   - `scripts/package-windows.ps1` теперь собирает portable ZIP staging из
     build-tree после `windeployqt` и запускает smoke именно для созданного ZIP.
   - Workflow syntax проверен через `tmp/bin/actionlint`.
+  - Windows smoke теперь проверяет наличие Qt runtime DLLs, platform plugin,
+    SQLite driver, QtKeychain runtime и libsodium runtime в ZIP.
+  - `scripts/package-windows.ps1` теперь собирает ZIP из чистого staging
+    каталога и останавливается при ошибках `cmake`, `ctest` или `windeployqt`.
 
 ### [x] T-072: Подготовить Linux packaging
 
@@ -1073,6 +1077,10 @@
     `qtkeychain` prefixes в `CMAKE_PREFIX_PATH`.
   - Workflow syntax проверен через `tmp/bin/actionlint`; macOS smoke запускается
     на `macos-15-intel`.
+  - macOS smoke теперь проверяет наличие Qt frameworks, Cocoa platform plugin,
+    SQLite driver, QtKeychain runtime и libsodium runtime в app bundle.
+  - `scripts/package-macos.sh` теперь требует `macdeployqt` и очищает package
+    directory перед запуском `cpack`, чтобы smoke проверял свежий artifact.
 
 ### [x] T-074: Подготовить release checklist
 

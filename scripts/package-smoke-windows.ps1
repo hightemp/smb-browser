@@ -13,7 +13,7 @@ if ([string]::IsNullOrWhiteSpace($PackagePath)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($PackagePath) -or !(Test-Path $PackagePath)) {
-    throw "Package not found. Build it first with: cmake --build tmp\package-windows --target package"
+    throw "Package not found. Build it first with: scripts\package-windows.ps1"
 }
 
 $SmokeDir = Join-Path $RootDir "tmp\package-smoke-windows"
@@ -34,6 +34,46 @@ $Translation = Get-ChildItem -Path $RootFs -Recurse -File -Filter "smb-browser_r
 if ([string]::IsNullOrWhiteSpace($Translation)) {
     throw "Russian translation file not found in package"
 }
+
+function Assert-PackagedFile {
+    param(
+        [string]$Pattern,
+        [string]$Description
+    )
+
+    $Match = Get-ChildItem -Path $RootFs -Recurse -File -Filter $Pattern -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (!$Match) {
+        throw "$Description not found in package ($Pattern)"
+    }
+}
+
+function Assert-PackagedAnyFile {
+    param(
+        [string[]]$Patterns,
+        [string]$Description
+    )
+
+    foreach ($Pattern in $Patterns) {
+        $Match = Get-ChildItem -Path $RootFs -Recurse -File -Filter $Pattern -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($Match) {
+            return
+        }
+    }
+    throw "$Description not found in package ($($Patterns -join ', '))"
+}
+
+Assert-PackagedFile "Qt5Core.dll" "Qt5 Core runtime"
+Assert-PackagedFile "Qt5Gui.dll" "Qt5 Gui runtime"
+Assert-PackagedFile "Qt5Widgets.dll" "Qt5 Widgets runtime"
+Assert-PackagedFile "Qt5Sql.dll" "Qt5 SQL runtime"
+Assert-PackagedFile "Qt5Svg.dll" "Qt5 SVG runtime"
+Assert-PackagedFile "qwindows.dll" "Qt Windows platform plugin"
+Assert-PackagedFile "qsqlite.dll" "Qt SQLite driver plugin"
+Assert-PackagedAnyFile @("Qt5Keychain.dll", "qt5keychain.dll", "libqt5keychain.dll") `
+    "QtKeychain runtime"
+Assert-PackagedAnyFile @("libsodium*.dll", "sodium*.dll") "libsodium runtime"
 
 $LegacySmb = Get-ChildItem -Path $RootFs -Recurse -File -Include `
     "libsmb2.dll","smb2.dll","smbclient.exe","samba*.dll" |

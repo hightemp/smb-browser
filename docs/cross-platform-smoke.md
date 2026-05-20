@@ -20,6 +20,8 @@ Each package smoke must verify:
 - app closes itself through `--smoke-close-ms=1000`, proving the packaged app
   does not hang after the main window closes;
 - Russian translation is packaged;
+- Qt runtime/frameworks, platform plugin, SQLite driver, QtKeychain runtime and
+  libsodium runtime are packaged;
 - no `libsmb2`, `smbclient` or Samba client helper binary is bundled;
 - executable dependency scan does not report `libsmb2`, `smbclient` or Samba
   client runtime linkage.

@@ -44,9 +44,11 @@ APP_PATH="$BUILD_DIR/src/app/smb-browser.app"
 if command -v macdeployqt >/dev/null 2>&1 && [ -d "$APP_PATH" ]; then
   macdeployqt "$APP_PATH" -verbose=1
 else
-  echo "macdeployqt not found or app bundle missing; ensure Qt frameworks are staged before publishing." >&2
+  echo "macdeployqt not found or app bundle missing; Qt frameworks cannot be staged." >&2
+  exit 1
 fi
 
+rm -rf "$BUILD_DIR/packages"
 cpack -G "$CPACK_GENERATOR" --config "$BUILD_DIR/CPackConfig.cmake"
 
 if [ "$SKIP_SMOKE" != "1" ]; then

@@ -44,6 +44,36 @@ fi
 test -x "$APP_PATH/Contents/MacOS/smb-browser"
 test -f "$APP_PATH/Contents/Resources/i18n/smb-browser_ru.qm"
 
+require_path() {
+  local path="$1"
+  local description="$2"
+  if [ ! -e "$path" ]; then
+    echo "$description not found in app bundle: $path" >&2
+    exit 1
+  fi
+}
+
+require_find_any() {
+  local description="$1"
+  local match
+  shift
+  match="$(find "$APP_PATH/Contents" "$@" -print -quit 2>/dev/null || true)"
+  if [ -z "$match" ]; then
+    echo "$description not found in app bundle." >&2
+    exit 1
+  fi
+}
+
+require_path "$APP_PATH/Contents/Frameworks/QtCore.framework" "Qt5 Core framework"
+require_path "$APP_PATH/Contents/Frameworks/QtGui.framework" "Qt5 Gui framework"
+require_path "$APP_PATH/Contents/Frameworks/QtWidgets.framework" "Qt5 Widgets framework"
+require_path "$APP_PATH/Contents/Frameworks/QtSql.framework" "Qt5 SQL framework"
+require_path "$APP_PATH/Contents/Frameworks/QtSvg.framework" "Qt5 SVG framework"
+require_find_any "Qt Cocoa platform plugin" -name 'libqcocoa.dylib'
+require_find_any "Qt SQLite driver plugin" -name 'libqsqlite.dylib'
+require_find_any "QtKeychain runtime" \( -name 'Qt5Keychain.framework' -o -name 'libqt5keychain*.dylib' \)
+require_find_any "libsodium runtime" -name 'libsodium*.dylib'
+
 if find "$APP_PATH/Contents" \( -name 'libsmb2*.dylib' -o -name 'smbclient' \) \
   -print -quit | grep -q .; then
   echo "Unexpected legacy SMB runtime found in app bundle." >&2

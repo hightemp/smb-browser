@@ -107,7 +107,7 @@ package-linux:
 
 .PHONY: package-windows
 package-windows:
-	$(POWERSHELL) -File scripts/package-windows.ps1
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1
 
 .PHONY: package-macos
 package-macos:
@@ -119,7 +119,7 @@ smoke-linux: package-linux
 
 .PHONY: smoke-windows
 smoke-windows:
-	$(POWERSHELL) -File scripts/package-smoke-windows.ps1 "$(WINDOWS_PACKAGE)"
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/package-smoke-windows.ps1 "$(WINDOWS_PACKAGE)"
 
 .PHONY: smoke-macos
 smoke-macos:

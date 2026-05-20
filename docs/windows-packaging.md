@@ -14,17 +14,19 @@ packaging task complete.
 
 ## Build outline
 
-Use a Windows build environment with Qt5, CMake, Ninja, QtKeychain, libsodium,
-Git, and a C/C++ compiler available. The default build must keep
+Use a Windows build environment with Qt5, Qt tools (`lrelease`, `windeployqt`),
+CMake, Ninja, pkgconf/pkg-config, QtKeychain, libsodium, Git, and a C/C++
+compiler available. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-The helper configures the native backend, builds, runs `ctest`, attempts
-`windeployqt`, stages runtime DLL candidates, creates a portable ZIP and runs
-`package-smoke-windows.ps1` against the exact ZIP it just created.
+The helper configures the native backend, builds, runs `ctest`, requires
+`windeployqt`, creates a clean portable staging directory, stages runtime DLL
+candidates, creates a portable ZIP and runs `package-smoke-windows.ps1` against
+the exact ZIP it just created.
 The package must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg runtime DLLs and platform/image plugins.
@@ -41,9 +43,10 @@ client binaries. The smoke script should inspect executable dependencies with
 `dumpbin`, `llvm-objdump` or an equivalent scanner and fail the package if a
 legacy SMB runtime dependency is present.
 
-The package smoke script starts `smb-browser.exe --smoke-close-ms=1000` and
-fails if the process does not exit, so close-without-tray behavior is checked
-without manual interaction.
+The package smoke script verifies the packaged Qt runtime DLLs, platform plugin,
+SQLite driver, QtKeychain runtime and libsodium runtime. It then starts
+`smb-browser.exe --smoke-close-ms=1000` and fails if the process does not exit,
+so close-without-tray behavior is checked without manual interaction.
 
 If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
 also runs `smb-browser.exe --smoke-smb-list` and requires a successful directory

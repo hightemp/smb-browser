@@ -14,8 +14,9 @@ packaging task complete.
 
 ## Build outline
 
-Use a macOS build environment with Qt5, CMake, Ninja, QtKeychain, libsodium,
-Git, and Xcode command line tools available. The default build must keep
+Use a macOS build environment with Qt5, Qt tools (`lrelease`, `macdeployqt`),
+CMake, Ninja, pkg-config, QtKeychain, libsodium, Git, and Xcode command line
+tools available. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```bash
@@ -23,9 +24,9 @@ scripts/package-macos.sh
 ```
 
 The helper configures the native backend, builds, runs `ctest`, detects Homebrew
-`qt@5`/`qtkeychain` prefixes when available, attempts `macdeployqt`, creates the
-package and runs `package-smoke-macos.sh` against the exact DMG/app it just
-created.
+`qt@5`/`qtkeychain` prefixes when available, requires `macdeployqt`, creates the
+package from a clean package directory and runs `package-smoke-macos.sh` against
+the exact DMG/app it just created.
 The app bundle must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg frameworks and platform/image plugins.
@@ -42,9 +43,10 @@ The app bundle must not contain `libsmb2`, `smbclient` or Samba client helper
 binaries. The smoke script should inspect the bundle with `otool -L` and fail if
 a legacy SMB runtime dependency is present.
 
-The package smoke script starts `smb-browser --smoke-close-ms=1000` and fails
-if the process does not exit, so close-without-tray behavior is checked without
-manual interaction.
+The package smoke script verifies the packaged Qt frameworks, Cocoa platform
+plugin, SQLite driver, QtKeychain runtime and libsodium runtime. It then starts
+`smb-browser --smoke-close-ms=1000` and fails if the process does not exit, so
+close-without-tray behavior is checked without manual interaction.
 
 If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
 also runs `smb-browser --smoke-smb-list` and requires a successful directory
