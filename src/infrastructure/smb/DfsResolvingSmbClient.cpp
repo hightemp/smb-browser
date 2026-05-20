@@ -300,7 +300,7 @@ smb::core::Result<T> DfsResolvingSmbClient::runWithPathDfsFallback(
       [&operation, &normalizedPath](const smb::core::Connection &candidate) {
         return operation(candidate, normalizedPath);
       });
-  if (result.ok() || !looksLikePathDfsReferralFailure(result.error())) {
+  if (result.ok() || !looksLikeDfsReferralFailure(result.error())) {
     return result;
   }
 

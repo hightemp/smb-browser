@@ -92,6 +92,85 @@ DecodeResult<bool> unsupportedSigningVerification(Dialect dialect) {
   return DecodeResult<bool>::failure(error.error.code, error.error.message);
 }
 
+const char *commandName(Command command) {
+  switch (command) {
+  case Command::Negotiate:
+    return "NEGOTIATE";
+  case Command::SessionSetup:
+    return "SESSION_SETUP";
+  case Command::Logoff:
+    return "LOGOFF";
+  case Command::TreeConnect:
+    return "TREE_CONNECT";
+  case Command::TreeDisconnect:
+    return "TREE_DISCONNECT";
+  case Command::Create:
+    return "CREATE";
+  case Command::Close:
+    return "CLOSE";
+  case Command::Flush:
+    return "FLUSH";
+  case Command::Read:
+    return "READ";
+  case Command::Write:
+    return "WRITE";
+  case Command::Lock:
+    return "LOCK";
+  case Command::Ioctl:
+    return "IOCTL";
+  case Command::Cancel:
+    return "CANCEL";
+  case Command::Echo:
+    return "ECHO";
+  case Command::QueryDirectory:
+    return "QUERY_DIRECTORY";
+  case Command::ChangeNotify:
+    return "CHANGE_NOTIFY";
+  case Command::QueryInfo:
+    return "QUERY_INFO";
+  case Command::SetInfo:
+    return "SET_INFO";
+  case Command::OplockBreak:
+    return "OPLOCK_BREAK";
+  }
+  return "UNKNOWN";
+}
+
+std::string describeSignatureVerificationFailure(
+    const ByteVector &requestFrame, const ByteVector &responseFrame,
+    Dialect dialect) {
+  std::ostringstream stream;
+  stream << "SMB2 signed response verification failed";
+
+  const auto requestPayload = decodeDirectTcpPayload(requestFrame);
+  if (requestPayload.ok) {
+    const auto requestHeader = decodeSmb2SyncHeader(requestPayload.value);
+    if (requestHeader.ok) {
+      stream << " after request=" << commandName(requestHeader.value.command);
+    }
+  }
+
+  const auto responsePayload = decodeDirectTcpPayload(responseFrame);
+  if (responsePayload.ok) {
+    const auto responseHeader = decodeSmb2SyncHeader(responsePayload.value);
+    if (responseHeader.ok) {
+      stream << " response=" << commandName(responseHeader.value.command)
+             << " status=0x" << std::hex << std::uppercase << std::setfill('0')
+             << std::setw(8) << responseHeader.value.status
+             << " message_id=0x" << std::setw(16)
+             << responseHeader.value.messageId << " flags=0x" << std::setw(8)
+             << responseHeader.value.flags
+             << (((responseHeader.value.flags & kFlagSigned) == 0)
+                     ? " signed_flag=missing"
+                     : " signed_flag=present");
+    }
+  }
+
+  stream << " dialect=0x" << std::hex << std::uppercase << std::setfill('0')
+         << std::setw(4) << static_cast<std::uint16_t>(dialect) << ".";
+  return stream.str();
+}
+
 void zeroSmb2Signature(ByteVector &payload) {
   std::fill(payload.begin() + kSmb2SignatureOffset,
             payload.begin() + kSmb2SignatureOffset + 16, 0);
@@ -659,7 +738,8 @@ SigningTransport::exchange(const ByteVector &requestFrame,
   if (!verified.value) {
     return DecodeResult<ByteVector>::failure(
         ErrorCode::ProtocolUnsupported,
-        "SMB2 response is not signed or has an invalid signature.");
+        describeSignatureVerificationFailure(signedRequest.value,
+                                             response.value, m_dialect));
   }
   return response;
 }

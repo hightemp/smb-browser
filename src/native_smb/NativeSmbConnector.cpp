@@ -3,6 +3,7 @@
 #include "Smb2Signing.h"
 #include "Smb3Encryption.h"
 
+#include <sstream>
 #include <utility>
 
 namespace smb::native_smb {
@@ -22,6 +23,24 @@ DecodeResult<NativeSmbConnectedState>
 unsupportedEncryption(std::string message) {
   return DecodeResult<NativeSmbConnectedState>::failure(
       ErrorCode::UnsupportedCapability, std::move(message));
+}
+
+DecodeResult<NativeSmbConnectedState>
+treeConnectFailureFrom(const ProtocolError &error,
+                       const NegotiatedConnection &negotiated,
+                       const SessionSetupResponse &session) {
+  std::ostringstream stream;
+  stream << error.message << " negotiated_dialect=0x" << std::hex
+         << std::uppercase << static_cast<std::uint16_t>(negotiated.dialect)
+         << " signing_required=" << (negotiated.signingRequired ? "true" : "false")
+         << " encryption_supported="
+         << (negotiated.encryptionSupported ? "true" : "false")
+         << " session_encrypt=" << (session.encryptData ? "true" : "false")
+         << " guest=" << (session.guestSession ? "true" : "false")
+         << " null_session=" << (session.nullSession ? "true" : "false")
+         << ".";
+  return DecodeResult<NativeSmbConnectedState>::failure(error.code,
+                                                        stream.str());
 }
 
 bool supportsAesCcmEncryption(Dialect dialect) {
@@ -112,13 +131,16 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
         return DecodeResult<NativeSmbConnectedState>::failure(
             updated.error.code, updated.error.message);
       }
-      updated =
-          updateSmb311PreauthHash(updated.value, session.responsePayload);
-      if (!updated.ok) {
-        return DecodeResult<NativeSmbConnectedState>::failure(
-            updated.error.code, updated.error.message);
-      }
       preauthIntegrityHash = updated.value;
+      if (session.moreProcessingRequired) {
+        updated = updateSmb311PreauthHash(preauthIntegrityHash,
+                                          session.responsePayload);
+        if (!updated.ok) {
+          return DecodeResult<NativeSmbConnectedState>::failure(
+              updated.error.code, updated.error.message);
+        }
+        preauthIntegrityHash = updated.value;
+      }
     }
     sessionId = session.sessionId;
     if (!session.moreProcessingRequired) {
@@ -151,8 +173,12 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
   }
 
   ByteVector sessionKey;
+  const bool shouldSignConnection =
+      (negotiated.value.signingRequired ||
+       options.config.signing != SecurityPolicy::Disabled) &&
+      !session.guestSession && !session.nullSession;
   const bool needsSessionKey =
-      negotiated.value.signingRequired || session.encryptData ||
+      shouldSignConnection || session.encryptData ||
       options.config.encryption == SecurityPolicy::Required;
   if (needsSessionKey) {
     const auto derivedSessionKey = tokenProvider.sessionBaseKey();
@@ -161,7 +187,7 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
     }
     sessionKey = derivedSessionKey.value;
   }
-  if (negotiated.value.signingRequired) {
+  if (shouldSignConnection) {
     if (!supportsSigning(negotiated.value.dialect)) {
       return DecodeResult<NativeSmbConnectedState>::failure(
           ErrorCode::UnsupportedCapability,
@@ -185,6 +211,30 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
             derivedKey.error.code, derivedKey.error.message);
       }
       signingKey = derivedKey.value;
+    }
+
+    const auto finalSessionFrame = encodeDirectTcpFrame(session.responsePayload);
+    const auto finalSessionPayload = decodeDirectTcpPayload(finalSessionFrame);
+    if (finalSessionPayload.ok) {
+      const auto finalSessionHeader =
+          decodeSmb2SyncHeader(finalSessionPayload.value);
+      const bool finalSessionIsSigned =
+          finalSessionHeader.ok &&
+          (finalSessionHeader.value.flags & kFlagSigned) != 0;
+      if (finalSessionIsSigned || negotiated.value.signingRequired) {
+        const auto finalSessionVerified = verifySmb2DirectTcpFrameSignature(
+            finalSessionFrame, signingKey, negotiated.value.dialect);
+        if (!finalSessionVerified.ok) {
+          return DecodeResult<NativeSmbConnectedState>::failure(
+              finalSessionVerified.error.code,
+              finalSessionVerified.error.message);
+        }
+        if (!finalSessionVerified.value) {
+          return DecodeResult<NativeSmbConnectedState>::failure(
+              ErrorCode::ProtocolUnsupported,
+              "SMB2 final SESSION_SETUP response has an invalid signature.");
+        }
+      }
     }
 
     transport = std::make_unique<SigningTransport>(
@@ -263,7 +313,7 @@ DecodeResult<NativeSmbConnectedState> NativeSmbConnector::connect(
                                  sessionId, context);
   }
   if (!tree.ok) {
-    return failureFrom(tree.error);
+    return treeConnectFailureFrom(tree.error, negotiated.value, session);
   }
   const bool shouldEncrypt =
       session.encryptData || tree.value.requiresEncryption ||

@@ -810,7 +810,7 @@ private slots:
     QCOMPARE(bytes.size(), std::size_t{121});
     QCOMPARE(readU16Le(bytes, 64),
              smb::native_smb::kCreateRequestStructureSize);
-    QCOMPARE(readU16Le(bytes, 108), std::uint16_t{0});
+    QCOMPARE(readU16Le(bytes, 108), std::uint16_t{120});
     QCOMPARE(readU16Le(bytes, 110), std::uint16_t{0});
     QCOMPARE(readU32Le(bytes, 112), std::uint32_t{0});
     QCOMPARE(readU32Le(bytes, 116), std::uint32_t{0});

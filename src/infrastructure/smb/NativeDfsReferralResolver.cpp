@@ -8,7 +8,9 @@
 #include <QSysInfo>
 
 #include <algorithm>
+#include <array>
 #include <memory>
+#include <random>
 #include <utility>
 
 namespace smb::infrastructure {
@@ -17,6 +19,17 @@ namespace {
 bool isCancelled(const smb::core::OperationContext &context) {
   return context.cancellationToken != nullptr &&
          context.cancellationToken->isCancellationRequested();
+}
+
+std::array<std::uint8_t, 16> randomClientGuid() {
+  std::array<std::uint8_t, 16> guid{};
+  std::random_device device;
+  for (auto &byte : guid) {
+    byte = static_cast<std::uint8_t>(device());
+  }
+  guid[6] = static_cast<std::uint8_t>((guid[6] & 0x0F) | 0x40);
+  guid[8] = static_cast<std::uint8_t>((guid[8] & 0x3F) | 0x80);
+  return guid;
 }
 
 smb::native_smb::AuthMode toNativeAuthMode(smb::core::AuthType authType) {
@@ -245,6 +258,7 @@ openIpcConnection(const smb::core::Connection &connection,
                                        smb::native_smb::Dialect::Smb300,
                                        smb::native_smb::Dialect::Smb302,
                                        smb::native_smb::Dialect::Smb311};
+  options.negotiateOptions.clientGuid = randomClientGuid();
 
   const smb::native_smb::NativeSmbConnector connector;
   return connector.connect(std::move(transport), tokenProvider, options,

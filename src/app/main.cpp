@@ -39,6 +39,7 @@
 #include <QMessageBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QTextStream>
 #include <QTimer>
 
 #include <algorithm>
@@ -224,7 +225,59 @@ int runSmbListSmoke() {
   const auto result =
       smbClient.listDirectory(connection, secretPtr,
                               smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
-  return result.ok() ? 0 : 1;
+  if (result.ok()) {
+    QTextStream(stdout) << "entries=" << result.value().size() << '\n';
+    return 0;
+  }
+
+  const auto &error = result.error();
+  QTextStream(stderr) << "error_code=" << smb::core::toString(error.code)
+                      << '\n'
+                      << "error_category="
+                      << smb::core::toString(error.category) << '\n'
+                      << "error_message=" << error.userMessage << '\n'
+                      << "error_details="
+                      << error.sanitizedTechnicalDetails << '\n';
+
+  const auto shareTargets =
+      dfsReferralResolver.resolveTargets(connection, secretPtr, {});
+  if (shareTargets.ok()) {
+    QTextStream(stderr) << "dfs_share_targets="
+                        << shareTargets.value().size() << '\n';
+    for (const auto &target : shareTargets.value()) {
+      QTextStream(stderr) << "dfs_share_target=smb://"
+                          << target.connection.server << '/'
+                          << target.connection.share << '\n';
+    }
+  } else {
+    const auto &dfsError = shareTargets.error();
+    QTextStream(stderr) << "dfs_share_error_code="
+                        << smb::core::toString(dfsError.code) << '\n'
+                        << "dfs_share_error_details="
+                        << dfsError.sanitizedTechnicalDetails << '\n';
+  }
+
+  const auto pathTargets = dfsReferralResolver.resolvePathTargets(
+      connection, secretPtr, smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
+  if (pathTargets.ok()) {
+    QTextStream(stderr) << "dfs_path_targets=" << pathTargets.value().size()
+                        << '\n';
+    for (const auto &target : pathTargets.value()) {
+      QTextStream(stderr) << "dfs_path_target=smb://"
+                          << target.connection.server << '/'
+                          << target.connection.share
+                          << " original_prefix="
+                          << target.originalPathPrefix << " target_prefix="
+                          << target.targetPathPrefix << '\n';
+    }
+  } else {
+    const auto &dfsError = pathTargets.error();
+    QTextStream(stderr) << "dfs_path_error_code="
+                        << smb::core::toString(dfsError.code) << '\n'
+                        << "dfs_path_error_details="
+                        << dfsError.sanitizedTechnicalDetails << '\n';
+  }
+  return 1;
 #else
   return 2;
 #endif

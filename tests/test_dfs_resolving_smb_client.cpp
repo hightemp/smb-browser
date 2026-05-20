@@ -41,6 +41,7 @@ public:
   QString targetServer = QStringLiteral("target.example.com");
   QVector<QString> checkedServers;
   QVector<QPair<QString, QString>> listedPaths;
+  bool failOriginalListWithShareReferral = false;
   bool failOriginalListWithPathReferral = false;
   QHash<QString, QVector<smb::core::RemoteFileEntry>> targetDirectoryEntries;
 
@@ -64,6 +65,12 @@ public:
     if (candidate.server == targetServer) {
       return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::success(
           targetDirectoryEntries.value(remotePath));
+    }
+    if (failOriginalListWithShareReferral) {
+      return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::failure(
+          smbFailure(smb::core::ErrorCode::ShareUnavailable,
+                     QStringLiteral("SMB2 TREE_CONNECT failed with "
+                                    "STATUS_BAD_NETWORK_NAME")));
     }
     if (failOriginalListWithPathReferral) {
       return smb::core::Result<QVector<smb::core::RemoteFileEntry>>::failure(
@@ -308,6 +315,35 @@ private slots:
     QCOMPARE(result.value().size(), 1);
     QCOMPARE(result.value().at(0).remotePath,
              QStringLiteral("/Finance/Budget"));
+  }
+
+  void resolvesPathLevelDfsAfterShareLevelTreeConnectReferralFailure() {
+    RecordingSmbClient delegate;
+    delegate.failOriginalListWithShareReferral = true;
+    delegate.targetDirectoryEntries.insert(
+        QStringLiteral("/"),
+        {remoteEntry(QStringLiteral("Budget"), QStringLiteral("/Budget"))});
+    MultiTargetDfsResolver resolver;
+    resolver.pathTargets = {resolvedPath(QStringLiteral("target.example.com"),
+                                         QStringLiteral("/"),
+                                         QStringLiteral("/"))};
+    smb::infrastructure::DfsResolvingSmbClient client(delegate, resolver);
+
+    const auto result = client.listDirectory(
+        connection(QStringLiteral("dfs.example.com"), QStringLiteral("ru")),
+        nullptr, QStringLiteral("/"), {});
+
+    QVERIFY(result.ok());
+    QCOMPARE(resolver.targetCalls, 1);
+    QCOMPARE(resolver.pathTargetCalls, 1);
+    QCOMPARE(delegate.listedPaths.size(), 2);
+    QCOMPARE(delegate.listedPaths.at(0).first,
+             QStringLiteral("dfs.example.com"));
+    QCOMPARE(delegate.listedPaths.at(1).first,
+             QStringLiteral("target.example.com"));
+    QCOMPARE(delegate.listedPaths.at(1).second, QStringLiteral("/"));
+    QCOMPARE(result.value().size(), 1);
+    QCOMPARE(result.value().at(0).remotePath, QStringLiteral("/Budget"));
   }
 
   void usesCachedPathTargetForNestedDfsNavigation() {

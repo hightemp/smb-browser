@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -172,6 +173,95 @@ DecodeResult<bool> socketFailure(const char *operation, int error) {
 DecodeResult<ByteVector> socketBytesFailure(const char *operation, int error) {
   return DecodeResult<ByteVector>::failure(
       mapSocketError(error), socketErrorMessage(operation, error));
+}
+
+const char *commandName(Command command) {
+  switch (command) {
+  case Command::Negotiate:
+    return "NEGOTIATE";
+  case Command::SessionSetup:
+    return "SESSION_SETUP";
+  case Command::Logoff:
+    return "LOGOFF";
+  case Command::TreeConnect:
+    return "TREE_CONNECT";
+  case Command::TreeDisconnect:
+    return "TREE_DISCONNECT";
+  case Command::Create:
+    return "CREATE";
+  case Command::Close:
+    return "CLOSE";
+  case Command::Flush:
+    return "FLUSH";
+  case Command::Read:
+    return "READ";
+  case Command::Write:
+    return "WRITE";
+  case Command::Lock:
+    return "LOCK";
+  case Command::Ioctl:
+    return "IOCTL";
+  case Command::Cancel:
+    return "CANCEL";
+  case Command::Echo:
+    return "ECHO";
+  case Command::QueryDirectory:
+    return "QUERY_DIRECTORY";
+  case Command::ChangeNotify:
+    return "CHANGE_NOTIFY";
+  case Command::QueryInfo:
+    return "QUERY_INFO";
+  case Command::SetInfo:
+    return "SET_INFO";
+  case Command::OplockBreak:
+    return "OPLOCK_BREAK";
+  }
+  return "UNKNOWN";
+}
+
+std::string requestContext(const ByteVector &requestFrame) {
+  const auto payload = decodeDirectTcpPayload(requestFrame);
+  if (!payload.ok) {
+    return {};
+  }
+  const auto header = decodeSmb2SyncHeader(payload.value);
+  if (!header.ok) {
+    return {};
+  }
+
+  std::ostringstream stream;
+  stream << " while waiting for " << commandName(header.value.command)
+         << " response message_id=0x" << std::hex << std::uppercase
+         << std::setfill('0') << std::setw(16) << header.value.messageId;
+  return stream.str();
+}
+
+DecodeResult<ByteVector>
+withRequestContext(const DecodeResult<ByteVector> &result,
+                   const ByteVector &requestFrame) {
+  if (result.ok) {
+    return result;
+  }
+  auto message = result.error.message;
+  const auto context = requestContext(requestFrame);
+  if (!context.empty()) {
+    message += context;
+    message += ".";
+  }
+  return DecodeResult<ByteVector>::failure(result.error.code,
+                                           std::move(message));
+}
+
+DecodeResult<ByteVector> bytesFailureWithRequestContext(
+    const DecodeResult<bool> &result, const ByteVector &requestFrame) {
+  auto message = result.error.message;
+  const auto context = requestContext(requestFrame);
+  if (!context.empty()) {
+    message += context;
+    message += ".";
+  }
+  return DecodeResult<ByteVector>::failure(result.error.code,
+                                           std::move(message));
 }
 
 DecodeResult<bool> waitForSocket(NativeSocket socket, bool writable,
@@ -345,14 +435,13 @@ DirectTcpTransport::exchange(const ByteVector &requestFrame,
   const auto sent = sendAll(requestFrame, context);
   if (!sent.ok) {
     close();
-    return DecodeResult<ByteVector>::failure(sent.error.code,
-                                             sent.error.message);
+    return bytesFailureWithRequestContext(sent, requestFrame);
   }
 
   auto header = receiveExact(kDirectTcpHeaderSize, context);
   if (!header.ok) {
     close();
-    return header;
+    return withRequestContext(header, requestFrame);
   }
 
   const auto payloadLength = decodeDirectTcpPayloadLength(header.value);
@@ -365,7 +454,7 @@ DirectTcpTransport::exchange(const ByteVector &requestFrame,
   auto payload = receiveExact(payloadLength.value, context);
   if (!payload.ok) {
     close();
-    return payload;
+    return withRequestContext(payload, requestFrame);
   }
 
   ByteVector frame;

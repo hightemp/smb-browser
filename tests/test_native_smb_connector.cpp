@@ -175,8 +175,7 @@ smb::native_smb::DecodeResult<smb::native_smb::ByteVector>
 preauthHashForSmb311ConnectorFlow(
     const smb::native_smb::NativeSmbConnectorOptions &options,
     const smb::native_smb::ByteVector &negotiateResponse,
-    const smb::native_smb::ByteVector &challengeResponse,
-    const smb::native_smb::ByteVector &finalSessionResponse) {
+    const smb::native_smb::ByteVector &challengeResponse) {
   smb::native_smb::NegotiateRequestOptions negotiateOptions =
       options.negotiateOptions;
   negotiateOptions.signing = options.config.signing;
@@ -230,8 +229,7 @@ preauthHashForSmb311ConnectorFlow(
   if (!updated.ok) {
     return updated;
   }
-  return smb::native_smb::updateSmb311PreauthHash(updated.value,
-                                                 finalSessionResponse);
+  return updated;
 }
 
 smb::native_smb::ByteVector emptyStructureResponsePayload(
@@ -292,7 +290,7 @@ private slots:
     smb::native_smb::NativeSmbConnectorOptions options;
     options.config.server = "server";
     options.config.share = "share";
-    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+    options.config.signing = smb::native_smb::SecurityPolicy::Disabled;
     options.firstSessionMessageId = 10;
 
     const smb::native_smb::NativeSmbConnector connector;
@@ -344,6 +342,11 @@ private slots:
         signedFrame(treeConnectResponsePayload(), tokenProvider.sessionKey,
                     smb::native_smb::Dialect::Smb210);
     QVERIFY(signedTreeResponse.ok);
+    const auto finalSessionResponse = signedFrame(
+        sessionSetupResponsePayload(smb::native_smb::kStatusSuccess,
+                                    0x0102030405060708ULL, {}),
+        tokenProvider.sessionKey, smb::native_smb::Dialect::Smb210);
+    QVERIFY(finalSessionResponse.ok);
 
     auto transport = std::make_unique<ScriptedTransport>(
         std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
@@ -352,8 +355,8 @@ private slots:
             framedSuccess(sessionSetupResponsePayload(
                 smb::native_smb::kStatusMoreProcessingRequired,
                 0x0102030405060708ULL, {'c'})),
-            framedSuccess(sessionSetupResponsePayload(
-                smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {})),
+            smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
+                success(finalSessionResponse.value),
             smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
                 success(signedTreeResponse.value),
         });
@@ -380,6 +383,48 @@ private slots:
                        [](std::uint8_t byte) { return byte != 0; }));
   }
 
+  void signsTreeConnectWhenSigningIsPreferred() {
+    ScriptedTokenProvider tokenProvider;
+    const auto signedTreeResponse =
+        signedFrame(treeConnectResponsePayload(), tokenProvider.sessionKey,
+                    smb::native_smb::Dialect::Smb210);
+    QVERIFY(signedTreeResponse.ok);
+
+    auto transport = std::make_unique<ScriptedTransport>(
+        std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
+            framedSuccess(negotiateResponsePayload(
+                smb::native_smb::Dialect::Smb210, 0x0001)),
+            framedSuccess(sessionSetupResponsePayload(
+                smb::native_smb::kStatusMoreProcessingRequired,
+                0x0102030405060708ULL, {'c'})),
+            framedSuccess(sessionSetupResponsePayload(
+                smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {})),
+            smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
+                success(signedTreeResponse.value),
+        });
+    auto *transportPtr = transport.get();
+
+    smb::native_smb::NativeSmbConnectorOptions options;
+    options.config.server = "server";
+    options.config.share = "share";
+    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+    options.firstSessionMessageId = 10;
+
+    const smb::native_smb::NativeSmbConnector connector;
+    auto result =
+        connector.connect(std::move(transport), tokenProvider, options, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(transportPtr->requestFrames.size(), std::size_t{4});
+    const auto treeHeader = requestHeader(transportPtr->requestFrames[3]);
+    QCOMPARE(static_cast<int>(treeHeader.command),
+             static_cast<int>(smb::native_smb::Command::TreeConnect));
+    QVERIFY((treeHeader.flags & smb::native_smb::kFlagSigned) != 0);
+    QVERIFY(std::any_of(treeHeader.signature.begin(),
+                       treeHeader.signature.end(),
+                       [](std::uint8_t byte) { return byte != 0; }));
+  }
+
   void derivesSmb3SigningKeyWhenSigningIsRequired() {
     ScriptedTokenProvider tokenProvider;
     const auto signingKey = smb::native_smb::deriveSmb3SigningKey(
@@ -389,6 +434,11 @@ private slots:
         signedFrame(treeConnectResponsePayload(), signingKey.value,
                     smb::native_smb::Dialect::Smb302);
     QVERIFY(signedTreeResponse.ok);
+    const auto finalSessionResponse = signedFrame(
+        sessionSetupResponsePayload(smb::native_smb::kStatusSuccess,
+                                    0x0102030405060708ULL, {}),
+        signingKey.value, smb::native_smb::Dialect::Smb302);
+    QVERIFY(finalSessionResponse.ok);
 
     auto transport = std::make_unique<ScriptedTransport>(
         std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
@@ -397,8 +447,8 @@ private slots:
             framedSuccess(sessionSetupResponsePayload(
                 smb::native_smb::kStatusMoreProcessingRequired,
                 0x0102030405060708ULL, {'c'})),
-            framedSuccess(sessionSetupResponsePayload(
-                smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {})),
+            smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
+                success(finalSessionResponse.value),
             smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
                 success(signedTreeResponse.value),
         });
@@ -442,7 +492,7 @@ private slots:
     const auto finalSessionResponse = sessionSetupResponsePayload(
         smb::native_smb::kStatusSuccess, 0x0102030405060708ULL, {});
     const auto preauthHash = preauthHashForSmb311ConnectorFlow(
-        options, negotiateResponse, challengeResponse, finalSessionResponse);
+        options, negotiateResponse, challengeResponse);
     QVERIFY(preauthHash.ok);
     const auto signingKey = smb::native_smb::deriveSmb311SigningKey(
         tokenProvider.sessionKey, preauthHash.value);
@@ -451,12 +501,16 @@ private slots:
         signedFrame(treeConnectResponsePayload(), signingKey.value,
                     smb::native_smb::Dialect::Smb311);
     QVERIFY(signedTreeResponse.ok);
+    const auto signedFinalSessionResponse = signedFrame(
+        finalSessionResponse, signingKey.value, smb::native_smb::Dialect::Smb311);
+    QVERIFY(signedFinalSessionResponse.ok);
 
     auto transport = std::make_unique<ScriptedTransport>(
         std::deque<smb::native_smb::DecodeResult<smb::native_smb::ByteVector>>{
             framedSuccess(negotiateResponse),
             framedSuccess(challengeResponse),
-            framedSuccess(finalSessionResponse),
+            smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
+                success(signedFinalSessionResponse.value),
             smb::native_smb::DecodeResult<smb::native_smb::ByteVector>::
                 success(signedTreeResponse.value),
         });
@@ -515,7 +569,7 @@ private slots:
     options.config.server = "server";
     options.config.share = "share";
     options.config.encryption = smb::native_smb::SecurityPolicy::Preferred;
-    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+    options.config.signing = smb::native_smb::SecurityPolicy::Disabled;
 
     const smb::native_smb::NativeSmbConnector connector;
     auto result =
@@ -544,7 +598,7 @@ private slots:
     options.config.server = "server";
     options.config.share = "share";
     options.config.encryption = smb::native_smb::SecurityPolicy::Preferred;
-    options.config.signing = smb::native_smb::SecurityPolicy::Preferred;
+    options.config.signing = smb::native_smb::SecurityPolicy::Disabled;
 
     const smb::native_smb::NativeSmbConnector connector;
     auto result =

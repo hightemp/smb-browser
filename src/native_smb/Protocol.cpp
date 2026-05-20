@@ -12,6 +12,7 @@ namespace {
 
 constexpr std::uint16_t kSigningEnabled = 0x0001;
 constexpr std::uint16_t kSigningRequired = 0x0002;
+constexpr std::uint32_t kSmb2ProcessId = 0x0000FEFF;
 constexpr std::uint32_t kMaxDirectTcpPayloadLength = 0x00FFFFFF;
 
 void appendU16Le(ByteVector &bytes, std::uint16_t value) {
@@ -408,7 +409,7 @@ ByteVector encodeSmb2SyncHeader(const Smb2SyncHeader &header) {
   appendU32Le(bytes, header.flags);
   appendU32Le(bytes, header.nextCommand);
   appendU64Le(bytes, header.messageId);
-  appendU32Le(bytes, 0);
+  appendU32Le(bytes, kSmb2ProcessId);
   appendU32Le(bytes, header.treeId);
   appendU64Le(bytes, header.sessionId);
   bytes.insert(bytes.end(), header.signature.begin(), header.signature.end());
@@ -597,6 +598,7 @@ ByteVector buildSessionSetupRequest(const SessionSetupRequestOptions &options,
   header.command = Command::SessionSetup;
   header.messageId = messageId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kSecurityBufferOffset =
@@ -700,6 +702,7 @@ ByteVector buildTreeConnectRequest(const TreeConnectRequestOptions &options,
   header.command = Command::TreeConnect;
   header.messageId = messageId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kPathOffset = kSmb2HeaderSize + 8;
@@ -773,6 +776,7 @@ ByteVector buildTreeDisconnectRequest(std::uint64_t messageId,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   auto bytes = encodeSmb2SyncHeader(header);
@@ -831,6 +835,7 @@ ByteVector buildLogoffRequest(std::uint64_t messageId,
   header.command = Command::Logoff;
   header.messageId = messageId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   auto bytes = encodeSmb2SyncHeader(header);
@@ -899,6 +904,7 @@ ByteVector buildCreateRequest(const CreateRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kNameOffset = kSmb2HeaderSize + 56;
@@ -919,7 +925,7 @@ ByteVector buildCreateRequest(const CreateRequestOptions &options,
   appendU32Le(bytes, options.shareAccess);
   appendU32Le(bytes, options.createDisposition);
   appendU32Le(bytes, options.createOptions);
-  appendU16Le(bytes, name.empty() ? 0 : kNameOffset);
+  appendU16Le(bytes, kNameOffset);
   appendU16Le(bytes, static_cast<std::uint16_t>(name.size()));
   appendU32Le(bytes, createContextsOffset);
   appendU32Le(bytes, static_cast<std::uint32_t>(options.createContexts.size()));
@@ -997,6 +1003,7 @@ ByteVector buildCloseRequest(const CloseRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   auto bytes = encodeSmb2SyncHeader(header);
@@ -1073,6 +1080,7 @@ ByteVector buildReadRequest(const ReadRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
   if (options.length > 0) {
     header.creditCharge =
@@ -1178,6 +1186,7 @@ ByteVector buildWriteRequest(const WriteRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
   if (!options.data.empty()) {
     header.creditCharge =
@@ -1267,6 +1276,7 @@ ByteVector buildIoctlRequest(const IoctlRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint32_t kBufferOffset = kSmb2HeaderSize + 56;
@@ -1449,6 +1459,7 @@ ByteVector buildSetInfoRequest(const SetInfoRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kBufferOffset = kSmb2HeaderSize + 32;
@@ -1523,6 +1534,7 @@ ByteVector buildQueryInfoRequest(const QueryInfoRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kInputBufferOffset = kSmb2HeaderSize + 40;
@@ -1809,6 +1821,7 @@ ByteVector buildQueryDirectoryRequest(
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
 
   constexpr std::uint16_t kFileNameOffset = kSmb2HeaderSize + 32;
@@ -1953,6 +1966,7 @@ ByteVector buildChangeNotifyRequest(const ChangeNotifyRequestOptions &options,
   header.messageId = messageId;
   header.treeId = treeId;
   header.sessionId = sessionId;
+  header.creditCharge = 1;
   header.creditRequest = 1;
   if (options.outputBufferLength > 0) {
     header.creditCharge = static_cast<std::uint16_t>(
