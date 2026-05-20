@@ -22,11 +22,18 @@ library. Возможность считается готовой только �
 
    Проверяют application-level `SmbClient` contract. Они должны проходить для
    `FakeSmbClient` всегда и для `NativeSmbClient` в integration profile.
+   Default `smb_client_contract` запускает fake-only сценарии и пропускает
+   native parts, пока не заданы переменные окружения real-server fixture.
 
 4. Docker Samba integration tests
 
    Проверяют реальный wire interaction с Samba fixture на synthetic
    credentials. Профиль opt-in и не запускается в default local unit run.
+   Fixture содержит password share, guest share, second share for cross-share
+   operations, nested directories, metadata/ACL/EA sample file, large file and
+   symlink fixture where Samba exposes it. Native real-wire execution is opt-in
+   with `SMB_BROWSER_DOCKER_SAMBA_NATIVE_WIRE=1` so the default test suite
+   remains offline-only.
 
 5. Windows Server manual/runner tests
 
@@ -93,6 +100,27 @@ library. Возможность считается готовой только �
 - `windows-smb`: manual or runner-backed Windows Server validation.
 - `package-smoke`: platform package and dependency audit.
 - `security`: secret/log/export regression tests.
+
+## Native contract environment
+
+`smb_client_contract` can run the same mutating application-level contract
+against a real native SMB backend when these variables are set:
+
+- `SMB_BROWSER_NATIVE_CONTRACT_SERVER`
+- `SMB_BROWSER_NATIVE_CONTRACT_SHARE`
+- `SMB_BROWSER_NATIVE_CONTRACT_USER`
+- `SMB_BROWSER_NATIVE_CONTRACT_PASSWORD`
+- `SMB_BROWSER_NATIVE_CONTRACT_DOMAIN` optional
+- `SMB_BROWSER_NATIVE_CONTRACT_AUTH=password|guest|anonymous`
+
+Optional feature fixtures:
+
+- `SMB_BROWSER_NATIVE_CONTRACT_SYMLINK_PARENT`
+- `SMB_BROWSER_NATIVE_CONTRACT_SYMLINK_NAME`
+- `SMB_BROWSER_NATIVE_CONTRACT_DFS_PATH`
+
+Default CI must not set real corporate credentials. Docker/runner profiles must
+use synthetic credentials only.
 
 ## Definition of done for native library features
 
@@ -206,3 +234,16 @@ A `Must` native library feature is not complete until:
   delete, wildcard delete, single-shot directory watch, message id allocation,
   result mapping, cancellation before recursive delete network IO and error
   propagation without exposing raw packet buffers to callers.
+- `smb_client_contract`: application-level `SmbClient` contract. Default run
+  covers FakeSmbClient check/list/upload/download/mkdir/delete/rename/copy/move,
+  symlink listing, timeout and cancellation. Native real-server contract is
+  opt-in with environment variables and covers the same mutating flow plus
+  optional symlink/DFS fixture checks when configured.
+- `docker_samba_integration`: opt-in real-wire Docker Samba profile for the
+  clean-room native backend. Covers password and guest auth, root/nested
+  listing, metadata fixture visibility, large-file download progress,
+  large-file upload progress, overwrite verification, rename/delete and
+  cross-share stream copy using synthetic credentials.
+- `security_regression`: default security gate for export/import, SQLite
+  metadata, operation names, native error diagnostics and no stdout/stderr
+  diagnostics in native SMB sources.

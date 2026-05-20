@@ -45,13 +45,24 @@ private slots:
     client.addDirectory(QStringLiteral("/docs"));
     client.addFile(QStringLiteral("/docs/readme.txt"),
                    QByteArrayLiteral("hello"));
+    client.addSymlink(QStringLiteral("/docs/latest"));
 
     const auto listed = client.listDirectory(connection(), nullptr,
                                              QStringLiteral("/docs"), {});
     QVERIFY(listed.ok());
-    QCOMPARE(listed.value().size(), 1);
-    QCOMPARE(listed.value().at(0).name, QStringLiteral("readme.txt"));
-    QVERIFY(listed.value().at(0).type == smb::core::RemoteFileType::File);
+    QCOMPARE(listed.value().size(), 2);
+    bool sawFile = false;
+    bool sawSymlink = false;
+    for (const auto &entry : listed.value()) {
+      if (entry.name == QStringLiteral("readme.txt")) {
+        sawFile = entry.type == smb::core::RemoteFileType::File;
+      }
+      if (entry.name == QStringLiteral("latest")) {
+        sawSymlink = entry.type == smb::core::RemoteFileType::Symlink;
+      }
+    }
+    QVERIFY(sawFile);
+    QVERIFY(sawSymlink);
   }
 
   void createDeleteAndRename() {

@@ -15,6 +15,7 @@ struct RemoteStatResult {
   std::uint64_t endOfFile = 0;
   std::uint32_t fileAttributes = 0;
   std::uint32_t numberOfLinks = 0;
+  std::uint64_t messagesUsed = 0;
   bool deletePending = false;
   bool directory = false;
   bool reparsePoint = false;

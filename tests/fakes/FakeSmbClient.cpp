@@ -95,6 +95,12 @@ void FakeSmbClient::addFile(const QString &remotePath, QByteArray content) {
                  Node{smb::core::RemoteFileType::File, std::move(content)});
 }
 
+void FakeSmbClient::addSymlink(const QString &remotePath) {
+  const auto path = normalizePath(remotePath);
+  addDirectory(parentPath(path));
+  m_nodes.insert(path, Node{smb::core::RemoteFileType::Symlink, {}});
+}
+
 smb::core::Result<bool>
 FakeSmbClient::checkConnection(const smb::core::Connection &,
                                const smb::core::CredentialSecret *secret,

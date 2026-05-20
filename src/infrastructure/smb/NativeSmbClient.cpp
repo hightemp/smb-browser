@@ -18,7 +18,7 @@ namespace smb::infrastructure {
 namespace {
 
 constexpr std::uint64_t kUnixEpochAsFiletime = 116444736000000000ULL;
-constexpr std::uint32_t kChunkSize = 1024 * 1024;
+constexpr std::uint32_t kChunkSize = 64 * 1024;
 
 smb::core::AppError localIoError(const QString &details) {
   return smb::core::AppError::fromCode(smb::core::ErrorCode::LocalIoError,
@@ -63,17 +63,16 @@ smb::native_smb::AuthMode toNativeAuthMode(smb::core::AuthType authType) {
 }
 
 smb::native_smb::SecurityPolicy signingPolicyForAuthType(
-    smb::core::AuthType authType) {
-  if (authType == smb::core::AuthType::Anonymous) {
-    return smb::native_smb::SecurityPolicy::Preferred;
-  }
-  return smb::native_smb::SecurityPolicy::Required;
+    smb::core::AuthType /*authType*/) {
+  return smb::native_smb::SecurityPolicy::Preferred;
 }
+
+smb::native_smb::DirectTcpEndpoint endpointForServer(const QString &server);
 
 smb::native_smb::ConnectionConfig nativeConfig(
     const smb::core::Connection &connection, int timeoutSeconds) {
   smb::native_smb::ConnectionConfig config;
-  config.server = connection.server.toStdString();
+  config.server = endpointForServer(connection.server).host;
   config.share = connection.share.toStdString();
   config.normalizedUri = connection.normalizedUri.toStdString();
   config.domain = connection.domain.toStdString();
@@ -94,6 +93,39 @@ smb::native_smb::SecretBuffer nativeSecret(
       reinterpret_cast<const std::uint8_t *>(secret->bytes.constData());
   return smb::native_smb::SecretBuffer(
       smb::native_smb::ByteVector(begin, begin + secret->bytes.size()));
+}
+
+smb::native_smb::DirectTcpEndpoint endpointForServer(const QString &server) {
+  smb::native_smb::DirectTcpEndpoint endpoint;
+  auto host = server.trimmed();
+
+  if (host.startsWith(QLatin1Char('['))) {
+    const auto closingBracket = host.indexOf(QLatin1Char(']'));
+    if (closingBracket > 0 &&
+        host.mid(closingBracket + 1).startsWith(QLatin1Char(':'))) {
+      bool ok = false;
+      const auto port = host.mid(closingBracket + 2).toUShort(&ok);
+      if (ok && port > 0) {
+        endpoint.host = host.mid(1, closingBracket - 1).toStdString();
+        endpoint.port = port;
+        return endpoint;
+      }
+    }
+  }
+
+  const auto colon = host.lastIndexOf(QLatin1Char(':'));
+  if (colon > 0 && host.indexOf(QLatin1Char(':')) == colon) {
+    bool ok = false;
+    const auto port = host.mid(colon + 1).toUShort(&ok);
+    if (ok && port > 0) {
+      endpoint.host = host.left(colon).toStdString();
+      endpoint.port = port;
+      return endpoint;
+    }
+  }
+
+  endpoint.host = host.toStdString();
+  return endpoint;
 }
 
 smb::native_smb::OperationContext nativeContext(
@@ -202,8 +234,7 @@ openNativeConnection(const smb::core::Connection &connection,
         smb::native_smb::ErrorCode::Cancelled, "Operation was cancelled.");
   }
 
-  smb::native_smb::DirectTcpEndpoint endpoint;
-  endpoint.host = connection.server.toStdString();
+  auto endpoint = endpointForServer(connection.server);
   auto transport =
       std::make_unique<smb::native_smb::DirectTcpTransport>(endpoint);
 

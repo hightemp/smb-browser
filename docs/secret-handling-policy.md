@@ -46,6 +46,9 @@
 - Нет новых полей password/secret/token в SQLite schema, domain metadata, UI models или settings.
 - Все paths import/export/check/connect покрыты sanitizer или явно не формируют лог с секретом.
 - Unit tests подтверждают отсутствие секретов в default export и логах.
+- `security_regression` проходит в default `ctest` и покрывает default export,
+  dangerous plain-text export, SQLite metadata, operation names и native error
+  diagnostics.
 - Tests используют synthetic secrets, а не реальные пароли.
 - Ошибки, возвращаемые в UI, не содержат raw backend credential string.
 - Plain-text password export требует отдельного подтверждения и не включается случайно флагом default export.

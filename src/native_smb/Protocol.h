@@ -70,6 +70,7 @@ struct FileId {
 struct ProtocolError {
   ErrorCode code = ErrorCode::None;
   std::string message;
+  std::uint64_t messagesUsed = 0;
 };
 
 template <typename T> struct DecodeResult {
@@ -84,10 +85,12 @@ template <typename T> struct DecodeResult {
     return result;
   }
 
-  static DecodeResult failure(ErrorCode code, std::string message) {
+  static DecodeResult failure(ErrorCode code, std::string message,
+                              std::uint64_t messagesUsed = 0) {
     DecodeResult result;
     result.error.code = code;
     result.error.message = std::move(message);
+    result.error.messagesUsed = messagesUsed;
     return result;
   }
 };

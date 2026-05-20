@@ -841,6 +841,9 @@ ByteVector buildCreateRequest(const CreateRequestOptions &options,
   bytes.insert(bytes.end(), name.begin(), name.end());
   bytes.insert(bytes.end(), options.createContexts.begin(),
                options.createContexts.end());
+  if (name.empty() && options.createContexts.empty()) {
+    bytes.push_back(0);
+  }
   return bytes;
 }
 
@@ -1009,6 +1012,9 @@ ByteVector buildReadRequest(const ReadRequestOptions &options,
   appendU16Le(bytes, static_cast<std::uint16_t>(options.channelInfo.size()));
   bytes.insert(bytes.end(), options.channelInfo.begin(),
                options.channelInfo.end());
+  if (options.channelInfo.empty()) {
+    bytes.push_back(0);
+  }
   return bytes;
 }
 

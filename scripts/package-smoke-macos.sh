@@ -57,13 +57,33 @@ if otool -L "$APP_PATH/Contents/MacOS/smb-browser" | grep -Eiq 'libsmb2|smbclien
   exit 1
 fi
 
-"$APP_PATH/Contents/MacOS/smb-browser" &
+"$APP_PATH/Contents/MacOS/smb-browser" --smoke-close-ms=1000 &
 pid=$!
-sleep 3
+deadline=$((SECONDS + 10))
+while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+  sleep 1
+done
 if kill -0 "$pid" 2>/dev/null; then
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-else
+  echo "Application did not close cleanly during smoke test." >&2
+  exit 1
+fi
+wait "$pid"
+
+if [ -n "${SMB_BROWSER_SMOKE_SERVER:-}" ] && [ -n "${SMB_BROWSER_SMOKE_SHARE:-}" ]; then
+  "$APP_PATH/Contents/MacOS/smb-browser" --smoke-smb-list &
+  pid=$!
+  deadline=$((SECONDS + ${SMB_BROWSER_SMOKE_TIMEOUT_SECONDS:-30}))
+  while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    echo "Application did not finish SMB list smoke." >&2
+    exit 1
+  fi
   wait "$pid"
 fi
 

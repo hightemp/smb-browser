@@ -86,17 +86,20 @@ make smoke-linux
 ```
 
 The package is written to `tmp/package-linux/packages`.
+If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the smoke
+script also verifies that the packaged app can list the synthetic test share
+through the built-in native backend.
 
 Windows and macOS packaging plans are documented in `docs/windows-packaging.md`
 and `docs/macos-packaging.md`. Their smoke scripts must be run on the matching
 operating system:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
 ```bash
-scripts/package-smoke-macos.sh
+scripts/package-macos.sh
 ```
 
 ## Optional Docker Samba integration test
@@ -109,10 +112,24 @@ make samba-test
 make samba-down
 ```
 
+`make samba-up` builds the fixture and waits for the container healthcheck
+before returning.
+
+## License
+
+SMB Browser source code is licensed under `GPL-3.0-or-later`.
+
+The native SMB engine is clean-room project source. Samba source code and
+binaries are not copied, linked, vendored or distributed; local checkouts under
+`tmp/` are development-only reference material.
+
 ## Project docs
 
 - `PRD.md` - product requirements.
 - `TASKS.md` - implementation backlog with completion checkboxes.
+- `docs/current-user-kerberos.md` - current-user/Kerberos/SSO design.
+- `docs/cross-platform-smoke.md` - package and real-server smoke profile.
+- `docs/license-compliance.md` - license and release compliance notes.
 - `docs/libsmb2-spike.md` - libsmb2 integration notes.
 - `docs/native-smb-clean-room.md` - clean-room native SMB migration plan.
 - `docs/native-smb-test-matrix.md` - native SMB capability test matrix.
@@ -120,4 +137,5 @@ make samba-down
 - `docs/windows-packaging.md` - Windows packaging plan.
 - `docs/macos-packaging.md` - macOS packaging plan.
 - `docs/secret-handling-policy.md` - secret handling rules.
+- `docs/security-hardening.md` - release hardening and dependency audit.
 - `docs/release-checklist.md` - release gate checklist.

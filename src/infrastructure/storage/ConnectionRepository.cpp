@@ -1,5 +1,7 @@
 #include "storage/ConnectionRepository.h"
 
+#include "core/LogSanitizer.h"
+
 #include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -119,6 +121,11 @@ QString nonNullString(const QString &value) {
   return value.isNull() ? QStringLiteral("") : value;
 }
 
+QString sanitizedLogText(const QString &value) {
+  const smb::core::LogSanitizer sanitizer;
+  return sanitizer.sanitize(nonNullString(value));
+}
+
 smb::core::Connection connectionFromQuery(const QSqlQuery &query) {
   const auto value = [&query](const QString &fieldName) {
     return query.value(query.record().indexOf(fieldName));
@@ -188,7 +195,7 @@ void bindConnection(QSqlQuery &query, const smb::core::Connection &connection) {
   query.bindValue(QStringLiteral(":last_error_code"),
                   smb::core::toString(connection.lastErrorCode));
   query.bindValue(QStringLiteral(":last_error_message"),
-                  nonNullString(connection.lastErrorMessage));
+                  sanitizedLogText(connection.lastErrorMessage));
   query.bindValue(QStringLiteral(":last_successful_check_at"),
                   dateToValue(connection.lastSuccessfulCheckAt));
 }
@@ -352,7 +359,8 @@ ConnectionRepository::updateLastError(const QString &id,
       "WHERE id = :id"));
   query.bindValue(QStringLiteral(":last_error_code"),
                   smb::core::toString(errorCode));
-  query.bindValue(QStringLiteral(":last_error_message"), sanitizedMessage);
+  query.bindValue(QStringLiteral(":last_error_message"),
+                  sanitizedLogText(sanitizedMessage));
   query.bindValue(QStringLiteral(":updated_at"), nowIsoUtc());
   query.bindValue(QStringLiteral(":id"), id);
   if (!query.exec()) {

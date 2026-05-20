@@ -48,7 +48,8 @@ make sbom
 The command writes `tmp/sbom/smb-browser-sbom.json`. The manifest records the
 native SMB engine as clean-room project source and lists the runtime dependency
 families that must be reviewed for release: Qt5, QtKeychain, SQLite, libsodium
-and OS networking APIs.
+and OS networking APIs. The manifest declares the project license as
+`GPL-3.0-or-later`.
 
 The generated file is a release artifact, not committed source.
 
@@ -87,3 +88,8 @@ Crash reports, logs, package smoke output, SBOM output and dependency audit
 logs must not include passwords, credential-bearing URIs, master passwords or
 raw credential blobs. New native SMB error paths must pass through the existing
 sanitization layer before they reach user-visible logs or diagnostics.
+
+The default test suite includes `security_regression`, which verifies that
+synthetic secrets do not appear in default export/import metadata, SQLite error
+metadata, transfer operation names or native SMB diagnostic errors. It also
+keeps the dangerous plain-text password export flow explicit and confirmed.

@@ -19,19 +19,12 @@ Git, and Xcode command line tools available. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```bash
-cmake -S . -B tmp/package-macos -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DSMB_BROWSER_WITH_LIBSMB2=OFF \
-  -DSMB_BROWSER_WITH_NATIVE_SMB=ON \
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
-cmake --build tmp/package-macos
-ctest --test-dir tmp/package-macos --output-on-failure
-cmake --build tmp/package-macos --target package
-scripts/package-smoke-macos.sh
+scripts/package-macos.sh
 ```
 
-Run `macdeployqt` against `smb-browser.app` before publishing the DMG. The app
-bundle must include:
+The helper configures the native backend, builds, runs `ctest`, attempts
+`macdeployqt`, creates the package and runs `package-smoke-macos.sh`.
+The app bundle must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg frameworks and platform/image plugins.
 - QtKeychain runtime dependency.
@@ -46,6 +39,14 @@ executable, so packaged language switching can load the `.qm` file.
 The app bundle must not contain `libsmb2`, `smbclient` or Samba client helper
 binaries. The smoke script should inspect the bundle with `otool -L` and fail if
 a legacy SMB runtime dependency is present.
+
+The package smoke script starts `smb-browser --smoke-close-ms=1000` and fails
+if the process does not exit, so close-without-tray behavior is checked without
+manual interaction.
+
+If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
+also runs `smb-browser --smoke-smb-list` and requires a successful directory
+listing through the packaged native backend.
 
 DFS namespace support must be implemented by the native SMB engine. Until the
 native DFS task is complete, DFS limitations should be documented as product

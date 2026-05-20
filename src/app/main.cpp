@@ -37,6 +37,9 @@
 #include <QMessageBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QTimer>
+
+#include <algorithm>
 
 namespace {
 
@@ -144,6 +147,82 @@ QString statusForCheck(
   return QObject::tr("Connection: Unavailable");
 }
 
+int smokeCloseDelayMs(const QStringList &arguments) {
+  constexpr int kDisabled = -1;
+  for (const auto &argument : arguments) {
+    if (!argument.startsWith(QStringLiteral("--smoke-close-ms="))) {
+      continue;
+    }
+
+    bool ok = false;
+    const auto value =
+        argument.mid(QStringLiteral("--smoke-close-ms=").size()).toInt(&ok);
+    if (ok && value >= 0) {
+      return value;
+    }
+    return 1000;
+  }
+  return kDisabled;
+}
+
+bool hasArgument(const QStringList &arguments, const QString &name) {
+  return std::any_of(arguments.cbegin(), arguments.cend(),
+                     [&name](const QString &argument) {
+                       return argument == name;
+                     });
+}
+
+QString smokeEnv(const char *name) {
+  return QString::fromUtf8(qgetenv(name)).trimmed();
+}
+
+int runSmbListSmoke() {
+#ifdef SMB_BROWSER_WITH_NATIVE_SMB
+  const auto server = smokeEnv("SMB_BROWSER_SMOKE_SERVER");
+  const auto share = smokeEnv("SMB_BROWSER_SMOKE_SHARE");
+  if (server.isEmpty() || share.isEmpty()) {
+    return 2;
+  }
+
+  smb::core::Connection connection = smb::core::Connection::createEmpty();
+  connection.id = QStringLiteral("smoke");
+  connection.name = QStringLiteral("Smoke");
+  connection.server = server;
+  connection.share = share;
+  connection.normalizedUri = QStringLiteral("smb://%1/%2").arg(server, share);
+  connection.domain = smokeEnv("SMB_BROWSER_SMOKE_DOMAIN");
+  connection.username = smokeEnv("SMB_BROWSER_SMOKE_USER");
+
+  smb::core::CredentialSecret secret;
+  const smb::core::CredentialSecret *secretPtr = nullptr;
+  const auto auth = smokeEnv("SMB_BROWSER_SMOKE_AUTH").toLower();
+  if (auth == QStringLiteral("guest")) {
+    connection.authType = smb::core::AuthType::Guest;
+  } else if (auth == QStringLiteral("anonymous")) {
+    connection.authType = smb::core::AuthType::Anonymous;
+  } else {
+    const auto password = qgetenv("SMB_BROWSER_SMOKE_PASSWORD");
+    if (password.isEmpty()) {
+      return 2;
+    }
+    connection.authType = smb::core::AuthType::Password;
+    secret.bytes = password;
+    secretPtr = &secret;
+  }
+
+  bool ok = false;
+  const auto timeoutSeconds =
+      smokeEnv("SMB_BROWSER_SMOKE_TIMEOUT_SECONDS").toInt(&ok);
+  smb::infrastructure::NativeSmbClient smbClient(ok ? timeoutSeconds : 10);
+  const auto result =
+      smbClient.listDirectory(connection, secretPtr,
+                              smokeEnv("SMB_BROWSER_SMOKE_PATH"), {});
+  return result.ok() ? 0 : 1;
+#else
+  return 2;
+#endif
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -151,6 +230,9 @@ int main(int argc, char *argv[]) {
   QApplication::setApplicationName(QStringLiteral("SMB Browser"));
   QApplication::setOrganizationName(QStringLiteral("SMB Browser"));
   QApplication::setQuitOnLastWindowClosed(true);
+  if (hasArgument(app.arguments(), QStringLiteral("--smoke-smb-list"))) {
+    return runSmbListSmoke();
+  }
 
   const auto appDataPath = writableAppDataPath();
   if (!QDir().mkpath(appDataPath)) {
@@ -319,6 +401,10 @@ int main(int argc, char *argv[]) {
                    });
 
   window.show();
+  const auto closeDelayMs = smokeCloseDelayMs(app.arguments());
+  if (closeDelayMs >= 0) {
+    QTimer::singleShot(closeDelayMs, &window, [&window]() { window.close(); });
+  }
 
   return app.exec();
 }

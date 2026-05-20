@@ -742,6 +742,32 @@ private slots:
     QCOMPARE(header.value.sessionId, std::uint64_t{34});
   }
 
+  void buildsCreateRootDirectoryRequestWithRequiredBufferByte() {
+    smb::native_smb::CreateRequestOptions options;
+    options.desiredAccess =
+        smb::native_smb::kFileListDirectory |
+        smb::native_smb::kFileReadEa |
+        smb::native_smb::kFileReadAttributes;
+    options.fileAttributes = smb::native_smb::kFileAttributeNormal;
+    options.shareAccess = smb::native_smb::kFileShareRead |
+                          smb::native_smb::kFileShareWrite |
+                          smb::native_smb::kFileShareDelete;
+    options.createDisposition = smb::native_smb::kFileOpen;
+    options.createOptions = smb::native_smb::kFileDirectoryFile;
+
+    const auto bytes =
+        smb::native_smb::buildCreateRequest(options, 20, 77, 34);
+
+    QCOMPARE(bytes.size(), std::size_t{121});
+    QCOMPARE(readU16Le(bytes, 64),
+             smb::native_smb::kCreateRequestStructureSize);
+    QCOMPARE(readU16Le(bytes, 108), std::uint16_t{0});
+    QCOMPARE(readU16Le(bytes, 110), std::uint16_t{0});
+    QCOMPARE(readU32Le(bytes, 112), std::uint32_t{0});
+    QCOMPARE(readU32Le(bytes, 116), std::uint32_t{0});
+    QCOMPARE(bytes[120], std::uint8_t{0});
+  }
+
   void decodesCreateResponse() {
     const auto response =
         smb::native_smb::decodeCreateResponse(buildCreateResponse());
@@ -810,7 +836,7 @@ private slots:
 
     const auto bytes = smb::native_smb::buildReadRequest(options, 23, 77, 34);
 
-    QCOMPARE(bytes.size(), std::size_t{112});
+    QCOMPARE(bytes.size(), std::size_t{113});
     QCOMPARE(readU16Le(bytes, 64),
              smb::native_smb::kReadRequestStructureSize);
     QCOMPARE(bytes[66], std::uint8_t{0});
@@ -824,6 +850,7 @@ private slots:
     QCOMPARE(readU32Le(bytes, 104), std::uint32_t{0});
     QCOMPARE(readU16Le(bytes, 108), std::uint16_t{0});
     QCOMPARE(readU16Le(bytes, 110), std::uint16_t{0});
+    QCOMPARE(bytes[112], std::uint8_t{0});
 
     const auto header = smb::native_smb::decodeSmb2SyncHeader(bytes);
     QVERIFY(header.ok);

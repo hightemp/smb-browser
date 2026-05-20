@@ -27,6 +27,20 @@ test -f "$ROOTFS/usr/share/smb-browser/i18n/smb-browser_ru.qm"
 test -f "$ROOTFS/usr/share/applications/smb-browser.desktop"
 test -f "$ROOTFS/usr/share/metainfo/io.github.smb_browser.SmbBrowser.metainfo.xml"
 test -f "$ROOTFS/usr/share/icons/hicolor/scalable/apps/smb-browser.svg"
+test -f "$ROOTFS/usr/share/doc/smb-browser/LICENSE"
+test -f "$ROOTFS/usr/share/doc/smb-browser/NOTICE"
+
+if ! grep -q 'GPL-3.0-or-later' \
+  "$ROOTFS/usr/share/metainfo/io.github.smb_browser.SmbBrowser.metainfo.xml"; then
+  echo "AppStream metadata does not declare GPL-3.0-or-later." >&2
+  exit 1
+fi
+
+if ! grep -q 'SPDX-License-Identifier: GPL-3.0-or-later' \
+  "$ROOTFS/usr/share/doc/smb-browser/LICENSE"; then
+  echo "Installed LICENSE does not declare GPL-3.0-or-later SPDX id." >&2
+  exit 1
+fi
 
 if find "$ROOTFS" \( -name 'libsmb2.so*' -o -name 'smbclient' -o -name 'samba*' \) \
   -print -quit 2>/dev/null | grep -q .; then
@@ -75,13 +89,27 @@ fi
 set +e
 QT_QPA_PLATFORM=offscreen \
 LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
-timeout 3 "$ROOTFS/usr/bin/smb-browser"
+timeout 6 "$ROOTFS/usr/bin/smb-browser" --smoke-close-ms=1000
 code=$?
 set -e
 
-if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
-  echo "Application failed to start from extracted package, exit code $code." >&2
+if [ "$code" -ne 0 ]; then
+  echo "Application failed to start and close cleanly from extracted package, exit code $code." >&2
   exit "$code"
+fi
+
+if [ -n "${SMB_BROWSER_SMOKE_SERVER:-}" ] && [ -n "${SMB_BROWSER_SMOKE_SHARE:-}" ]; then
+  set +e
+  QT_QPA_PLATFORM=offscreen \
+  LD_LIBRARY_PATH="$ROOTFS/usr/lib:$ROOTFS/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
+  timeout "${SMB_BROWSER_SMOKE_TIMEOUT_SECONDS:-15}" \
+    "$ROOTFS/usr/bin/smb-browser" --smoke-smb-list
+  code=$?
+  set -e
+  if [ "$code" -ne 0 ]; then
+    echo "Packaged app failed SMB list smoke, exit code $code." >&2
+    exit "$code"
+  fi
 fi
 
 echo "Linux package smoke passed for $PACKAGE_PATH"

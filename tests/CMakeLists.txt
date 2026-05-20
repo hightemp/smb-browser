@@ -632,7 +632,8 @@ if(SMB_BROWSER_WITH_LIBSMB2)
     add_test(NAME libsmb2_smb_client COMMAND test_libsmb2_smb_client)
 endif()
 
-if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND SMB_BROWSER_WITH_LIBSMB2)
+if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND
+   (SMB_BROWSER_WITH_NATIVE_SMB OR SMB_BROWSER_WITH_LIBSMB2))
     add_executable(test_docker_samba_integration
         test_docker_samba_integration.cpp
     )
@@ -653,7 +654,7 @@ if(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS AND SMB_BROWSER_WITH_LIBSMB2)
     )
 elseif(SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS)
     message(WARNING
-        "SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS is ON, but libsmb2 backend is disabled."
+        "SMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS is ON, but no SMB backend is enabled."
     )
 endif()
 
@@ -704,6 +705,22 @@ target_link_libraries(test_fake_smb_client
 )
 
 add_test(NAME fake_smb_client COMMAND test_fake_smb_client)
+
+add_executable(test_smb_client_contract
+    test_smb_client_contract.cpp
+)
+
+target_link_libraries(test_smb_client_contract
+    PRIVATE
+        smb_browser_infrastructure
+        smb_browser_test_support
+        Qt5::Test
+)
+
+add_test(NAME smb_client_contract COMMAND test_smb_client_contract)
+set_tests_properties(smb_client_contract PROPERTIES
+    LABELS "native-contract"
+)
 
 add_executable(test_connection_service
     test_connection_service.cpp
@@ -780,6 +797,27 @@ target_link_libraries(test_transfer_manager
 )
 
 add_test(NAME transfer_manager COMMAND test_transfer_manager)
+
+add_executable(test_security_regression
+    test_security_regression.cpp
+)
+
+target_link_libraries(test_security_regression
+    PRIVATE
+        smb_browser_application
+        smb_browser_test_support
+        Qt5::Test
+)
+
+target_compile_definitions(test_security_regression
+    PRIVATE
+        SMB_BROWSER_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME security_regression COMMAND test_security_regression)
+set_tests_properties(security_regression PROPERTIES
+    LABELS "security"
+)
 
 add_executable(test_temp_file_cache
     test_temp_file_cache.cpp

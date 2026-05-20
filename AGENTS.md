@@ -3,7 +3,9 @@ TASKS.md - содержит задачи, помечай выполненные 
 PRD.md - содержит контекст проекта
 
 Документы в docs:
+- docs/cross-platform-smoke.md - automated/manual smoke profile для Linux/Windows/macOS packages и real-server native SMB validation
 - docs/current-user-kerberos.md - design strategy для Current User/Kerberos/SSO auth в native SMB backend
+- docs/license-compliance.md - license/compliance notes для GPL-3.0-or-later проекта и clean-room SMB boundary
 - docs/libsmb2-spike.md - результаты spike по сборке, API, лицензии и интеграции libsmb2
 - docs/linux-packaging.md - Linux packaging profile, CPack/DEB commands, runtime dependencies and keychain notes
 - docs/macos-packaging.md - macOS app bundle/DMG packaging plan, macdeployqt notes and smoke checklist

@@ -15,8 +15,10 @@ DecodeResult<RemoteStatResult> cancelledResult() {
                                                 "SMB stat was cancelled.");
 }
 
-DecodeResult<RemoteStatResult> failureFrom(const ProtocolError &error) {
-  return DecodeResult<RemoteStatResult>::failure(error.code, error.message);
+DecodeResult<RemoteStatResult> failureFrom(const ProtocolError &error,
+                                           std::uint64_t messagesUsed) {
+  return DecodeResult<RemoteStatResult>::failure(error.code, error.message,
+                                                messagesUsed);
 }
 
 DecodeResult<ByteVector> exchangePayload(Transport &transport,
@@ -69,7 +71,8 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
   const auto createPayload = exchangePayload(transport, createRequest, context);
   if (!createPayload.ok) {
     return DecodeResult<RemoteStatResult>::failure(createPayload.error.code,
-                                                  createPayload.error.message);
+                                                  createPayload.error.message,
+                                                  1);
   }
 
   if (isCancelled(context)) {
@@ -78,7 +81,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
 
   const auto createResponse = decodeCreateResponse(createPayload.value);
   if (!createResponse.ok) {
-    return failureFrom(createResponse.error);
+    return failureFrom(createResponse.error, 1);
   }
 
   const QueryInfoExchanger queryInfo;
@@ -87,7 +90,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
       queryOptions(createResponse.value.fileId, kFileBasicInformation, 40),
       messageId + 1, treeId, sessionId, context);
   if (!basicResponse.ok) {
-    return failureFrom(basicResponse.error);
+    return failureFrom(basicResponse.error, 2);
   }
 
   if (isCancelled(context)) {
@@ -96,7 +99,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
 
   const auto basicInfo = decodeFileBasicInformation(basicResponse.value.buffer);
   if (!basicInfo.ok) {
-    return failureFrom(basicInfo.error);
+    return failureFrom(basicInfo.error, 2);
   }
 
   const auto standardResponse = queryInfo.queryInfo(
@@ -104,7 +107,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
       queryOptions(createResponse.value.fileId, kFileStandardInformation, 24),
       messageId + 2, treeId, sessionId, context);
   if (!standardResponse.ok) {
-    return failureFrom(standardResponse.error);
+    return failureFrom(standardResponse.error, 3);
   }
 
   if (isCancelled(context)) {
@@ -114,7 +117,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
   const auto standardInfo =
       decodeFileStandardInformation(standardResponse.value.buffer);
   if (!standardInfo.ok) {
-    return failureFrom(standardInfo.error);
+    return failureFrom(standardInfo.error, 3);
   }
 
   CloseRequestOptions closeOptions;
@@ -124,7 +127,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
                                          messageId + 3, treeId, sessionId,
                                          context);
   if (!closeResponse.ok) {
-    return failureFrom(closeResponse.error);
+    return failureFrom(closeResponse.error, 4);
   }
 
   RemoteStatResult result;
@@ -137,6 +140,7 @@ RemoteStatReader::stat(Transport &transport, const std::string &path,
   result.allocationSize = standardInfo.value.allocationSize;
   result.endOfFile = standardInfo.value.endOfFile;
   result.numberOfLinks = standardInfo.value.numberOfLinks;
+  result.messagesUsed = 4;
   result.deletePending = standardInfo.value.deletePending;
   result.directory = standardInfo.value.directory;
   result.reparsePoint =

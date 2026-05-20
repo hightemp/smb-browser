@@ -95,6 +95,17 @@ smb::native_smb::ByteVector createResponsePayload(
   return bytes;
 }
 
+smb::native_smb::ByteVector statusResponsePayload(
+    smb::native_smb::Command command, std::uint32_t status) {
+  smb::native_smb::Smb2SyncHeader header;
+  header.command = command;
+  header.flags = smb::native_smb::kFlagServerToRedir;
+  header.status = status;
+  header.treeId = 77;
+  header.sessionId = 34;
+  return smb::native_smb::encodeSmb2SyncHeader(header);
+}
+
 smb::native_smb::ByteVector closeResponsePayload() {
   smb::native_smb::Smb2SyncHeader header;
   header.command = smb::native_smb::Command::Close;
@@ -409,6 +420,42 @@ private slots:
              static_cast<int>(smb::native_smb::Command::QueryInfo));
     QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
              std::uint64_t{10});
+    QCOMPARE(requestHeader(transport.requestFrames[3]).messageId,
+             std::uint64_t{13});
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{14});
+  }
+
+  void statFailureAdvancesOnlySentMessageIds() {
+    ScriptedTransport transport({
+        framedSuccess(statusResponsePayload(
+            smb::native_smb::Command::Create,
+            smb::native_smb::kStatusObjectNameNotFound)),
+        framedSuccess(createResponsePayload()),
+        framedSuccess(readResponsePayload()),
+        framedSuccess(closeResponsePayload()),
+    });
+
+    smb::native_smb::NativeSmbSessionConfig config;
+    config.treeId = 77;
+    config.sessionId = 34;
+    config.firstMessageId = 10;
+    smb::native_smb::NativeSmbSession session(transport, config);
+
+    const auto stat = session.statObject("missing.txt", {});
+
+    QVERIFY(!stat.ok);
+    QCOMPARE(static_cast<int>(stat.error.code),
+             static_cast<int>(smb::native_smb::ErrorCode::FileNotFound));
+    QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{11});
+
+    const auto read = session.readFileOnce("docs/file.txt", 4, 0, {});
+
+    QVERIFY(read.ok);
+    QCOMPARE(transport.requestFrames.size(), std::size_t{4});
+    QCOMPARE(requestHeader(transport.requestFrames[0]).messageId,
+             std::uint64_t{10});
+    QCOMPARE(requestHeader(transport.requestFrames[1]).messageId,
+             std::uint64_t{11});
     QCOMPARE(requestHeader(transport.requestFrames[3]).messageId,
              std::uint64_t{13});
     QCOMPARE(session.nextMessageIdForTests(), std::uint64_t{14});

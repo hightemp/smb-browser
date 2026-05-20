@@ -41,6 +41,14 @@ runtime dependencies in both package metadata and executable linkage. The legacy
 `libsmb2` backend can be enabled only through explicit development CMake flags
 and is not part of the default package profile.
 
+The smoke script starts the extracted binary with
+`QT_QPA_PLATFORM=offscreen --smoke-close-ms=1000` and fails if the process does
+not exit cleanly. This covers the no-tray close path for packaged builds.
+
+If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the same
+script runs the packaged binary with `--smoke-smb-list` and verifies that the
+native backend can list a synthetic test share without `libsmb2` or `smbclient`.
+
 ## Installed files
 
 The current install profile installs:

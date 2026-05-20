@@ -193,13 +193,15 @@ NativeSmbSession::writeFileOnce(const std::string &path,
 DecodeResult<NativeStatResult>
 NativeSmbSession::statObject(const std::string &path,
                              const OperationContext &context) {
-  const auto messageId = allocateMessageIds(4);
+  const auto messageId = m_nextMessageId;
   const RemoteStatReader statReader;
   const auto result = statReader.stat(m_transport, path, messageId, m_treeId,
                                       m_sessionId, context);
   if (!result.ok) {
+    m_nextMessageId += result.error.messagesUsed;
     return statFailureFrom(result.error);
   }
+  m_nextMessageId += result.value.messagesUsed;
 
   NativeStatResult stat;
   stat.size = result.value.endOfFile;

@@ -1,0 +1,26 @@
+SMB Browser
+
+SMB Browser is a Qt5/C++ desktop application with a clean-room native SMB2/SMB3
+engine.
+
+Project license:
+
+- SMB Browser source code: GPL-3.0-or-later.
+
+Runtime dependency families to review before release:
+
+- Qt5 runtime libraries and Qt platform plugins.
+- QtKeychain.
+- SQLite through the Qt SQL driver.
+- libsodium for encrypted local vault fallback.
+- Operating-system networking, credential/keychain and optional GSS/Kerberos
+  APIs.
+
+Clean-room SMB notice:
+
+- Samba source code and binaries are not included in source or binary
+  distributions.
+- `libsmb2`, `smbclient` and Samba client tools are not runtime requirements
+  of the default native SMB build.
+- Local source checkouts in `tmp/` are development-only reference material and
+  are not build inputs.

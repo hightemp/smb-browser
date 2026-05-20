@@ -28,6 +28,7 @@ public:
 
   void addDirectory(const QString &remotePath);
   void addFile(const QString &remotePath, QByteArray content);
+  void addSymlink(const QString &remotePath);
 
   smb::core::Result<bool>
   checkConnection(const smb::core::Connection &connection,

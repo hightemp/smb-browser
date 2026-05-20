@@ -15,6 +15,7 @@ cat >"$OUT_FILE" <<EOF
 {
   "name": "smb-browser",
   "version": "$version",
+  "license": "GPL-3.0-or-later",
   "generatedBy": "scripts/generate-sbom.sh",
   "cleanRoomNativeSmb": true,
   "legacySmbRuntimeDependencies": {

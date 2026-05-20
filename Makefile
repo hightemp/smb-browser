@@ -13,6 +13,10 @@ APP := $(BUILD_DIR)/src/app/smb-browser
 JOBS ?= --parallel
 DOCKER_COMPOSE ?= docker compose
 SAMBA_COMPOSE_FILE := tests/integration/samba/docker-compose.yml
+SMOKE_TEST_REGEX ?= ui_smoke|main_window|connections_panel|connection_management_controller|credential_store_contract|qtkeychain_credential_store|encrypted_vault_credential_store|smb_client_contract|open_file_service|transfer_manager|remote_browser_widget|security_regression
+WINDOWS_PACKAGE ?=
+MACOS_PACKAGE ?=
+POWERSHELL ?= pwsh
 
 .DEFAULT_GOAL := help
 
@@ -28,7 +32,12 @@ help:
 	@printf '  %-22s %s\n' 'make ci' 'Configure, build and test default profile'
 	@printf '\n%s\n' 'Packaging:'
 	@printf '  %-22s %s\n' 'make package-linux' 'Build Linux DEB package'
+	@printf '  %-22s %s\n' 'make package-windows' 'Build Windows package via PowerShell helper'
+	@printf '  %-22s %s\n' 'make package-macos' 'Build macOS app/DMG via macOS helper'
 	@printf '  %-22s %s\n' 'make smoke-linux' 'Smoke-test generated Linux package'
+	@printf '  %-22s %s\n' 'make smoke-windows' 'Smoke-test Windows ZIP package with PowerShell'
+	@printf '  %-22s %s\n' 'make smoke-macos' 'Smoke-test macOS app/DMG package'
+	@printf '  %-22s %s\n' 'make smoke-tests' 'Run cross-platform smoke CTest subset'
 	@printf '  %-22s %s\n' 'make install' 'Install from BUILD_DIR using cmake --install'
 	@printf '\n%s\n' 'Alternative profiles:'
 	@printf '  %-22s %s\n' 'make no-smb' 'Configure/build/test without libsmb2 backend'
@@ -94,9 +103,29 @@ package-linux:
 		-DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
 	cmake --build $(PACKAGE_BUILD_DIR) --target package $(JOBS)
 
+.PHONY: package-windows
+package-windows:
+	$(POWERSHELL) -File scripts/package-windows.ps1
+
+.PHONY: package-macos
+package-macos:
+	scripts/package-macos.sh
+
 .PHONY: smoke-linux
 smoke-linux: package-linux
 	scripts/package-smoke-linux.sh
+
+.PHONY: smoke-windows
+smoke-windows:
+	$(POWERSHELL) -File scripts/package-smoke-windows.ps1 "$(WINDOWS_PACKAGE)"
+
+.PHONY: smoke-macos
+smoke-macos:
+	scripts/package-smoke-macos.sh "$(MACOS_PACKAGE)"
+
+.PHONY: smoke-tests
+smoke-tests: build
+	ctest --test-dir $(BUILD_DIR) -R '$(SMOKE_TEST_REGEX)' $(CTEST_ARGS)
 
 .PHONY: install
 install: build
@@ -135,7 +164,7 @@ libsmb2:
 
 .PHONY: samba-up
 samba-up:
-	$(DOCKER_COMPOSE) -f $(SAMBA_COMPOSE_FILE) up -d --build
+	$(DOCKER_COMPOSE) -f $(SAMBA_COMPOSE_FILE) up -d --build --wait --wait-timeout 60
 
 .PHONY: samba-configure
 samba-configure:

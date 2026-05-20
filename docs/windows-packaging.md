@@ -19,19 +19,12 @@ Git, and a C/C++ compiler available. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```powershell
-cmake -S . -B tmp\package-windows -G Ninja `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DSMB_BROWSER_WITH_LIBSMB2=OFF `
-  -DSMB_BROWSER_WITH_NATIVE_SMB=ON `
-  -DSMB_BROWSER_ENABLE_DOCKER_SAMBA_TESTS=OFF
-cmake --build tmp\package-windows
-ctest --test-dir tmp\package-windows --output-on-failure
-cmake --build tmp\package-windows --target package
-powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-Run `windeployqt` against the installed or staged `smb-browser.exe` before
-publishing the package. The package must include:
+The helper configures the native backend, builds, runs `ctest`, attempts
+`windeployqt`, creates the package and runs `package-smoke-windows.ps1`.
+The package must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg runtime DLLs and platform/image plugins.
 - QtKeychain runtime DLLs.
@@ -46,6 +39,14 @@ The portable package must not contain `libsmb2.dll`, `smbclient.exe` or Samba
 client binaries. The smoke script should inspect executable dependencies with
 `dumpbin`, `llvm-objdump` or an equivalent scanner and fail the package if a
 legacy SMB runtime dependency is present.
+
+The package smoke script starts `smb-browser.exe --smoke-close-ms=1000` and
+fails if the process does not exit, so close-without-tray behavior is checked
+without manual interaction.
+
+If `SMB_BROWSER_SMOKE_SERVER` and `SMB_BROWSER_SMOKE_SHARE` are set, the script
+also runs `smb-browser.exe --smoke-smb-list` and requires a successful directory
+listing through the packaged native backend.
 
 DFS namespace support must be implemented by the native SMB engine. Until the
 native DFS task is complete, DFS limitations should be documented as product

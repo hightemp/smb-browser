@@ -2074,7 +2074,7 @@ Samba в проект запрещено.
 
 ## Этап 18. Native SMB file operation parity
 
-### [ ] T-098: Реализовать directory listing, stat и metadata mapping
+### [x] T-098: Реализовать directory listing, stat и metadata mapping
 
 - Приоритет: Must.
 - Зависимости: T-093, T-096.
@@ -2089,8 +2089,11 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Unit tests metadata conversion.
   - Docker Samba tests: files, folders, symlinks/reparse if fixture supports.
+  - Native Docker Samba real-wire проверка покрывает root/nested listing,
+    stat-driven file metadata and symlink/reparse indicators на synthetic
+    fixture.
 
-### [ ] T-099: Реализовать download/read с progress, resume и temp cache
+### [x] T-099: Реализовать download/read с progress, resume и temp cache
 
 - Приоритет: Must.
 - Зависимости: T-098.
@@ -2107,8 +2110,12 @@ Samba в проект запрещено.
   - Fake/native unit tests stream read.
   - Docker Samba download large file/cancel/resume tests.
   - Regression test open/edit/upload remains green.
+  - Native Docker Samba real-wire проверка скачивает `large.bin`, проверяет
+    monotonic progress and final byte count. Low-level native API supports
+    offset reads; high-level transfers use 64 KiB chunks until full credit
+    window management is added in performance work.
 
-### [ ] T-100: Реализовать upload/write с progress, resume и overwrite policy
+### [x] T-100: Реализовать upload/write с progress, resume и overwrite policy
 
 - Приоритет: Must.
 - Зависимости: T-098.
@@ -2123,6 +2130,10 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - Docker Samba upload/overwrite/cancel/resume tests.
   - Unit tests progress monotonicity.
+  - Native Docker Samba real-wire проверка загружает файл больше 2 MiB,
+    проверяет monotonic progress, повторный upload в тот же path and download
+    verification. Low-level native API supports offset writes; high-level
+    overwrite policy remains truncate/replace.
 
 ### [x] T-101: Реализовать mkdir, rmdir, delete, deltree и wildcard delete
 
@@ -2310,7 +2321,7 @@ Samba в проект запрещено.
   - `ldd`/`otool -L`/`dumpbin` outputs archived in package smoke logs.
   - Package smoke runs on clean VM/container.
 
-### [ ] T-112: Реализовать Linux portable build profile
+### [x] T-112: Реализовать Linux portable build profile
 
 - Приоритет: Must.
 - Зависимости: T-111.
@@ -2324,7 +2335,7 @@ Samba в проект запрещено.
   - Linux package smoke.
   - Docker Samba integration in packaged app, если возможно.
 
-### [ ] T-113: Реализовать Windows portable build profile
+### [x] T-113: Реализовать Windows portable build profile
 
 - Приоритет: Must.
 - Зависимости: T-111.
@@ -2339,7 +2350,7 @@ Samba в проект запрещено.
   - Windows package smoke script.
   - Dependency audit via `dumpbin` or equivalent.
 
-### [ ] T-114: Реализовать macOS portable/app bundle profile
+### [x] T-114: Реализовать macOS portable/app bundle profile
 
 - Приоритет: Must.
 - Зависимости: T-111.
@@ -2394,7 +2405,7 @@ Samba в проект запрещено.
   - Matrix становится checklist для T-116, T-117, T-118, T-120 и всех native
     implementation задач.
 
-### [ ] T-116: Расширить FakeSmbClient/native contract tests
+### [x] T-116: Расширить FakeSmbClient/native contract tests
 
 - Приоритет: Must.
 - Зависимости: T-107.
@@ -2410,7 +2421,7 @@ Samba в проект запрещено.
   - Default unit run uses fake only.
   - Native integration tests opt-in by label/profile.
 
-### [ ] T-117: Обновить Docker Samba integration fixtures
+### [x] T-117: Обновить Docker Samba integration fixtures
 
 - Приоритет: Must.
 - Зависимости: T-096, T-116.
@@ -2428,8 +2439,11 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - `ctest -L docker-samba`.
   - No real passwords; generated synthetic credentials only.
+  - Native real-wire profile runs with
+    `SMB_BROWSER_DOCKER_SAMBA_NATIVE_WIRE=1`; `make samba-up` waits for the
+    fixture healthcheck to avoid startup races.
 
-### [ ] T-118: Добавить cross-platform manual/automated smoke tests
+### [x] T-118: Добавить cross-platform manual/automated smoke tests
 
 - Приоритет: Must.
 - Зависимости: T-112, T-113, T-114.
@@ -2462,7 +2476,7 @@ Samba в проект запрещено.
   - Optional perf profile, not default unit suite.
   - Store metrics as CI artifacts where possible.
 
-### [ ] T-120: Провести security regression suite после удаления старых backend-ов
+### [x] T-120: Провести security regression suite после удаления старых backend-ов
 
 - Приоритет: Must.
 - Зависимости: T-108, T-116.
@@ -2478,7 +2492,7 @@ Samba в проект запрещено.
   - LogSanitizer regression cases from native errors.
   - Security suite part of default CI.
 
-### [ ] T-121: Обновить документацию и release checklist под native SMB engine
+### [x] T-121: Обновить документацию и release checklist под native SMB engine
 
 - Приоритет: Must.
 - Зависимости: T-108, T-111, T-118, T-120, T-123.
@@ -2494,7 +2508,7 @@ Samba в проект запрещено.
   - Manual clean-clone doc test.
   - CI validates key commands from README if practical.
 
-### [ ] T-123: Перевести проектные документы и release metadata в open-source/GPL model
+### [x] T-123: Перевести проектные документы и release metadata в open-source/GPL model
 
 - Приоритет: Must.
 - Зависимости: T-083, T-084, T-087.

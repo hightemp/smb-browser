@@ -2,6 +2,7 @@
 
 #include "CloseExchanger.h"
 
+#include <sstream>
 #include <utility>
 
 namespace smb::native_smb {
@@ -19,6 +20,13 @@ DecodeResult<DirectoryListResult> cancelledResult() {
 DecodeResult<DirectoryListResult> failureFrom(const ProtocolError &error) {
   return DecodeResult<DirectoryListResult>::failure(error.code,
                                                    error.message);
+}
+
+DecodeResult<DirectoryListResult> failureFrom(const ProtocolError &error,
+                                              std::uint64_t messageId) {
+  std::ostringstream stream;
+  stream << error.message << " message_id=" << messageId << ".";
+  return DecodeResult<DirectoryListResult>::failure(error.code, stream.str());
 }
 
 DecodeResult<ByteVector> exchangePayload(Transport &transport,
@@ -70,7 +78,7 @@ DirectoryLister::list(Transport &transport, const std::string &path,
 
   const auto createResponse = decodeCreateResponse(createPayload.value);
   if (!createResponse.ok) {
-    return failureFrom(createResponse.error);
+    return failureFrom(createResponse.error, messageId);
   }
 
   QueryDirectoryRequestOptions queryOptions;

@@ -3,6 +3,8 @@
 #include "CloseExchanger.h"
 #include "ReadExchanger.h"
 
+#include <sstream>
+
 namespace smb::native_smb {
 namespace {
 
@@ -17,6 +19,13 @@ DecodeResult<FileReadResult> cancelledResult() {
 
 DecodeResult<FileReadResult> failureFrom(const ProtocolError &error) {
   return DecodeResult<FileReadResult>::failure(error.code, error.message);
+}
+
+DecodeResult<FileReadResult> failureFrom(const ProtocolError &error,
+                                         std::uint64_t messageId) {
+  std::ostringstream stream;
+  stream << error.message << " message_id=" << messageId << ".";
+  return DecodeResult<FileReadResult>::failure(error.code, stream.str());
 }
 
 DecodeResult<ByteVector> exchangePayload(Transport &transport,
@@ -66,7 +75,7 @@ FileReader::readOnce(Transport &transport, const std::string &path,
 
   const auto createResponse = decodeCreateResponse(createPayload.value);
   if (!createResponse.ok) {
-    return failureFrom(createResponse.error);
+    return failureFrom(createResponse.error, messageId);
   }
 
   ReadRequestOptions readOptions;

@@ -87,7 +87,7 @@ make native-test
 - [ ] Start the local Samba fixture:
 
 ```bash
-docker compose -f tests/integration/samba/docker-compose.yml up -d --build
+make samba-up
 ```
 
 - [ ] Configure a separate integration build:
@@ -106,10 +106,12 @@ ctest --test-dir tmp/build-samba -L docker-samba --output-on-failure
 - [ ] Stop the fixture:
 
 ```bash
-docker compose -f tests/integration/samba/docker-compose.yml down -v
+make samba-down
 ```
 
 ## Security gate
+
+- [ ] `security_regression` passes in the default `ctest` suite.
 
 - [ ] Default export does not contain:
   - passwords;
@@ -143,6 +145,11 @@ docker compose -f tests/integration/samba/docker-compose.yml down -v
 
 - [ ] License/compliance review confirms Samba is not copied, linked or
   distributed; local Samba checkouts under `tmp/` are reference-only.
+- [ ] Project license metadata is present:
+  - `LICENSE` exists and declares `GPL-3.0-or-later`;
+  - `NOTICE` exists;
+  - package metadata declares `GPL-3.0-or-later`;
+  - release package includes `LICENSE` and `NOTICE`.
 
 ## Localization gate
 
@@ -155,11 +162,13 @@ docker compose -f tests/integration/samba/docker-compose.yml down -v
 ## Manual platform smoke
 
 Run on each target platform before publishing binaries.
+Use `docs/cross-platform-smoke.md` as the detailed command/manual checklist.
 
 - [ ] Windows:
   - package smoke script passes:
     `powershell -ExecutionPolicy Bypass -File scripts\package-smoke-windows.ps1`;
   - app starts;
+  - `--smoke-close-ms=1000` path exits cleanly without leaving a process;
   - Qt runtime, QtKeychain, SQLite and translations are packaged;
   - package contains no `libsmb2.dll`, `smbclient.exe` or Samba client runtime;
   - add/edit/delete connection works;
@@ -171,6 +180,7 @@ Run on each target platform before publishing binaries.
   - package smoke script passes:
     `scripts/package-smoke-linux.sh`;
   - app starts on the target distribution;
+  - `--smoke-close-ms=1000` path exits cleanly without timeout;
   - Secret Service/KWallet behavior is understood and documented;
   - translations are packaged and load correctly;
   - DEB metadata and `ldd` contain no `libsmb2`, `smbclient` or Samba client runtime;
@@ -180,6 +190,7 @@ Run on each target platform before publishing binaries.
   - package smoke script passes:
     `scripts/package-smoke-macos.sh`;
   - app bundle starts;
+  - `--smoke-close-ms=1000` path exits cleanly without leaving a process;
   - Keychain prompts are expected and understandable;
   - translations are packaged and load correctly;
   - bundle and `otool -L` contain no `libsmb2`, `smbclient` or Samba client runtime;

@@ -56,14 +56,27 @@ if ($DependencyText -match "(?i)(libsmb2|smbclient|samba)") {
     throw "Executable links a legacy SMB runtime dependency: $DependencyText"
 }
 
-$Process = Start-Process -FilePath $Exe -PassThru
-Start-Sleep -Seconds 3
-if ($Process.HasExited) {
-    if ($Process.ExitCode -ne 0) {
-        throw "Application exited early with code $($Process.ExitCode)"
-    }
-} else {
+$Process = Start-Process -FilePath $Exe -ArgumentList "--smoke-close-ms=1000" -PassThru
+Wait-Process -Id $Process.Id -Timeout 10 -ErrorAction SilentlyContinue
+if (!$Process.HasExited) {
     Stop-Process -Id $Process.Id -Force
+    throw "Application did not close cleanly during smoke test"
+}
+if ($Process.ExitCode -ne 0) {
+    throw "Application smoke close exited with code $($Process.ExitCode)"
+}
+
+if (![string]::IsNullOrWhiteSpace($env:SMB_BROWSER_SMOKE_SERVER) -and
+    ![string]::IsNullOrWhiteSpace($env:SMB_BROWSER_SMOKE_SHARE)) {
+    $ListProcess = Start-Process -FilePath $Exe -ArgumentList "--smoke-smb-list" -PassThru
+    Wait-Process -Id $ListProcess.Id -Timeout 30 -ErrorAction SilentlyContinue
+    if (!$ListProcess.HasExited) {
+        Stop-Process -Id $ListProcess.Id -Force
+        throw "Application did not finish SMB list smoke"
+    }
+    if ($ListProcess.ExitCode -ne 0) {
+        throw "Application SMB list smoke exited with code $($ListProcess.ExitCode)"
+    }
 }
 
 Write-Host "Windows package smoke passed for $PackagePath"
