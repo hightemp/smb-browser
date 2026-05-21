@@ -117,6 +117,26 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 scripts/package-macos.sh
 ```
 
+## Release
+
+Release version is stored in `VERSION`. To prepare and publish a release from
+the current branch:
+
+```bash
+make release
+```
+
+The command synchronizes versioned files, commits version changes when needed,
+creates or replaces tag `v<VERSION>`, then force-pushes the current branch and
+tag. The tag push triggers `.github/workflows/release.yml`, which builds Linux,
+Windows and macOS packages and publishes a GitHub Release.
+
+For a local validation without pushing:
+
+```bash
+RELEASE_DRY_RUN=1 make release
+```
+
 ## Optional Docker Samba integration test
 
 The Docker Samba test profile is disabled by default.

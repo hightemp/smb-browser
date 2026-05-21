@@ -18,6 +18,8 @@ SMOKE_TEST_REGEX ?= ui_smoke|main_window|connections_panel|connection_management
 WINDOWS_PACKAGE ?=
 MACOS_PACKAGE ?=
 POWERSHELL ?= pwsh
+RELEASE_REMOTE ?= origin
+RELEASE_TAG_PREFIX ?= v
 
 .DEFAULT_GOAL := help
 
@@ -40,6 +42,7 @@ help:
 	@printf '  %-22s %s\n' 'make smoke-macos' 'Smoke-test macOS app/DMG package'
 	@printf '  %-22s %s\n' 'make smoke-tests' 'Run cross-platform smoke CTest subset'
 	@printf '  %-22s %s\n' 'make install' 'Install from BUILD_DIR using cmake --install'
+	@printf '  %-22s %s\n' 'make release' 'Sync VERSION, commit, force-push branch and tag'
 	@printf '\n%s\n' 'Alternative profiles:'
 	@printf '  %-22s %s\n' 'make no-smb' 'Configure/build/test without libsmb2 backend'
 	@printf '  %-22s %s\n' 'make native-test' 'Run clean-room native SMB unit/protocol tests without libsmb2'
@@ -132,6 +135,12 @@ smoke-tests: build
 .PHONY: install
 install: build
 	cmake --install $(BUILD_DIR)
+
+.PHONY: release
+release:
+	RELEASE_REMOTE="$(RELEASE_REMOTE)" \
+	RELEASE_TAG_PREFIX="$(RELEASE_TAG_PREFIX)" \
+	scripts/release.sh
 
 .PHONY: no-smb-configure
 no-smb-configure:

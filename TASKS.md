@@ -2475,6 +2475,31 @@ Samba в проект запрещено.
   - CI checks hardening flags where practical.
   - Static analysis/sanitizer profile added for native SMB code.
 
+### [x] T-147: Реализовать release automation и GitHub Release workflow
+
+- Приоритет: Must.
+- Зависимости: T-112, T-113, T-114, T-115.
+- Описание: Добавить воспроизводимый release path: версия берётся из
+  `VERSION`, синхронизируется с build/package metadata, затем release command
+  создаёт commit/tag и публикует tag; GitHub Actions собирает артефакты для
+  Linux/Windows/macOS и выкладывает GitHub Release.
+- Acceptance criteria:
+  - `make release` вызывает release script.
+  - Release script обновляет `CMakeLists.txt` и AppStream release metadata из
+    `VERSION`.
+  - Release script коммитит только version-файлы, создаёт/заменяет tag
+    `v<VERSION>` и выполняет `git push -f` для branch и tag.
+  - Есть dry-run режим без push.
+  - GitHub Actions release workflow собирает Linux DEB, Windows portable ZIP и
+    macOS DMG/app bundle.
+  - Release workflow загружает package artifacts и публикует GitHub Release.
+  - Windows package artifact включает версию в имени.
+- Заметки по тестам:
+  - `bash -n` для shell scripts.
+  - YAML workflow parse check.
+  - `make test`.
+  - `make smoke-linux PACKAGE_BUILD_TYPE=Release`.
+
 ## Этап 21. Test matrix для native SMB migration
 
 ### [x] T-124: Зафиксировать полную test matrix для native SMB library

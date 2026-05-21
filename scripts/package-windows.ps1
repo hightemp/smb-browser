@@ -11,6 +11,10 @@ $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (![System.IO.Path]::IsPathRooted($BuildDir)) {
     $BuildDir = Join-Path $RootDir $BuildDir
 }
+$Version = (Get-Content -LiteralPath (Join-Path $RootDir "VERSION") -Raw).Trim()
+if ($Version -notmatch '^[0-9]+(\.[0-9]+){2,3}$') {
+    throw "Invalid VERSION '$Version'. Expected numeric MAJOR.MINOR.PATCH."
+}
 
 function Invoke-CheckedCommand {
     param(
@@ -106,7 +110,7 @@ Copy-FirstPathMatch `
 
 $PackagesDir = Join-Path $BuildDir "packages"
 New-Item -ItemType Directory -Force -Path $PackagesDir | Out-Null
-$BuiltPackage = Join-Path $PackagesDir "smb-browser-$BuildType-windows-portable.zip"
+$BuiltPackage = Join-Path $PackagesDir "smb-browser-$Version-windows-x86_64-portable.zip"
 Remove-Item -Force $BuiltPackage -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $StageDir "*") -DestinationPath $BuiltPackage
 

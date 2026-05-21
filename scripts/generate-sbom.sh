@@ -7,8 +7,7 @@ OUT_FILE="$OUT_DIR/smb-browser-sbom.json"
 
 mkdir -p "$OUT_DIR"
 
-version="$(grep -m1 'project(SmbBrowser' -A2 "$ROOT_DIR/CMakeLists.txt" |
-  awk '/VERSION/ {print $2; exit}')"
+version="$(tr -d '[:space:]' <"$ROOT_DIR/VERSION" 2>/dev/null || true)"
 version="${version:-0.0.0}"
 
 cat >"$OUT_FILE" <<EOF

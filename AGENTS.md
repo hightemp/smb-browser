@@ -2,6 +2,9 @@
 TASKS.md - содержит задачи, помечай выполненные задачи чекбоксом
 PRD.md - содержит контекст проекта
 
+1. Перед тем как сделать задачу помечай что будешь делать в TASKS.md.
+2. После выполнения задачи отмечай в TASKS.md.
+
 Документы в docs:
 - docs/cross-platform-smoke.md - automated/manual smoke profile для Linux/Windows/macOS packages и real-server native SMB validation
 - docs/current-user-kerberos.md - design strategy для Current User/Kerberos/SSO auth в native SMB backend

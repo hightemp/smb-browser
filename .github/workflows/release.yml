@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, for example v0.2.0"
+        required: true
+        type: string
+      draft:
+        description: "Create or update the GitHub release as draft"
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark the GitHub release as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  linux:
+    name: Linux DEB
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            binutils \
+            build-essential \
+            cmake \
+            dpkg-dev \
+            git \
+            libqt5svg5-dev \
+            libsodium-dev \
+            ninja-build \
+            pkg-config \
+            qtbase5-dev \
+            qtkeychain-qt5-dev \
+            qttools5-dev-tools
+
+      - name: Build and smoke-test DEB
+        run: make smoke-linux PACKAGE_BUILD_TYPE=Release
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-browser-linux
+          path: tmp/package-linux/packages/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows portable ZIP
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Install MSYS2 UCRT64 dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: inherit
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-libsodium
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-svg
+            mingw-w64-ucrt-x86_64-qt5-tools
+            mingw-w64-ucrt-x86_64-qtkeychain-qt5
+
+      - name: Add MSYS2 tools to PATH
+        shell: pwsh
+        run: |
+          "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build and smoke-test portable ZIP
+        shell: pwsh
+        run: |
+          ./scripts/package-windows.ps1 `
+            -BuildDir tmp/package-windows `
+            -Generator Ninja `
+            -BuildType Release
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-browser-windows
+          path: tmp/package-windows/packages/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS DMG
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake ninja pkg-config qt@5 qtkeychain libsodium
+
+      - name: Build and smoke-test DMG
+        run: scripts/package-macos.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-browser-macos
+          path: tmp/package-macos/packages/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs:
+      - linux
+      - windows
+      - macos
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+      RELEASE_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+
+    steps:
+      - name: Validate tag
+        run: |
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+(\.[0-9]+){2,3}$ ]]; then
+            echo "Invalid release tag: $TAG_NAME" >&2
+            exit 1
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        run: |
+          mapfile -t files < <(find dist -type f -print | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release artifacts found." >&2
+            exit 1
+          fi
+
+          flags=()
+          if [ "$RELEASE_DRAFT" = "true" ]; then
+            flags+=(--draft)
+          fi
+          if [ "$RELEASE_PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+
+          title="SMB Browser ${TAG_NAME}"
+          notes="Automated release build for ${TAG_NAME}."
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release edit "$TAG_NAME" --title "$title" --notes "$notes" "${flags[@]}"
+            gh release upload "$TAG_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$TAG_NAME" "${files[@]}" --title "$title" --notes "$notes" "${flags[@]}"
+          fi
