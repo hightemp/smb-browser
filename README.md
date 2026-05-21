@@ -1,5 +1,20 @@
 # SMB Browser
 
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff)](.github/workflows/ci.yml)
+[![Package Smoke](https://img.shields.io/badge/package%20smoke-Linux%20%7C%20Windows%20%7C%20macOS-6f42c1)](.github/workflows/package-smoke.yml)
+[![Release Workflow](https://img.shields.io/badge/release-workflow-2ea44f)](.github/workflows/release.yml)
+[![Release](https://img.shields.io/badge/release-v0.2.0-2ea44f)](#release)
+[![Downloads](https://img.shields.io/badge/downloads-GitHub%20Releases-0969da)](#release)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![C++](https://img.shields.io/badge/C%2B%2B-17-00599c)](CMakeLists.txt)
+[![Qt](https://img.shields.io/badge/Qt-5%20Widgets-41cd52)](CMakeLists.txt)
+[![Build](https://img.shields.io/badge/build-CMake%20%2B%20Ninja-064f8c)](CMakeLists.txt)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-555555)](docs/cross-platform-smoke.md)
+[![SMB](https://img.shields.io/badge/SMB-native%20SMB2%2FSMB3-0052cc)](docs/native-smb-clean-room.md)
+[![Storage](https://img.shields.io/badge/storage-SQLite-003b57)](PRD.md)
+[![Secrets](https://img.shields.io/badge/secrets-QtKeychain%20%2B%20vault-0d766e)](docs/secret-handling-policy.md)
+[![Packages](https://img.shields.io/badge/packages-DEB%20%7C%20ZIP%20%7C%20DMG-555555)](#linux-package-smoke)
+
 Qt5/C++ desktop application for managing SMB connections and browsing
 Windows/Samba shared folders inside the application's own Qt Widgets UI.
 

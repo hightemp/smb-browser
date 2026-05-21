@@ -2648,3 +2648,19 @@ Samba в проект запрещено.
 - Заметки по тестам:
   - CI/package smoke проверяет наличие `LICENSE` и notices.
   - Manual release review перед публикацией.
+
+### [x] T-148: Добавить README badges для состояния репозитория
+
+- Приоритет: Should.
+- Зависимости: T-121, T-147.
+- Описание: Добавить в верхнюю часть `README.md` badges, которые кратко
+  описывают сборку, release/downloads, лицензию, стек, платформы и native SMB
+  backend.
+- Acceptance criteria:
+  - Badges расположены сразу под заголовком README.
+  - Есть badges для CI/release workflow, release/downloads, license, C++/Qt,
+    CMake/Ninja, native SMB, storage/secrets и supported platforms.
+  - Ссылки badges ведут на локальные документы, workflow-файлы или release
+    section без неверных внешних repository URL.
+- Заметки по тестам:
+  - Проверить markdown diff.
