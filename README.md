@@ -4,6 +4,11 @@
 [![Release](https://img.shields.io/github/v/release/hightemp/smb-browser)](https://github.com/hightemp/smb-browser/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/hightemp/smb-browser/total)](https://github.com/hightemp/smb-browser/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
+[![Qt](https://img.shields.io/badge/Qt-5-41CD52?logo=qt&logoColor=white)](https://www.qt.io/)
+[![CMake](https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](https://github.com/hightemp/smb-browser/releases)
+[![SMB](https://img.shields.io/badge/SMB-2%2F3-orange)](docs/native-smb-clean-room.md)
 
 Qt5/C++ desktop application for managing SMB connections and browsing
 Windows/Samba shared folders inside the application's own Qt Widgets UI.
