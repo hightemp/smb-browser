@@ -15,8 +15,10 @@ packaging task complete.
 ## Build outline
 
 Use a macOS build environment with Qt5, Qt tools (`lrelease`, `macdeployqt`),
-CMake, Ninja, pkg-config, QtKeychain, libsodium, Git, and Xcode command line
-tools available. The default build must keep
+CMake, Ninja, pkg-config, libsodium, Git, and Xcode command line tools
+available. On GitHub Actions, QtKeychain is built from source against Qt5 via
+`scripts/build-qtkeychain-qt5.sh` so Homebrew's Qt6 `qtkeychain` dependency is
+not installed. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```bash
@@ -24,9 +26,14 @@ scripts/package-macos.sh
 ```
 
 The helper configures the native backend, builds, runs `ctest`, detects Homebrew
-`qt@5`/`qtkeychain` prefixes when available, requires `macdeployqt`, creates the
-package from a clean package directory and runs `package-smoke-macos.sh` against
-the exact DMG/app it just created.
+`qt@5` and `QTKEYCHAIN_PREFIX`/QtKeychain prefixes when available, requires
+`macdeployqt`, creates the package from a clean package directory and runs
+`package-smoke-macos.sh` against the exact DMG/app it just created.
+The GitHub Actions release job sets `SKIP_TESTS=1` and `SKIP_SMOKE=1` for this
+helper and relies on the separate CI workflow plus the manual package-smoke
+workflow for runner-backed validation.
+When tests are skipped, the helper configures CMake with `BUILD_TESTING=OFF` so
+the release package build does not spend time compiling test targets.
 The app bundle must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg frameworks and platform/image plugins.

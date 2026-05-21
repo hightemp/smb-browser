@@ -2679,3 +2679,136 @@ Samba в проект запрещено.
   - Release/package metadata не раскрывает личные контакты.
 - Заметки по тестам:
   - Проверить поиском по известным личным/корпоративным маркерам.
+
+### [x] T-150: Починить release workflow dependencies
+
+- Приоритет: Must.
+- Зависимости: T-147.
+- Описание: Исправить Windows/macOS package dependencies в release workflow,
+  чтобы GitHub Actions снова мог собрать release artifacts.
+- Acceptance criteria:
+  - Windows MSYS2 setup не запрашивает несуществующий QtKeychain пакет.
+  - macOS package setup не смешивает Qt5 build с Qt6 qtkeychain dependency.
+  - Release workflow и package smoke workflow используют одинаковые рабочие
+    зависимости.
+- Заметки по тестам:
+  - Проверить scripts/workflow diff.
+  - Проверить синтаксис shell/PowerShell scripts where practical.
+
+### [x] T-151: Починить Windows release Qt5 CMake prefix
+
+- Приоритет: Must.
+- Зависимости: T-150.
+- Описание: Исправить Windows release/package step, чтобы PowerShell packaging
+  использовал MSYS2 UCRT64 toolchain и Qt5 CMake prefix, а не preinstalled
+  `C:\mingw64`.
+- Acceptance criteria:
+  - Windows release step явно добавляет `C:\msys64\ucrt64` в PATH и
+    `CMAKE_PREFIX_PATH`.
+  - `package-windows.ps1` поддерживает MSYS2/UCRT Qt5 prefix независимо от
+    окружения shell step.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - YAML parse check.
+  - `git diff --check`.
+
+### [x] T-152: Починить Windows windeployqt UCRT runtime staging
+
+- Приоритет: Must.
+- Зависимости: T-151.
+- Описание: Исправить Windows package stage, где `windeployqt-qt5` в MSYS2
+  UCRT64 падает из-за отсутствующего `libGLESv2.dll`.
+- Acceptance criteria:
+  - `windeployqt` запускается с опциями, совместимыми с MSYS2 UCRT64 package.
+  - Runtime DLL staging сохраняет Qt5, QtKeychain и libsodium dependencies.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - Проверить workflow log на прохождение Windows build/package stage.
+
+### [x] T-153: Сделать Windows runtime staging устойчивым к windeployqt
+
+- Приоритет: Must.
+- Зависимости: T-152.
+- Описание: Добавить ручной staging Qt plugins/DLLs и recursive dependency
+  copy для Windows ZIP, чтобы release packaging не зависел от полного успеха
+  `windeployqt` в MSYS2 UCRT64.
+- Acceptance criteria:
+  - `windeployqt` failure не останавливает package build, если ручной runtime
+    staging может собрать ZIP.
+  - Qt platform, SQLite, SVG/icon plugins, QtKeychain и libsodium попадают в
+    staged package.
+  - Runtime DLL dependencies recursively copied from MSYS2/QTKEYCHAIN prefixes.
+- Заметки по тестам:
+  - YAML parse check.
+  - `git diff --check`.
+
+### [x] T-154: Разделить macOS release packaging и smoke
+
+- Приоритет: Must.
+- Зависимости: T-150.
+- Описание: В release workflow собирать macOS artifact без default ctest/smoke,
+  оставив полный smoke в manual package-smoke workflow.
+- Acceptance criteria:
+  - Release macOS job вызывает package script с `SKIP_TESTS=1` и
+    `SKIP_SMOKE=1`.
+  - Manual package-smoke workflow продолжает запускать полный macOS package
+    smoke.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - YAML parse check.
+
+### [x] T-155: Починить macOS CPack rpath failure
+
+- Приоритет: Must.
+- Зависимости: T-154.
+- Описание: Исправить macOS package script, чтобы release build не собирал
+  test targets при `SKIP_TESTS=1` и не падал на recoverable CPack
+  `install_name_tool -delete_rpath` ошибке, если DMG уже создан.
+- Acceptance criteria:
+  - `SKIP_TESTS=1` добавляет `-DBUILD_TESTING=OFF` на configure.
+  - CPack nonzero считается ошибкой только если package artifact не создан.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - `bash -n scripts/package-macos.sh`.
+  - YAML parse check.
+
+### [x] T-156: Ускорить Windows runtime dependency staging
+
+- Приоритет: Must.
+- Зависимости: T-153.
+- Описание: Исправить Windows runtime dependency scanner, чтобы он не пытался
+  искать системные `api-ms-win-*` DLL и не повторял один и тот же обход для
+  каждого staged binary.
+- Acceptance criteria:
+  - `api-ms-win-*` и `ext-ms-*` распознаются как системные DLL.
+  - Runtime dependency scan использует общий seen-state для всего staging pass.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - PowerShell parser check для `scripts/package-windows.ps1`.
+  - YAML parse check.
+
+### [x] T-157: Ограничить release upload финальными package artifacts
+
+- Приоритет: Must.
+- Зависимости: T-156.
+- Описание: Исправить workflow upload paths, чтобы GitHub Actions не загружал
+  служебные CPack staging directories вместе с release artifacts.
+- Acceptance criteria:
+  - Linux release upload берет только `*.deb`.
+  - Windows upload берет только `*.zip`.
+  - macOS upload берет только `*.dmg`.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - YAML parse check.
+
+### [x] T-158: Починить publish job без git checkout
+
+- Приоритет: Must.
+- Зависимости: T-157.
+- Описание: Настроить publish job так, чтобы GitHub CLI явно знал repository и
+  не пытался определить его через отсутствующий `.git` checkout.
+- Acceptance criteria:
+  - `gh release view/edit/upload/create` работает в publish job без checkout.
+  - Release workflow снова запушен на `v0.2.0`.
+- Заметки по тестам:
+  - YAML parse check.

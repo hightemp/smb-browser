@@ -15,8 +15,10 @@ packaging task complete.
 ## Build outline
 
 Use a Windows build environment with Qt5, Qt tools (`lrelease`, `windeployqt`),
-CMake, Ninja, pkgconf/pkg-config, QtKeychain, libsodium, Git, and a C/C++
-compiler available. The default build must keep
+CMake, Ninja, pkgconf/pkg-config, libsodium, Git, and a C/C++ compiler
+available. On GitHub Actions, QtKeychain is built from source against Qt5 via
+`scripts/build-qtkeychain-qt5.sh` instead of relying on an MSYS2 QtKeychain
+binary package. The default build must keep
 `SMB_BROWSER_WITH_LIBSMB2=OFF` and `SMB_BROWSER_WITH_NATIVE_SMB=ON`.
 
 ```powershell
@@ -26,7 +28,14 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 The helper configures the native backend, builds, runs `ctest`, requires
 `windeployqt`, creates a clean portable staging directory, stages runtime DLL
 candidates, creates a portable ZIP and runs `package-smoke-windows.ps1` against
-the exact ZIP it just created.
+the exact ZIP it just created. Manual runtime staging filters Windows system and
+API-set DLLs such as `api-ms-win-*` and keeps one dependency scan state across
+the staging pass, so missing system DLL lookups do not dominate package time.
+The GitHub Actions release job passes `-SkipTests -SkipSmoke` for this helper
+and relies on the separate CI workflow for unit tests plus manual or
+workflow-dispatch package smoke for runner-backed Windows validation. The
+manual package-smoke workflow still keeps package smoke enabled for the
+generated ZIP.
 The package must include:
 
 - Qt5 Core/Gui/Widgets/Sql/Svg runtime DLLs and platform/image plugins.
