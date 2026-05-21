@@ -9,6 +9,7 @@
 [![CMake](https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](https://github.com/hightemp/smb-browser/releases)
 [![SMB](https://img.shields.io/badge/SMB-2%2F3-orange)](docs/native-smb-clean-room.md)
+![](https://asdertasd.site/counter/php-lsp)
 
 Qt5/C++ desktop application for managing SMB connections and browsing
 Windows/Samba shared folders inside the application's own Qt Widgets UI.
