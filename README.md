@@ -166,8 +166,6 @@ binaries are not copied, linked, vendored or distributed; local checkouts under
 
 ## Project docs
 
-- `PRD.md` - product requirements.
-- `TASKS.md` - implementation backlog with completion checkboxes.
 - `docs/current-user-kerberos.md` - current-user/Kerberos/SSO design.
 - `docs/cross-platform-smoke.md` - package and real-server smoke profile.
 - `docs/license-compliance.md` - license and release compliance notes.
