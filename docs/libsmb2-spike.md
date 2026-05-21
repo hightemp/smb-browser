@@ -187,9 +187,10 @@ Initial `Libsmb2SmbClient` implementation should:
 ## DFS Namespace Finding
 
 Corporate paths can be DFS namespaces rather than direct shares. One observed
-case was `smb://v-tell.com/ru`: `smbclient` successfully followed the referral
-to a concrete target, while `libsmb2` `smb2_connect_share()` failed at tree
-connect with `STATUS_BAD_NETWORK_NAME`.
+class of cases is represented here as `smb://dfs.example.test/share`:
+`smbclient` can successfully follow the referral to a concrete target, while
+`libsmb2` `smb2_connect_share()` may fail at tree connect with
+`STATUS_BAD_NETWORK_NAME`.
 
 Project handling:
 
